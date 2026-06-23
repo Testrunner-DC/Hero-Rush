@@ -1,0 +1,116 @@
+%% 号召进场触发流程
+sequenceDiagram
+    participant UI as BattlePage
+    participant Engine as gameReducer
+    participant Summon as handleSummonToField
+    participant Events as triggerEvent
+    participant Registry as EFFECT_REGISTRY
+    participant Helpers as EffectHelpers
+
+    UI->>Engine: SUMMON_TO_FIELD {playerIdx, handIndex, zone}
+    Engine->>Summon: handleSummonToField(state, idx, handIdx, zone)
+    Summon->>Summon: 验证号召条件
+    Summon->>Summon: Lv4+? → 撤退场上角色
+    Summon->>Summon: 将卡牌放入 field/zone
+
+    Summon->>Events: triggerEvent(state, "onCardSummoned", {cardId, playerIdx, zone})
+    Events->>Registry: getEffectsByCardNo(card.card_no)
+    Registry-->>Events: CardEffect[] (trigger="onSummon")
+
+    loop 每个匹配的触发效果
+        Events->>Events: 检查 triggerCondition(ctx)
+        alt 条件满足
+            Events->>Events: 检查 cost(ctx)
+            alt 费用可付
+                Events->>Helpers: execute(ctx) — 效果执行
+                Helpers->>Helpers: drawCards / addModifier / retreatCard...
+                Helpers-->>Events: 新 state
+            end
+        end
+    end
+
+    Events-->>Summon: 触发后的 state
+
+    Note over Summon: 检查对手是否有应对效果
+
+    Summon->>Engine: checkpoint(state)
+    Engine-->>UI: 新 BattleState
+
+%% 结附系统流程
+sequenceDiagram
+    participant UI as BattlePage
+    participant Engine as gameReducer
+    participant Helpers as EffectHelpers
+    participant State as BattleState
+
+    UI->>Engine: ACTIVATE_EFFECT {cardId: SD01-002, targets: {cardId: hostCardId}}
+    Engine->>Helpers: attachCard(ctx, attachmentId, hostId)
+
+    Helpers->>Helpers: 从手牌移除结附卡
+    Helpers->>State: attachments[hostId] = [..., attachmentId]
+    Helpers->>Helpers: 撤退宿主的其他结附卡（效果要求）
+    Helpers->>Helpers: 添加常驻 Modifier (power+2500, r+2)
+    Helpers->>State: modifiers.push({targetCardId: hostId, type: "power", value: 2500, duration: "permanent"})
+    Helpers->>State: modifiers.push({targetCardId: hostId, type: "r", value: 2, duration: "permanent"})
+
+    Helpers-->>Engine: 新 state
+    Engine->>Engine: triggerEvent("onAttached", {cardId: hostId})
+    Engine-->>UI: 新 BattleState
+
+%% 战斗判定 + 临时战力修改流程
+sequenceDiagram
+    participant UI as BattlePage
+    participant Engine as gameReducer
+    participant Attack as handleConfirmAttack
+    participant Utils as cardUtils
+    participant Events as triggerEvent
+
+    UI->>Engine: CONFIRM_ATTACK {targetPlayerIdx, targetZone, targetCardId}
+    Engine->>Attack: handleConfirmAttack(state, ...)
+
+    Attack->>Events: triggerEvent(state, "onAttack", {cardId: attackerId})
+
+    Attack->>Utils: getEffectivePower(state, attackerCardId)
+    Utils->>Utils: basePower = getCardPower(card)
+    Utils->>Utils: permanentMods = modifiers.filter(duration="permanent")
+    Utils->>Utils: turnMods = modifiers.filter(duration="turn")
+    Utils-->>Attack: effectivePower = base + sum(mods)
+
+    Attack->>Utils: getEffectivePower(state, defenderCardId)
+    Utils-->>Attack: effectivePower
+
+    Attack->>Attack: 战力对比判定
+    alt 攻击者 > 防守者
+        Attack->>Events: triggerEvent("onCardRetreated", {cardId: defenderId})
+    else 攻击者 < 防守者
+        Attack->>Events: triggerEvent("onCardRetreated", {cardId: attackerId})
+    else 平局
+        Attack->>Events: triggerEvent("onCardRetreated", {cardId: both})
+    end
+
+    Attack->>Engine: checkpoint(state)
+    Engine-->>UI: 新 BattleState
+
+%% 回合结束清除临时效果流程
+sequenceDiagram
+    participant UI as BattlePage
+    participant Engine as gameReducer
+    participant EndTurn as handleEndTurn
+    participant Cleanup as cleanupTurnModifiers
+    participant Events as triggerEvent
+
+    UI->>Engine: END_TURN
+    Engine->>EndTurn: handleEndTurn(state)
+
+    EndTurn->>Events: triggerEvent(state, "onTurnEnd", {playerIdx})
+
+    EndTurn->>Cleanup: cleanupTurnModifiers(state)
+    Cleanup->>Cleanup: modifiers = modifiers.filter(m => m.duration !== "turn")
+    Cleanup-->>EndTurn: state (临时修改器已清除)
+
+    EndTurn->>EndTurn: 手牌弃至9张
+    EndTurn->>EndTurn: 切换玩家 / 回合数+1
+    EndTurn->>Events: triggerEvent(state, "onTurnStart", {playerIdx: nextIdx})
+
+    EndTurn->>Engine: checkpoint(state)
+    Engine-->>UI: 新 BattleState

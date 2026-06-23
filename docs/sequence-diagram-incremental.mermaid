@@ -1,0 +1,143 @@
+%% 超英击战 Marvel TCG — 增量流程时序图
+%% 包含3个关键流程：开局调度、应对阶段、起动效果触发
+
+%% ============================================================
+%% 时序图1：开局调度流程（Mulligan）
+%% ============================================================
+
+sequenceDiagram
+    autonumber
+    participant UI as GameSetup.tsx<br/>(界面层)
+    participant Reducer as gameReducer<br/>(状态管理函数)
+    participant CP as checkpoint<br/>(检查点)
+
+    Note over UI,CP: 阶段1：洗牌 + 决先后手 + 抽6张起始手牌
+
+    UI->>UI: 1. shuffleArray(主卡组)<br/>shuffleArray(冲击卡组)
+    UI->>UI: 2. 决定先后手（随机或指定）
+    UI->>UI: 3. 双方各抽6张起始手牌
+    UI->>Reducer: 4. dispatch(SETUP_DRAW_HANDS)<br/>{isSetup:true, setupPhase:"MULLIGAN_P1"}
+    Reducer->>Reducer: handleSetupDrawHands:<br/>return action.state
+    Reducer->>CP: 5. 更新状态
+
+    Note over UI,CP: 阶段2：先攻玩家调整手牌
+
+    UI->>UI: 6. 显示先攻玩家手牌选择界面<br/>(可点击选择/取消选择)
+    UI->>UI: 7. 先攻玩家选择要放回的牌<br/>(高亮显示选中的牌)
+    UI->>Reducer: 8. dispatch(MULLIGAN_SELECT)<br/>{playerIdx:0, cardIds:[...]}
+    Reducer->>Reducer: handleMulliganSelect:<br/>state.mulliganSelected = cardIds
+    Reducer->>CP: 9. 更新选中状态
+
+    UI->>UI: 10. 先攻玩家点击"确认调整"<br/>UI执行洗牌 shuffleDeck()
+    UI->>Reducer: 11. dispatch(MULLIGAN_CONFIRM)<br/>{playerIdx:0, shuffledDeck:[...]}
+    Reducer->>Reducer: handleMulliganConfirm:<br/>- 从手牌移除 selected<br/>- 放入 shuffledDeck 为新卡组<br/>- 从卡组顶抽等量牌<br/>- setupPhase → MULLIGAN_P2<br/>- mulliganSelected = []
+    Reducer->>CP: 12. 更新状态
+
+    Note over UI,CP: 阶段3：后攻玩家调整手牌（同上流程）
+
+    UI->>UI: 13. 显示后攻玩家手牌选择界面
+    UI->>UI: 14. 后攻玩家选择+确认<br/>UI执行洗牌 shuffleDeck()
+    UI->>Reducer: 15. dispatch(MULLIGAN_CONFIRM)<br/>{playerIdx:1, shuffledDeck:[...]}
+    Reducer->>Reducer: handleMulliganConfirm:<br/>- 同上操作<br/>- setupPhase → DONE<br/>- isSetup = false<br/>- turnPhase = TURN_START
+    Reducer->>CP: 16. 更新状态
+
+    Note over UI,CP: 游戏正式开始
+
+    Note over UI,CP: 快速开始模式：handleQuickStart<br/>直接 dispatch(SETUP_COMPLETE)<br/>跳过整个 Mulligan 流程
+
+%% ============================================================
+%% 时序图2：应对阶段流程（Counter Phase）
+%% ============================================================
+
+sequenceDiagram
+    autonumber
+    participant PA as 玩家A<br/>(号召方)
+    participant PB as 玩家B<br/>(应对方)
+    participant Reducer as gameReducer<br/>(状态管理函数)
+    participant CP as checkpoint<br/>(检查点)
+
+    Note over PA,CP: 阶段1：玩家A发起号召，触发应对窗口
+
+    PA->>Reducer: 1. dispatch(SUMMON_TO_FIELD)<br/>号召角色到场上
+    Reducer->>Reducer: handleSummonToField:<br/>- 执行号召（手牌→场上）<br/>- 触发 onSummon 效果
+    Reducer->>Reducer: 设置 pendingCounter = {<br/>  summoningPlayerIdx: A,<br/>  summoningCardId,<br/>  summoningZone<br/>}
+    Reducer->>Reducer: counterPassCount = 0
+    Reducer->>CP: 2. 应对窗口开启
+
+    Note over PA,CP: 阶段2：玩家B选择行动
+
+    alt 玩家B选择触发应对（使用【应对】角色）
+        PB->>Reducer: 3. dispatch(TRIGGER_COUNTER)<br/>{playerIdx:B, cardId, handIndex}
+        Reducer->>Reducer: handleTriggerCounter:<br/>- 验证 counterUsedThisTurn[B]<br/>- 从手牌号召【应对】角色<br/>- counterUsedThisTurn[B] = true<br/>- counterPassCount = 0<br/>- 保持 pendingCounter<br/>(应对号召也可能触发新应对)
+        Reducer->>CP: 4. 更新状态
+    else 玩家B选择不行动
+        PB->>Reducer: 5. dispatch(PASS_COUNTER)<br/>{playerIdx:B}
+        Reducer->>Reducer: handlePassCounter:<br/>- counterPassCount += 1<br/>- 若 counterPassCount >= 2:<br/>  pendingCounter = null<br/>  (应对窗口结束)
+        Reducer->>CP: 6. 更新状态
+    else 玩家B选择使用应对·起动效果（如拦截）
+        PB->>Reducer: 7. dispatch(RESOLVE_COUNTER)<br/>{playerIdx:B, effectCardId, effectId}
+        Reducer->>Reducer: handleResolveCounter:<br/>- 查找场上/手牌中<br/>  isCounterActive 效果<br/>- 执行效果（如拦截变更攻击目标）
+        Reducer->>CP: 8. 更新状态
+    end
+
+    Note over PA,CP: 阶段3：玩家A选择行动
+
+    alt 玩家A选择不行动
+        PA->>Reducer: 9. dispatch(PASS_COUNTER)<br/>{playerIdx:A}
+        Reducer->>Reducer: handlePassCounter:<br/>- counterPassCount += 1<br/>- counterPassCount >= 2:<br/>  pendingCounter = null<br/>  (双方连续不行动，应对结束)
+        Reducer->>CP: 10. 应对窗口关闭
+    end
+
+    Note over PA,CP: 应对窗口结束后，继续原号召流程
+
+    Note over PA,CP: 回合结束时，handleEndTurn 重置:<br/>counterUsedThisTurn = [false, false]<br/>counterPassCount = 0<br/>pendingCounter = null
+
+%% ============================================================
+%% 时序图3：起动效果触发流程（Activate Effect）
+%% ============================================================
+
+sequenceDiagram
+    autonumber
+    participant Player as 玩家<br/>(点击起动按钮)
+    participant UI as BattlePage.tsx<br/>(界面层)
+    participant Reducer as gameReducer<br/>(状态管理函数)
+    participant Reg as Registry<br/>(效果注册表)
+    participant CP as checkpoint<br/>(检查点)
+
+    Note over Player,CP: 前提：当前为活跃玩家的行动阶段(ACTION)
+
+    UI->>UI: 1. ACTION 阶段检测手牌/基地/<br/>场上卡牌是否有 active 效果<br/>(调用 getActiveEffects)
+    UI->>UI: 2. 可起动的卡牌高亮显示<br/>显示"起动效果"按钮
+
+    Player->>UI: 3. 点击起动按钮
+    UI->>Reducer: 4. dispatch(ACTIVATE_EFFECT)<br/>{playerIdx, cardId, effectId}
+
+    Reducer->>Reducer: 5. 验证：活跃玩家 + ACTION 阶段
+    Reducer->>Reg: 6. getActiveEffects(cardNo)
+    Reg-->>Reducer: 7. 返回 active 类型效果列表
+
+    Reducer->>Reducer: 8. 若指定 effectId 则过滤<br/>9. 检查 activeSource 与卡牌当前区域匹配<br/>(hand/base/field)
+
+    alt 区域不匹配
+        Reducer-->>UI: 返回错误提示<br/>(卡牌不在正确区域)
+    else 区域匹配
+        Reducer->>Reducer: 10. 检查 effectUsedThisTurn<br/>(回合1次限制，若 once=true)
+        alt 本回合已使用
+            Reducer-->>UI: 返回提示<br/>(本回合已使用)
+        else 本回合未使用
+            Reducer->>Reducer: 11. 检查 condition<br/>(执行条件)
+            Reducer->>Reducer: 12. 检查 cost<br/>(费用是否可支付)
+            alt 条件/费用不满足
+                Reducer-->>UI: 返回提示<br/>(条件不满足)
+            else 条件/费用满足
+                Reducer->>Reducer: 13. 执行 execute<br/>(实际效果逻辑)
+                Reducer->>Reducer: 14. 若 faceDownAfterActive=true:<br/>将卡牌盖伏
+                Reducer->>Reducer: 15. 若 once=true:<br/>effectUsedThisTurn.push(effectId)
+                Reducer->>Reducer: 16. activatedEffectsThisTurn<br/>.push(effectId)
+                Reducer->>CP: 17. 更新状态
+                CP-->>UI: 18. 界面刷新
+            end
+        end
+    end
+
+    Note over Player,CP: 回合结束时，handleEndTurn 重置:<br/>effectUsedThisTurn = []<br/>activatedEffectsThisTurn = []

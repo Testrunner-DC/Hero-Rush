@@ -1,0 +1,209 @@
+%% 超英击战 Marvel TCG — 增量类图
+%% 展示 T01-T04 增量开发中的类型扩展和新增函数
+
+classDiagram
+
+    %% ============================================================
+    %% BattleState 新增字段（8个）
+    %% ============================================================
+    class BattleState {
+        %% === 原有字段 ===
+        +isSetup: boolean
+        +setupPhase: SetupPhase
+        +turnPhase: TurnPhase
+        +players: PlayerState~2~
+        +activePlayerIndex: number
+        +turnNumber: number
+        +remainingSummons: number
+        +pendingCounter: PendingCounter
+        +modifiers: Modifier~
+
+        %% === T01 新增字段（8个） ===
+        +counterUsedThisTurn: boolean~2~  %% [玩家0, 玩家1] 本回合是否已使用应对
+        +counterPassCount: number  %% 连续不行动计数（=2则结束应对窗口）
+        +conflictAttackCount: Record~string, number~  %% cardId → 已攻击次数（连击追踪）
+        +temporaryAbilities: Record~string, string~~  %% cardId → 关键词能力列表（本回合获得）
+        +interceptUsedThisTurn: string~~  %% 本回合已使用拦截的卡 ID 列表
+        +effectUsedThisTurn: string~~  %% 本回合已使用的"回合1次"效果
+        +activatedEffectsThisTurn: string~~  %% 本回合已起动的效果列表
+        +mulliganSelected: string~~  %% 开局调度：选中要放回卡组底的手牌 ID
+    }
+
+    %% ============================================================
+    %% SetupPhase 扩展
+    %% ============================================================
+    class SetupPhase {
+        <<enumeration>>
+        SHUFFLE  %% 双方洗混卡组
+        FIRST_PLAYER  %% 决定先后手
+        DRAW_HANDS  %% 已抽起始手牌 [新增]
+        MULLIGAN_P1  %% 玩家1调整手牌中 [新增]
+        MULLIGAN_P2  %% 玩家2调整手牌中 [新增]
+        DONE  %% 准备完成 [新增]
+    }
+
+    %% ============================================================
+    %% GameAction 新增类型（7个）
+    %% ============================================================
+    class GameAction {
+        <<union type>>
+        %% === 原有 action ===
+        SUMMON_TO_FIELD
+        SELECT_RETREAT
+        CONFIRM_ATTACK
+        ADVANCE_PHASE
+        END_TURN
+        SETUP_COMPLETE
+
+        %% === T01 新增 action（7个） ===
+        SETUP_DRAW_HANDS  %% 进入开局调度阶段
+        MULLIGAN_SELECT  %% 选择要调整的手牌
+        MULLIGAN_CONFIRM  %% 确认调整（放回→抽牌→洗混）
+        TRIGGER_COUNTER  %% 触发应对（号召【应对】角色）
+        RESOLVE_COUNTER  %% 使用应对·起动效果
+        PASS_COUNTER  %% 选择不行动
+        ACTIVATE_EFFECT  %% 起动效果
+    }
+
+    %% ============================================================
+    %% CardEffect 新增字段（3个）
+    %% ============================================================
+    class CardEffect {
+        %% === 原有字段 ===
+        +id: string
+        +cardNo: string
+        +category: EffectCategory
+        +trigger: TriggerTiming
+        +activeSource: ActiveSource
+        +execute: function
+        +staticModifier: function
+        +once: boolean
+        +label: string
+
+        %% === T01 新增字段（3个） ===
+        +isCounterActive: boolean  %% 是否为应对·起动效果
+        +isUnique: boolean  %% 是否拥有【唯一】关键词
+        +keywords: string~~  %% 常驻关键词能力列表
+    }
+
+    %% ============================================================
+    %% 新增函数 — cardUtils.ts
+    %% ============================================================
+    class CardUtils {
+        +hasKeyword(state, cardId, keyword, db) boolean  %% 检查卡牌是否拥有指定关键词能力
+        +getEffectivePower(state, cardId, db) number  %% 获取有效战力（含修改器）
+        +getEffectiveR(state, cardId, db) number  %% 获取有效R值（含修改器）
+        +getCardPower(card) number  %% 解析卡牌战力字符串
+        +getAllFieldCards(player)  %% 获取场上所有角色卡
+        +findCardInField(player, cardId)  %% 在场上查找卡牌
+        +canZoneAttack(zone) boolean  %% 判断区域是否可攻击
+    }
+
+    %% ============================================================
+    %% 新增函数 — helpers.ts
+    %% ============================================================
+    class Helpers {
+        %% === 原有函数 ===
+        +drawCards(state, playerIdx, count, db) BattleState
+        +retreatCard(state, cardId, playerIdx, db) BattleState
+        +trimCard(state, cardId, playerIdx, db) BattleState
+        +attachCard(state, attachmentId, hostId, playerIdx) BattleState
+        +detachCard(state, attachmentId, hostId, playerIdx) BattleState
+        +createModifier(state, targetCardId, type, value, duration, sourceCardId) BattleState
+        +removeModifier(state, sourceCardId) BattleState
+        +moveToBase(state, cardId, playerIdx, faceDown) BattleState
+        +discardFromHandToRetreat(state, cardId, playerIdx) BattleState
+        +deckTopToBase(state, playerIdx) BattleState
+        +moveToDeckBottom(state, cardId, playerIdx, fromZone) BattleState
+        +millDeck(state, playerIdx, count) BattleState
+
+        %% === T02 新增函数 ===
+        +shuffleDeck(deck) string~~  %% 洗混卡组（Fisher-Yates）
+        +moveHandCardsToDeckBottom(state, playerIdx, cardIds) BattleState  %% 将手牌放回卡组底
+    }
+
+    %% ============================================================
+    %% 新增函数 — conditions.ts
+    %% ============================================================
+    class Conditions {
+        %% === 原有函数 ===
+        +hasFeature(card, featureId) boolean
+        +hasAttribute(card, attributeId) boolean
+        +fieldCount(state, playerIdx) number
+        +opponentFieldCount(state, playerIdx) number
+        +retreatCount(state, playerIdx, db, filter) number
+        +baseFaceDownCount(state, playerIdx) number
+        +getCardLevel(db, cardId) number
+        +getCardBasePower(db, cardId) number
+        +getCardBaseR(db, cardId) number
+        +hasAttachment(state, cardId) boolean
+        +getAttachmentIds(state, cardId) string~~
+        +getOpponentFieldCardsWithMinLv(state, playerIdx, db, minLv)
+        +getOpponentFieldCardsWithMaxLv(state, playerIdx, db, maxLv)
+        +getMyFieldCardsWithFeature(state, playerIdx, db, featureId)
+
+        %% === T02 新增函数 ===
+        +getMyFieldCards(state, playerIdx)  %% 获取我方场上所有角色卡（不限特征）
+        +hasDuplicateName(state, playerIdx, cardName, db, excludeCardId) boolean  %% 检查同名牌（唯一性）
+    }
+
+    %% ============================================================
+    %% 新增函数 — registry.ts
+    %% ============================================================
+    class Registry {
+        %% === 原有函数 ===
+        +registerEffect(effect) void
+        +registerEffects(effects) void
+        +getEffectsByCardNo(cardNo) CardEffect~~
+        +getStaticEffects(cardNo) CardEffect~~
+        +getCounterEffects(cardNo) CardEffect~~
+        +triggerEffectsByTiming(state, cardId, timing, db) BattleState
+        +triggerAllFieldEffects(state, timing, db, playerIdx) BattleState
+        +triggerAllyDefeatedEffects(state, defeatedCardId, playerIdx, db) BattleState
+        +findCardOwner(state, cardId) number
+
+        %% === T03 新增函数 ===
+        +getActiveEffects(cardNo) CardEffect~~  %% 获取所有非应对·起动型 active 效果
+        +getCounterActiveEffects(cardNo) CardEffect~~  %% 获取所有应对·起动效果
+    }
+
+    %% ============================================================
+    %% 新增 handler 函数 — engine.ts
+    %% ============================================================
+    class EngineHandlers {
+        %% === 新增 handler（7个） ===
+        +handleSetupDrawHands(state, actionState) BattleState  %% 进入开局调度阶段
+        +handleMulliganSelect(state, playerIdx, cardIds) BattleState  %% 更新 mulliganSelected
+        +handleMulliganConfirm(state, playerIdx, shuffledDeck) BattleState  %% 放回→抽牌→洗混→推进阶段
+        +handleTriggerCounter(state, playerIdx, cardId, handIndex) BattleState  %% 触发应对（号召【应对】角色）
+        +handleResolveCounter(state, playerIdx, effectCardId, effectId) BattleState  %% 使用应对·起动效果
+        +handlePassCounter(state, playerIdx) BattleState  %% 不行动，检查连续不行动
+        +handleActivateEffect(state, playerIdx, cardId, effectId) BattleState  %% 起动效果
+
+        %% === 修改的 handler（5个） ===
+        +handleSummonToField(state) BattleState  %% 新增唯一性检查 + 设置 pendingCounter
+        +handleSelectRetreat(state) BattleState  %% 设置 pendingCounter
+        +handleConfirmAttack(state) BattleState  %% 连击追踪 + 强袭判定 + 空袭判定
+        +handleStartAttack(state) BattleState  %% 用 conflictAttackCount 判断可攻击次数
+        +handleEndTurn(state) BattleState  %% 重置所有新增回合计数器
+    }
+
+    %% ============================================================
+    %% 关系
+    %% ============================================================
+    BattleState --> SetupPhase : setupPhase
+    BattleState --> GameAction : dispatch(action)
+    BattleState --> CardEffect : effectUsedThisTurn 追踪
+    GameAction ..> BattleState : 修改状态
+    EngineHandlers ..> BattleState : 返回新状态
+    EngineHandlers ..> CardEffect : 调用 execute
+    EngineHandlers ..> Registry : 查询效果
+    EngineHandlers ..> CardUtils : hasKeyword 检查
+    EngineHandlers ..> Helpers : shuffleDeck, moveHandCardsToDeckBottom
+    EngineHandlers ..> Conditions : getMyFieldCards, hasDuplicateName
+    CardEffect --> Registry : 注册到 EFFECT_REGISTRY
+    CardEffect ..> Helpers : execute 中调用
+    CardEffect ..> Conditions : condition/cost 中调用
+    Registry --> CardEffect : 管理和查询
+    CardUtils --> Registry : getStaticEffects
+    CardUtils ..> CardEffect : 检查 keywords 字段
