@@ -42,6 +42,8 @@ const PACKAGE_OPTIONS: { value: string; label: string }[] = [
   { value: "SD02", label: "SD02" },
   { value: "SD03", label: "SD03" },
   { value: "SD04", label: "SD04" },
+  { value: "PB01", label: "PB01" },
+  { value: "TB01", label: "TB01" },
 ];
 
 export default function FilterSidebar({ db, state, onChange, onReset, resultCount, compact = false }: Props) {

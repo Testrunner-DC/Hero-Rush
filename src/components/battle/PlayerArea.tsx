@@ -9,22 +9,32 @@
  * - 冲突阶段攻击/跳过/移动逻辑
  */
 
+import { useState, useEffect } from "react";
 import type { CardDatabase, Card } from "../../types/card";
 import type { PlayerState, Zone } from "../../types/game";
 import type { AttackTarget } from "../../game/types";
 import type { ActionMode } from "./constants";
-import { ZONE_LIST, ZONE_LABELS } from "./constants";
+import { ZONE_LIST, ZONE_LABELS, ZONE_SHORT } from "./constants";
 import type { BoardProps } from "./types";
 
 export default function PlayerArea({
   player, isActive, db, isActionPhase, isConflictPhase, isConflictAdjust, isConflictAttack,
   conflictSubPhase, conflictZonesCompleted, conflictAttackedCards, currentAttackZone, canZoneAttack,
   actionMode, playerIdx,
-  onHandCardClick, onFieldCardClick, onDeploy, onSummon, onMove,
+  onHandCardClick, onFieldCardClick, onDeploy, onSummon, onMove, onMoveCard,
   attackTarget, onConfirmAttack, onZoneAttack, onZoneSkip, onCardHover, isEnemy,
-  pendingSummon, onSelectRetreat,
+  enteredThisTurn, pendingSummon, onSelectRetreat,
 }: BoardProps) {
   const getCard = (id: string): Card | undefined => db.cards.find((c) => c.id === id);
+
+  /** 战区 → 冲突攻击顺序编号 */
+  const ZONE_ATTACK_ORDER: Record<Zone, string> = {
+    vanguard: "①",
+    flankLeft: "②",
+    flankRight: "②",
+    rear: "③",
+  };
+
   const canActInAction = isActionPhase && isActive;
   const canMoveInConflict = isConflictAdjust && isActive;
   const isSelectingAttackTarget = attackTarget != null && attackTarget.attackerIdx !== playerIdx;
@@ -35,6 +45,16 @@ export default function PlayerArea({
   const moveMenu = actionMode.type === "moveMenu" && actionMode.playerIdx === playerIdx ? actionMode : null;
   /** 撤退选择模式：Lv4+号召时，当前玩家需要选择撤退目标 */
   const isRetreatSelectMode = pendingSummon != null && pendingSummon.playerIdx === playerIdx;
+
+  /** 基站移动菜单状态：当前正在选择移动到哪个战区的基地卡 ID */
+  const [baseMoveMenu, setBaseMoveMenu] = useState<string | null>(null);
+
+  // 当不再满足移动条件时重置基站移动菜单
+  useEffect(() => {
+    if ((!canActInAction && !canMoveInConflict) || handSelect != null) {
+      setBaseMoveMenu(null);
+    }
+  }, [canActInAction, canMoveInConflict, handSelect]);
 
   // ============================================================
   // 渲染卡牌图片（公共方法）
@@ -82,7 +102,7 @@ export default function PlayerArea({
     return (
       <div
         key={`${cardId}-${i}`}
-        className={`relative w-24 rounded border overflow-hidden shadow-md transition ${
+        className={`relative w-20 rounded border overflow-hidden shadow-md transition ${
           isAlreadyRetreatSelected
             ? "ring-2 ring-red-500 opacity-40 border-red-500/50"
             : isSelectedAsAttacker
@@ -150,7 +170,7 @@ export default function PlayerArea({
 
     return (
       <div
-        className={`relative rounded-lg p-1 min-h-[140px] flex flex-col items-center justify-center gap-0.5 transition ${
+        className={`relative rounded-lg p-1 flex flex-col items-center justify-center gap-0.5 transition ${
           isCompleted
             ? "bg-green-900/10 border border-green-500/20"
             : isCurrentAtk
@@ -165,6 +185,7 @@ export default function PlayerArea({
             ? "bg-white/5 border border-white/15"
             : "bg-white/5 border border-dashed border-white/10"
         }`}
+        style={{ aspectRatio: "4 / 5" }}
         onClick={(e) => {
           e.stopPropagation();
           if (isSelectingAttackTarget) {
@@ -173,8 +194,8 @@ export default function PlayerArea({
         }}
       >
         {/* 标签 */}
-        <span className={`text-[10px] select-none ${isCompleted ? "text-green-400/50" : "text-white/25"}`}>
-          {label}
+        <span className={`text-[11px] select-none ${isCompleted ? "text-green-400/50" : "text-white/35"}`}>
+          {isConflictAttack && isActive && !isEnemy ? `${ZONE_ATTACK_ORDER[zone]} ${label}` : label}
           {isCompleted && " ✓"}
         </span>
 
@@ -183,7 +204,7 @@ export default function PlayerArea({
           cards.map((cardId, i) => renderFieldCard(zone, cardId, i))
         ) : (
           !isBeingAttacked && !showSummonButton && (
-            <span className="text-[11px] text-white/10 select-none">空</span>
+            <span className="text-[11px] text-white/10 select-none">破绽</span>
           )
         )}
 
@@ -238,7 +259,7 @@ export default function PlayerArea({
   };
 
   // ============================================================
-  // 渲染战场区域（3列布局）
+  // 渲染战场区域（3列布局：左翼紧贴中央，4战区等大）
   // ============================================================
 
   const borderColor = isEnemy
@@ -252,30 +273,25 @@ export default function PlayerArea({
   // 战场3列布局：
   // 我方: 左=flankLeft, 中=vanguard(上)+rear(下), 右=flankRight
   // 敌方: 左=flankLeft, 中=rear(上)+vanguard(下), 右=flankRight
-  // 侧翼使用 flex items-center 实现垂直居中
+  // 左翼/右翼紧贴中央，4个战区等大
 
   const renderFieldArea = () => (
-    <div className="flex-1 min-h-0 grid grid-cols-[1fr_1.2fr_1fr] gap-1 p-1.5 relative h-full">
-      {/* 左列：侧翼左（垂直居中） */}
-      <div className="relative flex items-center">{renderZone("flankLeft", "侧翼(左)")}</div>
-
-      {/* 中列：先锋+后卫（敌方倒置） */}
-      <div className="flex flex-col gap-0.5">
-        {isEnemy ? (
-          <>
-            {renderZone("rear", "后卫")}
-            {renderZone("vanguard", "先锋")}
-          </>
-        ) : (
-          <>
-            {renderZone("vanguard", "先锋")}
-            {renderZone("rear", "后卫")}
-          </>
-        )}
+    <div className="flex-1 min-h-0 grid grid-cols-[1fr_1fr_1fr] gap-0 p-1.5 relative h-full">
+      {/* 左翼 — 紧贴中央列 */}
+      <div className="flex items-center justify-center">
+        {renderZone("flankLeft", ZONE_SHORT.flankLeft)}
       </div>
 
-      {/* 右列：侧翼右（垂直居中） */}
-      <div className="relative flex items-center">{renderZone("flankRight", "侧翼(右)")}</div>
+      {/* 中央 — 先锋在上，后卫在下（敌方倒置） */}
+      <div className="flex flex-col items-center justify-center gap-1.5">
+        {isEnemy ? renderZone("rear", ZONE_SHORT.rear) : renderZone("vanguard", ZONE_SHORT.vanguard)}
+        {isEnemy ? renderZone("vanguard", ZONE_SHORT.vanguard) : renderZone("rear", ZONE_SHORT.rear)}
+      </div>
+
+      {/* 右翼 — 紧贴中央列 */}
+      <div className="flex items-center justify-center">
+        {renderZone("flankRight", ZONE_SHORT.flankRight)}
+      </div>
 
       {/* 移动菜单 */}
       {moveMenu && (
@@ -296,6 +312,17 @@ export default function PlayerArea({
               → {ZONE_LABELS[z]}
             </button>
           ))}
+          {onMoveCard && player.base.length < 6 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onMoveCard(playerIdx, moveMenu.zone, moveMenu.cardId, "base");
+              }}
+              className="w-full text-left px-3 py-1.5 text-xs text-amber-300/70 hover:bg-amber-500/20 transition border-t border-white/5"
+            >
+              → 基地
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -373,23 +400,28 @@ export default function PlayerArea({
                   return (
                     <div
                       key={i}
-                      className={`relative w-20 rounded shrink-0 shadow-md border flex items-center justify-center transition overflow-hidden ${
+                      className={`relative w-[4.5rem] rounded shrink-0 shadow-md border flex items-center justify-center transition overflow-hidden ${
                         isBaseRetreatSelected
                           ? "ring-2 ring-red-500 opacity-40 border-red-500/50"
                           : isBaseRetreatSelectable
                           ? "cursor-pointer hover:ring-2 hover:ring-red-400 hover:border-red-400/50 border-[#2a3a50]"
+                          : baseMoveMenu === baseCardId
+                          ? "ring-2 ring-amber-400 border-amber-400 scale-105 z-10"
                           : showFaceUp
-                          ? "border-[#1e2d42] cursor-pointer hover:shadow-lg hover:-translate-y-0.5"
+                          ? "border-[#3a5a7a]/60 border-dashed bg-blue-950/20 cursor-pointer hover:shadow-lg hover:-translate-y-0.5"
                           : "border-[#1e2d42]"
                       }`}
                       style={{ aspectRatio: "746 / 1041", maxHeight: "110px" }}
                       title={showFaceUp
-                        ? `${baseCard?.name || baseCardId} (Lv${baseCard?.cost ?? "?"} 战力${baseCard?.power ?? "?"})`
+                        ? `[基地] ${baseCard?.name || baseCardId} (Lv${baseCard?.cost ?? "?"} 战力${baseCard?.power ?? "?"})`
                         : isRetreatSelectMode ? "点击选择撤退" : `盖放的基地卡 #${i + 1}`}
                       onClick={(e) => {
                         if (isBaseRetreatSelectable) {
                           e.stopPropagation();
                           onSelectRetreat(baseCardId, "base");
+                        } else if ((canActInAction || canMoveInConflict) && !handSelect && showFaceUp) {
+                          e.stopPropagation();
+                          setBaseMoveMenu(baseMoveMenu === baseCardId ? null : baseCardId);
                         } else if (showFaceUp && baseCard) {
                           e.stopPropagation();
                           onCardHover(baseCard);
@@ -403,13 +435,16 @@ export default function PlayerArea({
                           <img
                             src={`/cards/${baseCard.id}.png`}
                             alt={baseCard.name}
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-cover opacity-85"
                             onError={(e) => {
                               (e.target as HTMLImageElement).style.display = "none";
                             }}
                           />
-                          <span className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] text-center leading-tight py-0.5">
+                          <span className="absolute bottom-0 left-0 right-0 bg-blue-950/70 text-blue-200 text-[10px] text-center leading-tight py-0.5">
                             Lv{baseCard.cost ?? "?"} {baseCard.power ?? "?"}
+                          </span>
+                          <span className="absolute top-0.5 left-0.5 bg-blue-900/80 text-blue-300 text-[8px] px-1 py-0.5 rounded-sm font-medium leading-none">
+                            基地
                           </span>
                         </>
                       ) : (
@@ -421,6 +456,38 @@ export default function PlayerArea({
                     </div>
                   );
                 })}
+
+                {/* 基站移动菜单：基地卡 → 战区 */}
+                {baseMoveMenu && onMoveCard && (() => {
+                  const availableZones = ZONE_LIST.filter((z) => player.field[z].length < 1);
+                  return (
+                    <div
+                      className="absolute z-30 bg-[#0a1120]/95 border border-amber-500/30 rounded-lg shadow-2xl py-1 min-w-[100px] backdrop-blur-sm"
+                      style={{ top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}
+                    >
+                      <p className="px-3 py-0.5 text-[11px] text-amber-400/70 font-medium border-b border-amber-500/20">
+                        移动到战区
+                      </p>
+                      {availableZones.length === 0 ? (
+                        <p className="px-3 py-1.5 text-[11px] text-white/20">无可用位置</p>
+                      ) : (
+                        availableZones.map((z) => (
+                          <button
+                            key={z}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onMoveCard(playerIdx, "base", baseMoveMenu, z);
+                              setBaseMoveMenu(null);
+                            }}
+                            className="w-full text-left px-3 py-1.5 text-xs text-amber-300/70 hover:bg-amber-500/20 transition"
+                          >
+                            → {ZONE_LABELS[z]}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* handSelect 模式：部署/号召至基地按钮 */}
                 {showDeployButton && (

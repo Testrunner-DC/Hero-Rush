@@ -114,6 +114,7 @@ function createFullBattleState(
     modifiers: [],
     attachments: {},
     pendingCounter: null,
+    enteredThisTurn: [],
     // T01 新增字段初始化
     counterUsedThisTurn: [false, false],
     counterPassCount: 0,
@@ -183,6 +184,10 @@ export default function GameSetup({
   const [mulliganComplete, setMulliganComplete] = useState(false);
   /** 防止 finalizeGame 重复调用 */
   const finalizeCalledRef = useRef(false);
+
+  // ===== Mulligan 悬浮详情 =====
+  const [mulliganHover, setMulliganHover] = useState<string | null>(null);
+  const mulliganHoverCard = mulliganHover ? db.cards.find((c) => c.id === mulliganHover) : null;
 
   // ===== 大厅模式：自动准备数据 → 进入调度阶段 =====
   useEffect(() => {
@@ -520,6 +525,8 @@ export default function GameSetup({
       <button
         key={cardId + "-" + index}
         onClick={() => toggleMulliganCard(cardId)}
+        onMouseEnter={() => setMulliganHover(cardId)}
+        onMouseLeave={() => setMulliganHover(null)}
         className={`relative w-16 h-24 rounded-lg border-2 transition-all ${
           isSelected
             ? "border-red-500 bg-red-900/30 opacity-60"
@@ -761,6 +768,46 @@ export default function GameSetup({
                   <div className="flex flex-wrap gap-2 justify-center">
                     {currentMulliganHand.map((cardId, idx) => renderMulliganCard(cardId, idx))}
                   </div>
+
+                  {/* 悬浮详情弹窗 */}
+                  {mulliganHoverCard && (
+                    <div className="mt-3 flex gap-3 bg-[#0a1120] border border-[#3a5a7a]/50 rounded-lg p-3">
+                      <div className="w-20 shrink-0 rounded overflow-hidden border border-[#2a3a50]" style={{ aspectRatio: "746 / 1041" }}>
+                        <img
+                          src={`/cards/${mulliganHoverCard.id}.png`}
+                          alt={mulliganHoverCard.name}
+                          className="w-full h-full object-cover"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <h3 className="text-sm font-bold text-[#e8eaed] truncate">{mulliganHoverCard.name}</h3>
+                        <p className="text-[11px] text-[#8899aa]">
+                          {mulliganHoverCard.card_no} · {mulliganHoverCard.card_type_name}
+                        </p>
+                        <div className="flex gap-2 text-[11px]">
+                          <span className="text-amber-400">Lv{mulliganHoverCard.cost} ({mulliganHoverCard.cost_name})</span>
+                          <span className="text-red-400">战力 {mulliganHoverCard.power ?? "?"}</span>
+                          {mulliganHoverCard.r != null && (
+                            <span className="text-blue-400">R={mulliganHoverCard.r}</span>
+                          )}
+                        </div>
+                        <div className="flex gap-2 text-[10px]">
+                          <span className="px-1 py-0.5 rounded" style={{ backgroundColor: mulliganHoverCard.attribute_color + "20", color: mulliganHoverCard.attribute_color }}>
+                            {mulliganHoverCard.attribute_name}
+                          </span>
+                          {mulliganHoverCard.feature_text && (
+                            <span className="px-1 py-0.5 rounded bg-white/10 text-white/60">{mulliganHoverCard.feature_text}</span>
+                          )}
+                        </div>
+                        {mulliganHoverCard.effect && mulliganHoverCard.effect !== "-" && (
+                          <p className="text-[11px] text-[#c9cdd4] leading-relaxed line-clamp-3">
+                            {mulliganHoverCard.effect}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* 操作按钮 */}

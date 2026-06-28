@@ -164,6 +164,14 @@ export function createGameReducer(db: CardDatabase) {
           action.cardId,
           action.toZone
         );
+      case "MOVE_CARD":
+        return handleMoveCard(
+          state,
+          action.playerIdx,
+          action.fromLoc,
+          action.cardId,
+          action.toLoc
+        );
       case "SET_ATTACK_ZONE":
         return checkpoint({
           ...state,
@@ -349,6 +357,7 @@ export function createGameReducer(db: CardDatabase) {
       remainingSummons: isFirstTurn ? 1 : 3,
       baseDeployedThisTurn: false,
       baseMovesUsed: {},
+      enteredThisTurn: [],
       conflictZonesCompleted: [],
       conflictAttackedCards: [],
       conflictAttackCount: {},
@@ -409,6 +418,7 @@ export function createGameReducer(db: CardDatabase) {
       ...state,
       players: np,
       baseDeployedThisTurn: true,
+      enteredThisTurn: [...state.enteredThisTurn, cardId],
       log: [
         ...state.log,
         `🏚️ ${p.name} 将「${card?.name || "?"}」盖放进基地 (${base.length}/6)${drawMsg}`,
@@ -532,6 +542,7 @@ export function createGameReducer(db: CardDatabase) {
       ...state,
       players: np,
       remainingSummons: state.remainingSummons - 1,
+      enteredThisTurn: [...state.enteredThisTurn, cardId],
       log: [
         ...state.log,
         `⚔️ ${p.name} 号召「${card?.name || "?"}」(Lv${lv}) → ${zoneLabel} [剩余${state.remainingSummons - 1}次]`,
@@ -677,6 +688,7 @@ export function createGameReducer(db: CardDatabase) {
       players: np,
       pendingSummon: null,
       remainingSummons: state.remainingSummons - 1,
+      enteredThisTurn: [...state.enteredThisTurn, ps.cardId],
       log: [
         ...state.log,
         `⚔️ ${npP.name} 号召「${summonCard?.name || "?"}」(Lv${ps.requiredLv}) → ${zoneLabel} (撤退: ${retreatedNames.join(", ")}) [剩余${state.remainingSummons - 1}次]`,
@@ -768,6 +780,98 @@ export function createGameReducer(db: CardDatabase) {
       log: [
         ...state.log,
         `🔄 ${p.name} 「${card?.name || "?"}」从${ZONE_LABELS[fromZone]}移至${ZONE_LABELS[toZone]}`,
+      ],
+    };
+
+    // 冲突阶段调整：增加已用次数
+    if (isInConflictAdjust) {
+      newState = { ...newState, conflictMovesUsed: state.conflictMovesUsed + 1 };
+    }
+
+    return checkpoint(newState);
+  }
+
+  /**
+   * MOVE_CARD — 战基移动（战区↔基地）
+   *
+   * 验证条件：
+   * - 活跃玩家在 ACTION 阶段 或 CONFLICT-adjust 阶段
+   * - 卡牌非本回合进场（不在 enteredThisTurn 中）
+   * - 目标位置有空位（战区≤1张，基地≤6张）
+   * - 不能移动到同一位置
+   *
+   * 冲突阶段调整：conflictMovesUsed+1（上限4次）
+   */
+  function handleMoveCard(
+    state: BattleState,
+    playerIdx: number,
+    fromLoc: Zone | "base",
+    cardId: string,
+    toLoc: Zone | "base"
+  ): BattleState {
+    if (fromLoc === toLoc) return state;
+
+    const isInAction =
+      state.turnPhase === "ACTION" && state.activePlayerIndex === playerIdx;
+    const isInConflictAdjust =
+      state.turnPhase === "CONFLICT" &&
+      state.conflictSubPhase === "adjust" &&
+      state.activePlayerIndex === playerIdx;
+    if (!isInAction && !isInConflictAdjust) return state;
+
+    if (isInConflictAdjust && state.conflictMovesUsed >= 4) return state;
+
+    // 检查卡牌是否本回合进场
+    if (state.enteredThisTurn.includes(cardId)) return state;
+
+    const p = state.players[playerIdx];
+
+    // 验证卡牌在来源位置
+    if (fromLoc === "base") {
+      if (!p.base.includes(cardId)) return state;
+    } else {
+      if (!p.field[fromLoc].includes(cardId)) return state;
+    }
+
+    // 验证目标位置有空位
+    if (toLoc === "base") {
+      if (p.base.length >= 6) return state;
+    } else {
+      if (p.field[toLoc].length >= 1) return state;
+    }
+
+    const np = [...state.players] as typeof state.players;
+    const npP = { ...np[playerIdx] };
+    let newBase = [...npP.base];
+    const newField = { ...npP.field };
+    for (const z of ZONE_LIST) newField[z] = [...npP.field[z]];
+
+    // 从来源移除
+    if (fromLoc === "base") {
+      newBase = newBase.filter((id) => id !== cardId);
+    } else {
+      newField[fromLoc] = newField[fromLoc].filter((id) => id !== cardId);
+    }
+
+    // 添加到目标
+    if (toLoc === "base") {
+      newBase = [...newBase, cardId];
+    } else {
+      newField[toLoc] = [...newField[toLoc], cardId];
+    }
+
+    np[playerIdx] = { ...npP, base: newBase, field: newField };
+
+    const card = db.cards.find((c) => c.id === cardId);
+    const fromLabel = fromLoc === "base" ? "基地" : ZONE_LABELS[fromLoc];
+    const toLabel = toLoc === "base" ? "基地" : ZONE_LABELS[toLoc];
+
+    let newState: BattleState = {
+      ...state,
+      players: np,
+      log: [
+        ...state.log,
+        `🔄 ${npP.name} 「${card?.name || "?"}」从${fromLabel}移至${toLabel}`,
       ],
     };
 
@@ -1201,6 +1305,7 @@ export function createGameReducer(db: CardDatabase) {
       players: np,
       counterUsedThisTurn: newCounterUsed,
       counterPassCount: 0,
+      enteredThisTurn: [...state.enteredThisTurn, cardId],
       log: [
         ...state.log,
         `🛡️ ${p.name} 触发应对，号召「${card.name}」→ ${ZONE_LABELS[targetZone]}`,

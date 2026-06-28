@@ -479,6 +479,46 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
     setActionMode({ type: "none" });
   };
 
+  /** 战基移动：角色在战区与基地之间移动 */
+  const moveCard = (playerIdx: number, fromLoc: Zone | "base", cardId: string, toLoc: Zone | "base") => {
+    if (fromLoc === toLoc) return;
+    const isInAction = state.turnPhase === "ACTION" && state.activePlayerIndex === playerIdx;
+    const isInConflictAdjust =
+      state.turnPhase === "CONFLICT" &&
+      state.conflictSubPhase === "adjust" &&
+      state.activePlayerIndex === playerIdx;
+    if (!isInAction && !isInConflictAdjust) return;
+
+    if (isInConflictAdjust && state.conflictMovesUsed >= 4) {
+      alert("冲突阶段最多调整4次位置！");
+      return;
+    }
+    // 不能移动本回合进场的卡牌
+    if (state.enteredThisTurn.includes(cardId)) {
+      alert("本回合进场的卡牌不能进行移动！");
+      return;
+    }
+    // 不能移动正在被撤退选择的卡牌
+    if (state.pendingSummon?.selectedRetreatIds.includes(cardId)) {
+      alert("该卡牌正在被撤退选择中，不能移动！");
+      return;
+    }
+    // 目标位置有空位
+    if (toLoc === "base") {
+      if (state.players[playerIdx].base.length >= 6) {
+        alert("基地区已满（上限6张）！");
+        return;
+      }
+    } else {
+      if (state.players[playerIdx].field[toLoc].length >= 1) {
+        alert("目标区域已有角色！");
+        return;
+      }
+    }
+    dispatch({ type: "MOVE_CARD", playerIdx, fromLoc, cardId, toLoc });
+    setActionMode({ type: "none" });
+  };
+
   const onZoneAttackClick = (zone: Zone) => {
     dispatch({ type: "SET_ATTACK_ZONE", zone });
   };
@@ -871,12 +911,14 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
             onDeploy={deployToBase}
             onSummon={summonToField}
             onMove={moveCharacter}
+            onMoveCard={moveCard}
             attackTarget={attackTarget}
             onConfirmAttack={confirmAttack}
             onZoneAttack={onZoneAttackClick}
             onZoneSkip={skipZone}
             onCardHover={onCardHover}
             isEnemy={true}
+            enteredThisTurn={state.enteredThisTurn}
             pendingSummon={state.pendingSummon}
             onSelectRetreat={onSelectRetreat}
           />
@@ -916,12 +958,14 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
             onDeploy={deployToBase}
             onSummon={summonToField}
             onMove={moveCharacter}
+            onMoveCard={moveCard}
             attackTarget={attackTarget}
             onConfirmAttack={confirmAttack}
             onZoneAttack={onZoneAttackClick}
             onZoneSkip={skipZone}
             onCardHover={onCardHover}
             isEnemy={false}
+            enteredThisTurn={state.enteredThisTurn}
             pendingSummon={state.pendingSummon}
             onSelectRetreat={onSelectRetreat}
           />

@@ -30,12 +30,15 @@ export interface BoardProps {
   onDeploy: (playerIdx: number, handIndex: number) => void;
   onSummon: (playerIdx: number, handIndex: number, zone: Zone | "base") => void;
   onMove: (playerIdx: number, fromZone: Zone, cardId: string, toZone: Zone) => void;
+  onMoveCard: (playerIdx: number, fromLoc: Zone | "base", cardId: string, toLoc: Zone | "base") => void;
   attackTarget: AttackTarget | null;
   onConfirmAttack: (targetPlayerIdx: number, targetZone: Zone, targetCardId?: string) => void;
   onZoneAttack: (zone: Zone) => void;
   onZoneSkip: (zone: Zone) => void;
   onCardHover: (card: Card | null) => void;
   isEnemy: boolean;
+  /** 本回合进场的卡牌 ID 列表（这些卡不能进行战基移动） */
+  enteredThisTurn: string[];
   /** 待完成的号召信息（Lv4+需手动撤退时使用） */
   pendingSummon: PendingSummon | null;
   /** 玩家选择撤退一张场上角色或基地盖卡 */

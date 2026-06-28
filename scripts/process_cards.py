@@ -56,8 +56,11 @@ def ocr_space_api(image_path, api_key="K87954381888957"):
 
 # ---------- static maps ----------
 RARITY_MAP = {
+    2:  {"code": "TR",  "cn": "特典",  "color": "#D4A017"},
+    3:  {"code": "C",   "cn": "普通",  "color": "#B4B2A9"},
     4:  {"code": "U",   "cn": "优通",  "color": "#7B8FA0"},
-    5:  {"code": "R",   "cn": "普通",  "color": "#B4B2A9"},
+    5:  {"code": "R",   "cn": "稀有",  "color": "#B4B2A9"},
+    6:  {"code": "M",   "cn": "神话",  "color": "#D4A017"},
     7:  {"code": "SR",  "cn": "罕通",  "color": "#378ADD"},
     8:  {"code": "GR",  "cn": "金稀",  "color": "#D4A017"},
     9:  {"code": "UR",  "cn": "超稀",  "color": "#9D4EDD"},
@@ -66,10 +69,10 @@ RARITY_MAP = {
 }
 
 ATTR_MAP = {
-    1: {"name": "科技", "color": "#E24B4A", "en": "Tech"},
-    2: {"name": "正义", "color": "#378ADD", "en": "Justice"},
-    3: {"name": "自然", "color": "#7F77DD", "en": "Nature"},
-    4: {"name": "敏捷", "color": "#639922", "en": "Agility"},
+    1: {"name": "红", "color": "#E24B4A", "en": "Red"},
+    2: {"name": "黄", "color": "#D4A017", "en": "Yellow"},
+    3: {"name": "蓝", "color": "#378ADD", "en": "Blue"},
+    4: {"name": "绿", "color": "#639922", "en": "Green"},
     7: {"name": "通用", "color": "#888780", "en": "Neutral"},
 }
 
@@ -79,6 +82,8 @@ PKG_MAP = {
     "SD02": "SD02 复仇",
     "SD03": "SD03 集结",
     "SD04": "SD04 时空",
+    "PB01": "PB01 促销包",
+    "TB01": "TB01 预组包",
 }
 
 # ---------- feature / signal_color OCR ----------
@@ -227,6 +232,13 @@ def main():
         card_id = "%s-%s" % (no, rarity_code)
 
         image_url = "/cards/%s-%s.png" % (no, rarity_code)
+        # Handle 金/银 variant image suffixes
+        if "（金）" in no:
+            base_no = no.replace("（金）", "")
+            image_url = "/cards/%s-%s(G).png" % (base_no, rarity_code)
+        elif "（银）" in no:
+            base_no = no.replace("（银）", "")
+            image_url = "/cards/%s-%s(S).png" % (base_no, rarity_code)
 
         dp = safe_int(c.get("dp_value"))
         if dp is not None:

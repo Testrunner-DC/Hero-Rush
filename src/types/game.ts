@@ -145,6 +145,9 @@ export interface BattleState {
   /** 待处理的应对（对手号召时检查是否有应对可用） */
   pendingCounter: PendingCounter | null;
 
+  /** 本回合进场的卡牌 ID 列表（不可进行战基移动） */
+  enteredThisTurn: string[];
+
   // ===== T01 新增字段（增量开发：引擎层扩展） =====
 
   /** 应对阶段：本回合双方是否已使用应对 [玩家0, 玩家1] */

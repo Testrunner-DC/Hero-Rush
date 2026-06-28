@@ -242,6 +242,7 @@ function makeBattleState(overrides: Partial<BattleState> = {}): BattleState {
     effectUsedThisTurn: [],
     activatedEffectsThisTurn: [],
     mulliganSelected: [],
+    enteredThisTurn: [],
     ...overrides,
   };
 }
@@ -1135,6 +1136,464 @@ describe("附加测试：不可变更新验证", () => {
 
     // 原始状态不应被修改
     expect(JSON.stringify(originalState)).toBe(JSON.stringify(originalSnapshot));
+  });
+});
+
+describe("7. 战基移动（MOVE_CARD）测试", () => {
+  let reducer: ReturnType<typeof createGameReducer>;
+
+  beforeEach(() => {
+    reducer = createGameReducer(mockDb);
+  });
+
+  it("战区→基地移动成功", () => {
+    const state = makeBattleState({
+      turnPhase: "ACTION",
+      activePlayerIndex: 0,
+      players: [
+        makePlayer({
+          id: 1,
+          name: "P1",
+          base: [],
+          field: { vanguard: ["GEN-001"], flankLeft: [], flankRight: [], rear: [] },
+        }),
+        makePlayer({ id: 2, name: "P2" }),
+      ],
+    });
+
+    const result = reducer(state, {
+      type: "MOVE_CARD",
+      playerIdx: 0,
+      fromLoc: "vanguard",
+      cardId: "GEN-001",
+      toLoc: "base",
+    });
+
+    expect(result).not.toBeNull();
+    // 卡牌从战区移除
+    expect(result!.players[0].field.vanguard).not.toContain("GEN-001");
+    // 卡牌出现在基地
+    expect(result!.players[0].base).toContain("GEN-001");
+  });
+
+  it("基地→战区移动成功", () => {
+    const state = makeBattleState({
+      turnPhase: "ACTION",
+      activePlayerIndex: 0,
+      players: [
+        makePlayer({
+          id: 1,
+          name: "P1",
+          base: ["GEN-001"],
+          field: { vanguard: [], flankLeft: [], flankRight: [], rear: [] },
+        }),
+        makePlayer({ id: 2, name: "P2" }),
+      ],
+    });
+
+    const result = reducer(state, {
+      type: "MOVE_CARD",
+      playerIdx: 0,
+      fromLoc: "base",
+      cardId: "GEN-001",
+      toLoc: "flankLeft",
+    });
+
+    expect(result).not.toBeNull();
+    // 卡牌从基地移除
+    expect(result!.players[0].base).not.toContain("GEN-001");
+    // 卡牌出现在目标战区
+    expect(result!.players[0].field.flankLeft).toContain("GEN-001");
+  });
+
+  it("移动后卡牌不在原位置", () => {
+    const state = makeBattleState({
+      turnPhase: "ACTION",
+      activePlayerIndex: 0,
+      players: [
+        makePlayer({
+          id: 1,
+          name: "P1",
+          base: [],
+          field: { vanguard: ["GEN-001"], flankLeft: [], flankRight: [], rear: [] },
+        }),
+        makePlayer({ id: 2, name: "P2" }),
+      ],
+    });
+
+    const result = reducer(state, {
+      type: "MOVE_CARD",
+      playerIdx: 0,
+      fromLoc: "vanguard",
+      cardId: "GEN-001",
+      toLoc: "base",
+    });
+
+    expect(result!.players[0].field.vanguard).not.toContain("GEN-001");
+    expect(result!.players[0].field.vanguard.length).toBe(0);
+  });
+
+  it("移动后卡牌在目标位置", () => {
+    const state = makeBattleState({
+      turnPhase: "ACTION",
+      activePlayerIndex: 0,
+      players: [
+        makePlayer({
+          id: 1,
+          name: "P1",
+          base: ["GEN-001"],
+          field: { vanguard: [], flankLeft: [], flankRight: [], rear: [] },
+        }),
+        makePlayer({ id: 2, name: "P2" }),
+      ],
+    });
+
+    const result = reducer(state, {
+      type: "MOVE_CARD",
+      playerIdx: 0,
+      fromLoc: "base",
+      cardId: "GEN-001",
+      toLoc: "vanguard",
+    });
+
+    expect(result!.players[0].field.vanguard).toContain("GEN-001");
+    expect(result!.players[0].field.vanguard.length).toBe(1);
+  });
+
+  it("同位置移动拒绝（战区→同一战区）", () => {
+    const state = makeBattleState({
+      turnPhase: "ACTION",
+      activePlayerIndex: 0,
+      players: [
+        makePlayer({
+          id: 1,
+          name: "P1",
+          field: { vanguard: ["GEN-001"], flankLeft: [], flankRight: [], rear: [] },
+        }),
+        makePlayer({ id: 2, name: "P2" }),
+      ],
+    });
+
+    const result = reducer(state, {
+      type: "MOVE_CARD",
+      playerIdx: 0,
+      fromLoc: "vanguard",
+      cardId: "GEN-001",
+      toLoc: "vanguard",
+    });
+
+    // 应返回原状态（不变）
+    expect(result).toBe(state);
+    expect(result!.players[0].field.vanguard).toContain("GEN-001");
+  });
+
+  it("同位置移动拒绝（基地→基地）", () => {
+    const state = makeBattleState({
+      turnPhase: "ACTION",
+      activePlayerIndex: 0,
+      players: [
+        makePlayer({
+          id: 1,
+          name: "P1",
+          base: ["GEN-001"],
+          field: { vanguard: [], flankLeft: [], flankRight: [], rear: [] },
+        }),
+        makePlayer({ id: 2, name: "P2" }),
+      ],
+    });
+
+    const result = reducer(state, {
+      type: "MOVE_CARD",
+      playerIdx: 0,
+      fromLoc: "base",
+      cardId: "GEN-001",
+      toLoc: "base",
+    });
+
+    expect(result).toBe(state);
+  });
+
+  it("基地满(6张)时拒绝移入", () => {
+    const state = makeBattleState({
+      turnPhase: "ACTION",
+      activePlayerIndex: 0,
+      players: [
+        makePlayer({
+          id: 1,
+          name: "P1",
+          base: ["GEN-001", "GEN-002", "GEN-003", "ATK-001", "DEF-001", "SD01-011-C"],
+          field: { vanguard: ["SD01-017-C"], flankLeft: [], flankRight: [], rear: [] },
+        }),
+        makePlayer({ id: 2, name: "P2" }),
+      ],
+    });
+
+    const result = reducer(state, {
+      type: "MOVE_CARD",
+      playerIdx: 0,
+      fromLoc: "vanguard",
+      cardId: "SD01-017-C",
+      toLoc: "base",
+    });
+
+    // 应返回原状态
+    expect(result).toBe(state);
+    expect(result!.players[0].field.vanguard).toContain("SD01-017-C");
+    expect(result!.players[0].base.length).toBe(6);
+  });
+
+  it("战区已有卡牌时拒绝移入", () => {
+    const state = makeBattleState({
+      turnPhase: "ACTION",
+      activePlayerIndex: 0,
+      players: [
+        makePlayer({
+          id: 1,
+          name: "P1",
+          base: ["GEN-001"],
+          field: { vanguard: ["SD01-017-C"], flankLeft: [], flankRight: [], rear: [] },
+        }),
+        makePlayer({ id: 2, name: "P2" }),
+      ],
+    });
+
+    const result = reducer(state, {
+      type: "MOVE_CARD",
+      playerIdx: 0,
+      fromLoc: "base",
+      cardId: "GEN-001",
+      toLoc: "vanguard",
+    });
+
+    // 应返回原状态（战区已有卡牌）
+    expect(result).toBe(state);
+    expect(result!.players[0].base).toContain("GEN-001");
+    expect(result!.players[0].field.vanguard).toContain("SD01-017-C");
+  });
+
+  it("非活跃玩家移动被拒绝", () => {
+    const state = makeBattleState({
+      turnPhase: "ACTION",
+      activePlayerIndex: 0, // P1 活跃
+      players: [
+        makePlayer({ id: 1, name: "P1" }),
+        makePlayer({
+          id: 2,
+          name: "P2",
+          base: [],
+          field: { vanguard: ["GEN-001"], flankLeft: [], flankRight: [], rear: [] },
+        }),
+      ],
+    });
+
+    const result = reducer(state, {
+      type: "MOVE_CARD",
+      playerIdx: 1, // P2 不是活跃玩家
+      fromLoc: "vanguard",
+      cardId: "GEN-001",
+      toLoc: "base",
+    });
+
+    expect(result).toBe(state);
+  });
+
+  it("错误阶段拒绝（TURN_START 不可移动）", () => {
+    const state = makeBattleState({
+      turnPhase: "TURN_START",
+      activePlayerIndex: 0,
+      players: [
+        makePlayer({
+          id: 1,
+          name: "P1",
+          base: [],
+          field: { vanguard: ["GEN-001"], flankLeft: [], flankRight: [], rear: [] },
+        }),
+        makePlayer({ id: 2, name: "P2" }),
+      ],
+    });
+
+    const result = reducer(state, {
+      type: "MOVE_CARD",
+      playerIdx: 0,
+      fromLoc: "vanguard",
+      cardId: "GEN-001",
+      toLoc: "base",
+    });
+
+    expect(result).toBe(state);
+  });
+
+  it("CONFLICT-adjust 阶段可以移动", () => {
+    const state = makeBattleState({
+      turnPhase: "CONFLICT",
+      conflictSubPhase: "adjust",
+      activePlayerIndex: 0,
+      conflictMovesUsed: 0,
+      players: [
+        makePlayer({
+          id: 1,
+          name: "P1",
+          base: [],
+          field: { vanguard: ["GEN-001"], flankLeft: [], flankRight: [], rear: [] },
+        }),
+        makePlayer({ id: 2, name: "P2" }),
+      ],
+    });
+
+    const result = reducer(state, {
+      type: "MOVE_CARD",
+      playerIdx: 0,
+      fromLoc: "vanguard",
+      cardId: "GEN-001",
+      toLoc: "base",
+    });
+
+    expect(result).not.toBe(state);
+    expect(result!.players[0].base).toContain("GEN-001");
+    expect(result!.players[0].field.vanguard).not.toContain("GEN-001");
+  });
+
+  it("冲突调整阶段移动增加 conflictMovesUsed", () => {
+    const state = makeBattleState({
+      turnPhase: "CONFLICT",
+      conflictSubPhase: "adjust",
+      activePlayerIndex: 0,
+      conflictMovesUsed: 1,
+      players: [
+        makePlayer({
+          id: 1,
+          name: "P1",
+          base: [],
+          field: { vanguard: ["GEN-001"], flankLeft: [], flankRight: [], rear: [] },
+        }),
+        makePlayer({ id: 2, name: "P2" }),
+      ],
+    });
+
+    const result = reducer(state, {
+      type: "MOVE_CARD",
+      playerIdx: 0,
+      fromLoc: "vanguard",
+      cardId: "GEN-001",
+      toLoc: "base",
+    });
+
+    expect(result!.conflictMovesUsed).toBe(2);
+  });
+
+  it("冲突调整阶段 conflictMovesUsed>=4 拒绝移动", () => {
+    const state = makeBattleState({
+      turnPhase: "CONFLICT",
+      conflictSubPhase: "adjust",
+      activePlayerIndex: 0,
+      conflictMovesUsed: 4,
+      players: [
+        makePlayer({
+          id: 1,
+          name: "P1",
+          base: [],
+          field: { vanguard: ["GEN-001"], flankLeft: [], flankRight: [], rear: [] },
+        }),
+        makePlayer({ id: 2, name: "P2" }),
+      ],
+    });
+
+    const result = reducer(state, {
+      type: "MOVE_CARD",
+      playerIdx: 0,
+      fromLoc: "vanguard",
+      cardId: "GEN-001",
+      toLoc: "base",
+    });
+
+    expect(result).toBe(state);
+    expect(result!.conflictMovesUsed).toBe(4);
+  });
+
+  it("本回合进场卡牌不能移动（enteredThisTurn）", () => {
+    const state = makeBattleState({
+      turnPhase: "ACTION",
+      activePlayerIndex: 0,
+      enteredThisTurn: ["GEN-001"],
+      players: [
+        makePlayer({
+          id: 1,
+          name: "P1",
+          base: [],
+          field: { vanguard: ["GEN-001"], flankLeft: [], flankRight: [], rear: [] },
+        }),
+        makePlayer({ id: 2, name: "P2" }),
+      ],
+    });
+
+    const result = reducer(state, {
+      type: "MOVE_CARD",
+      playerIdx: 0,
+      fromLoc: "vanguard",
+      cardId: "GEN-001",
+      toLoc: "base",
+    });
+
+    expect(result).toBe(state);
+    expect(result!.players[0].field.vanguard).toContain("GEN-001");
+  });
+
+  it("卡牌不在来源位置时拒绝移动", () => {
+    const state = makeBattleState({
+      turnPhase: "ACTION",
+      activePlayerIndex: 0,
+      players: [
+        makePlayer({
+          id: 1,
+          name: "P1",
+          base: [],
+          field: { vanguard: ["GEN-001"], flankLeft: [], flankRight: [], rear: [] },
+        }),
+        makePlayer({ id: 2, name: "P2" }),
+      ],
+    });
+
+    const result = reducer(state, {
+      type: "MOVE_CARD",
+      playerIdx: 0,
+      fromLoc: "flankLeft",
+      cardId: "GEN-001", // GEN-001 在 vanguard 而非 flankLeft
+      toLoc: "base",
+    });
+
+    expect(result).toBe(state);
+  });
+
+  it("移动日志正确记录", () => {
+    const fillerDeck = Array(40).fill("GEN-001");
+    const state = makeBattleState({
+      turnPhase: "ACTION",
+      activePlayerIndex: 0,
+      players: [
+        makePlayer({
+          id: 1,
+          name: "P1",
+          deck: [...fillerDeck],
+          base: [],
+          field: { vanguard: ["GEN-001"], flankLeft: [], flankRight: [], rear: [] },
+        }),
+        makePlayer({ id: 2, name: "P2", deck: [...fillerDeck] }),
+      ],
+    });
+
+    const result = reducer(state, {
+      type: "MOVE_CARD",
+      playerIdx: 0,
+      fromLoc: "vanguard",
+      cardId: "GEN-001",
+      toLoc: "base",
+    });
+
+    const lastLog = result!.log[result!.log.length - 1];
+    expect(lastLog).toContain("杂兵A");
+    expect(lastLog).toContain("先锋");
+    expect(lastLog).toContain("基地");
+    expect(lastLog).toContain("🔄");
   });
 });
 

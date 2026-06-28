@@ -40,6 +40,8 @@ export type GameAction =
   | { type: "SUMMON_TO_FIELD"; playerIdx: number; handIndex: number; zone: Zone | "base" }
   /** 战区移动：角色在区域间移动 */
   | { type: "MOVE_CHARACTER"; playerIdx: number; fromZone: Zone; cardId: string; toZone: Zone }
+  /** 战基移动：角色在战区与基地之间移动 */
+  | { type: "MOVE_CARD"; playerIdx: number; fromLoc: Zone | "base"; cardId: string; toLoc: Zone | "base" }
   /** 设置当前攻击区域（冲突阶段） */
   | { type: "SET_ATTACK_ZONE"; zone: Zone }
   /** 选择攻击者（设置 pendingAttack） */
