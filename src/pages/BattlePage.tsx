@@ -150,23 +150,23 @@ function BattleLobby({ db, savedDecks, cardMap, onStart }: BattleLobbyProps) {
   }, [selectedDeck, preconData, savedDecks, cardMap, db, firstPlayer, onStart]);
 
   return (
-    <div className="h-full overflow-y-auto scrollbar-thin bg-[#0f1923]">
+    <div className="h-full overflow-y-auto scrollbar-thin bg-[#fcfaf7]">
       <div className="max-w-2xl mx-auto p-6 space-y-6">
         {/* Title */}
         <div className="text-center py-4">
-          <h1 className="text-2xl font-bold text-[#e8eaed] flex items-center justify-center gap-2">
-            <span className="text-red-500">⚔</span>
+          <h1 className="text-2xl font-bold text-stone-800 flex items-center justify-center gap-2">
+            <span className="text-msa-600">⚔</span>
             对战大厅
           </h1>
-          <p className="text-sm text-[#667788] mt-1.5">
+          <p className="text-sm text-stone-400 mt-1.5">
             选择卡组和先后手，开始一场对战
           </p>
         </div>
 
         {/* Deck selection */}
         <section>
-          <h2 className="text-sm font-bold text-[#e8eaed] mb-3 flex items-center gap-2">
-            <span className="w-1 h-4 bg-red-500 rounded-full" />
+          <h2 className="text-sm font-bold text-stone-800 mb-3 flex items-center gap-2">
+            <span className="w-1 h-4 bg-msa-500 rounded-full" />
             选择卡组
           </h2>
 
@@ -177,7 +177,7 @@ function BattleLobby({ db, savedDecks, cardMap, onStart }: BattleLobbyProps) {
                 {[0, 1].map((i) => (
                   <div
                     key={i}
-                    className="bg-[#1a2535] rounded-xl border border-[#1e2d42] p-4 animate-pulse h-24"
+                    className="bg-white rounded-xl border border-stone-200 p-4 animate-pulse h-24"
                   />
                 ))}
               </>
@@ -191,20 +191,20 @@ function BattleLobby({ db, savedDecks, cardMap, onStart }: BattleLobbyProps) {
                     onClick={() => setSelectedDeck(id)}
                     className={`text-left rounded-xl border p-4 transition ${
                       isSelected
-                        ? "bg-red-900/30 border-red-500"
-                        : "bg-[#1a2535] border-[#1e2d42] hover:border-[#2a3a50]"
+                        ? "bg-red-50 border-msa-500 shadow-sm"
+                        : "bg-white border-stone-200 hover:border-stone-300 hover:shadow-sm"
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-900/40 text-red-400 font-medium">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-msa-600 font-medium">
                         预组
                       </span>
                       {isSelected && (
-                        <span className="text-red-400 text-sm">✓</span>
+                        <span className="text-msa-600 text-sm">✓</span>
                       )}
                     </div>
-                    <p className="text-sm font-bold text-[#e8eaed]">{precon.name}</p>
-                    <p className="text-[11px] text-[#667788] mt-0.5">
+                    <p className="text-sm font-bold text-stone-800">{precon.name}</p>
+                    <p className="text-[11px] text-stone-400 mt-0.5">
                       {precon.cards.length} 张角色卡
                     </p>
                   </button>
@@ -214,12 +214,12 @@ function BattleLobby({ db, savedDecks, cardMap, onStart }: BattleLobbyProps) {
           </div>
 
           {/* Saved decks */}
-          <p className="text-[11px] text-[#667788] font-semibold uppercase tracking-wide mb-2">
+          <p className="text-[11px] text-stone-500 font-semibold uppercase tracking-wide mb-2">
             我的卡组
           </p>
           {savedDecks.length === 0 ? (
-            <div className="text-center py-6 bg-[#131f2e] rounded-xl border border-dashed border-[#1e2d42]">
-              <p className="text-sm text-[#667788]">
+            <div className="text-center py-6 bg-stone-50 rounded-xl border border-dashed border-stone-200">
+              <p className="text-sm text-stone-400">
                 还没有保存的卡组，去组卡器创建一个吧！
               </p>
             </div>
@@ -236,22 +236,22 @@ function BattleLobby({ db, savedDecks, cardMap, onStart }: BattleLobbyProps) {
                     onClick={() => setSelectedDeck(id)}
                     className={`w-full text-left rounded-lg border p-3 transition flex items-center gap-3 ${
                       isSelected
-                        ? "bg-blue-900/30 border-blue-500"
-                        : "bg-[#1a2535] border-[#1e2d42] hover:border-[#2a3a50]"
+                        ? "bg-blue-50 border-blue-500 shadow-sm"
+                        : "bg-white border-stone-200 hover:border-stone-300 hover:shadow-sm"
                     }`}
                   >
                     <div className="w-1 h-8 rounded-full bg-blue-500 flex-shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-[#e8eaed] truncate">
+                      <p className="text-sm font-medium text-stone-800 truncate">
                         {deck.name}
                       </p>
-                      <p className="text-[11px] text-[#667788]">
+                      <p className="text-[11px] text-stone-400">
                         {mainCount}/50 角色卡
                         {rushCount > 0 && ` · ${rushCount}/9 冲击卡`}
                       </p>
                     </div>
                     {isSelected && (
-                      <span className="text-blue-400 text-sm flex-shrink-0">✓</span>
+                      <span className="text-blue-600 text-sm flex-shrink-0">✓</span>
                     )}
                   </button>
                 );
@@ -262,8 +262,8 @@ function BattleLobby({ db, savedDecks, cardMap, onStart }: BattleLobbyProps) {
 
         {/* First player selection */}
         <section>
-          <h2 className="text-sm font-bold text-[#e8eaed] mb-3 flex items-center gap-2">
-            <span className="w-1 h-4 bg-red-500 rounded-full" />
+          <h2 className="text-sm font-bold text-stone-800 mb-3 flex items-center gap-2">
+            <span className="w-1 h-4 bg-msa-500 rounded-full" />
             先后手选择
           </h2>
           <div className="grid grid-cols-3 gap-2">
@@ -277,8 +277,8 @@ function BattleLobby({ db, savedDecks, cardMap, onStart }: BattleLobbyProps) {
                 onClick={() => setFirstPlayer(opt.v)}
                 className={`py-2.5 text-sm rounded-lg border transition font-medium ${
                   firstPlayer === opt.v
-                    ? "bg-red-600 text-white border-red-500"
-                    : "bg-[#1a2535] text-[#8899aa] border-[#1e2d42] hover:text-white"
+                    ? "bg-msa-600 text-white border-msa-500"
+                    : "bg-white text-stone-500 border-stone-200 hover:text-stone-700 hover:border-stone-300"
                 }`}
               >
                 {opt.l}
@@ -292,12 +292,12 @@ function BattleLobby({ db, savedDecks, cardMap, onStart }: BattleLobbyProps) {
           <button
             onClick={handleStart}
             disabled={!selectedDeck}
-            className="w-full py-3 rounded-lg bg-red-600 text-white text-base font-bold hover:bg-red-500 transition disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-full py-3 rounded-lg bg-msa-600 text-white text-base font-bold hover:bg-msa-500 transition disabled:opacity-40 disabled:cursor-not-allowed"
           >
             ⚔ 开始对战
           </button>
           {!selectedDeck && (
-            <p className="text-center text-xs text-[#667788] mt-2">
+            <p className="text-center text-xs text-stone-400 mt-2">
               请先选择一个卡组
             </p>
           )}
@@ -825,11 +825,11 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
               className="absolute inset-0 z-50 bg-black/70 flex items-center justify-center backdrop-blur-sm"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="bg-[#131f2e] border border-amber-500/40 rounded-2xl p-6 shadow-2xl max-w-md w-full mx-4">
-                <h3 className="text-lg font-bold text-amber-300 text-center mb-2">
+              <div className="bg-white border border-amber-300 rounded-2xl p-6 shadow-2xl max-w-md w-full mx-4">
+                <h3 className="text-lg font-bold text-amber-700 text-center mb-2">
                   🎯 选择目标
                 </h3>
-                <p className="text-sm text-[#8899aa] text-center mb-4">
+                <p className="text-sm text-stone-500 text-center mb-4">
                   请选择{targetLabel}场上 {pts.minTargets}-{pts.maxTargets} 张角色
                   （已选 {selectedTargetIds.length}/{pts.maxTargets}）
                 </p>
@@ -837,7 +837,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
                 {/* 可选目标列表 */}
                 <div className="flex flex-wrap gap-2 justify-center mb-4 min-h-[100px]">
                   {pts.availableTargets.length === 0 ? (
-                    <p className="text-sm text-white/30">没有可选目标</p>
+                    <p className="text-sm text-stone-400">没有可选目标</p>
                   ) : (
                     pts.availableTargets.map((cardId) => {
                       const card = db.cards.find((c) => c.id === cardId);
@@ -846,10 +846,10 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
                         <button
                           key={cardId}
                           onClick={() => toggleTarget(cardId)}
-                          className={`relative w-20 rounded border overflow-hidden shadow-md transition ${
+                            className={`relative w-20 rounded border overflow-hidden shadow-md transition ${
                             isSelected
                               ? "ring-2 ring-amber-400 border-amber-400 scale-105"
-                              : "border-[#1e2d42] hover:border-amber-400/50 hover:scale-105"
+                              : "border-stone-200 hover:border-amber-300 hover:scale-105"
                           }`}
                           style={{ aspectRatio: "746 / 1041" }}
                           title={`${card?.name || cardId} (Lv${card?.cost ?? "?"} 战力${card?.power ?? "?"})`}
@@ -885,7 +885,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
                       e.stopPropagation();
                       dispatch({ type: "CANCEL_TARGET_SELECTION", playerIdx: state.activePlayerIndex });
                     }}
-                    className="px-5 py-2 rounded-lg bg-stone-700 text-white/70 text-sm font-medium hover:bg-stone-600 transition"
+                    className="px-5 py-2 rounded-lg bg-stone-200 text-stone-600 text-sm font-medium hover:bg-stone-300 transition"
                   >
                     ✕ 取消
                   </button>
@@ -1218,12 +1218,12 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
               className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center backdrop-blur-sm"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="bg-[#131f2e] border border-[#1e2d42] rounded-2xl p-8 text-center shadow-2xl">
+              <div className="bg-white border border-stone-200 rounded-2xl p-8 text-center shadow-2xl">
                 <p className="text-3xl mb-2">🎉 游戏结束!</p>
-                <p className="text-xl font-bold text-indigo-400 mb-1">
+                <p className="text-xl font-bold text-msa-700 mb-1">
                   {(state.winner === 0 ? p1.name : p2.name)} 获胜!
                 </p>
-                <p className="text-sm text-[#8899aa] mb-4">
+                <p className="text-sm text-stone-500 mb-4">
                   {state.winner === 0 ? "敌方时间线已满或卡组耗尽" : "我方时间线已满或卡组耗尽"}
                 </p>
                 <button

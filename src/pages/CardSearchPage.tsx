@@ -1,37 +1,30 @@
 /**
- * CardSearchPage — three-column layout (jinteki-style)
+ * CardSearchPage — Piltover Archive style card gallery
  *
  * Left: filter sidebar (220px)
- * Center: pure image card grid (flex-1, scrollable)
- * Right: hover detail panel (280px, resident — not a popup)
+ * Center: full-width image card grid (flex-1, scrollable)
+ * No resident detail sidebar — click card opens modal
+ *
+ * Supports column count control and DP/PP range filters (P0+P1).
+ * ColumnSelector moved to floating toolbar above card grid.
  */
 
 import { useState, useMemo, useCallback } from "react";
 import type { CardDatabase, Card } from "../types/card";
-import FilterSidebar, { type FilterState } from "../components/FilterSidebar";
+import FilterSidebar, { DEFAULT_FILTERS, type FilterState } from "../components/FilterSidebar";
 import CardGrid from "../components/CardGrid";
-import CardDetailSidebar from "../components/CardDetailSidebar";
 import CardDetailModal from "../components/CardDetailModal";
+import ColumnSelector from "../components/ColumnSelector";
 
 interface Props {
   db: CardDatabase;
-  onAddToDeck: (card: Card, isRush: boolean) => void;
 }
 
-const DEFAULT_FILTERS: FilterState = {
-  search: "",
-  filterType: "all",
-  filterAttr: "all",
-  filterRarity: "all",
-  filterCost: "all",
-  filterPackage: "all",
-  sortBy: "card_no",
-};
-
-export default function CardSearchPage({ db, onAddToDeck }: Props) {
+export default function CardSearchPage({ db }: Props) {
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const [hoveredCard, setHoveredCard] = useState<Card | null>(null);
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
+  const [columns, setColumns] = useState(8);
 
   const onFilterChange = useCallback((patch: Partial<FilterState>) => {
     setFilters((prev) => ({ ...prev, ...patch }));
@@ -42,7 +35,7 @@ export default function CardSearchPage({ db, onAddToDeck }: Props) {
   }, []);
 
   const filtered = useMemo(() => {
-    const { search, filterType, filterAttr, filterRarity, filterCost, filterPackage, sortBy } = filters;
+    const { search, filterType, filterAttr, filterRarity, filterCost, filterPackage, sortBy, dpMin, dpMax, ppMin, ppMax } = filters;
     let result = db.cards.filter((c) => {
       if (search) {
         const q = search.toLowerCase();
@@ -59,6 +52,12 @@ export default function CardSearchPage({ db, onAddToDeck }: Props) {
       if (filterRarity !== "all" && c.rarity !== filterRarity) return false;
       if (filterCost !== "all" && c.cost !== filterCost) return false;
       if (filterPackage !== "all" && c.package_short !== filterPackage) return false;
+      // DP range filter
+      if (dpMin !== "all" && (c.dp_value == null || c.dp_value < dpMin)) return false;
+      if (dpMax !== "all" && (c.dp_value == null || c.dp_value > dpMax)) return false;
+      // PP range filter
+      if (ppMin !== "all" && (c.pp_value == null || c.pp_value < ppMin)) return false;
+      if (ppMax !== "all" && (c.pp_value == null || c.pp_value > ppMax)) return false;
       return true;
     });
 
@@ -81,7 +80,7 @@ export default function CardSearchPage({ db, onAddToDeck }: Props) {
   return (
     <div className="flex h-full overflow-hidden">
       {/* ── Left: filter sidebar ─────────────────────────────── */}
-      <aside className="w-[220px] flex-shrink-0 bg-[#131f2e] border-r border-[#1e2d42] overflow-y-auto scrollbar-thin p-3">
+      <aside className="w-[220px] flex-shrink-0 bg-white border-r border-stone-200 overflow-y-auto scrollbar-thin p-3">
         <FilterSidebar
           db={db}
           state={filters}
@@ -91,38 +90,40 @@ export default function CardSearchPage({ db, onAddToDeck }: Props) {
         />
       </aside>
 
-      {/* ── Center: card grid ────────────────────────────────── */}
-      <main className="flex-1 overflow-y-auto scrollbar-thin p-2">
-        {filtered.length === 0 ? (
-          <div className="text-center py-20 text-[#445566]">
-            <p className="text-lg">没有找到匹配的卡牌</p>
-            <p className="text-sm mt-2">尝试调整筛选条件</p>
-          </div>
-        ) : (
-          <CardGrid
-            cards={filtered}
-            onHover={setHoveredCard}
-            onSelect={setSelectedCard}
-          />
-        )}
+      {/* ── Center: card grid (full width) ──────────────────── */}
+      <main className="flex-1 flex flex-col overflow-hidden bg-[#fcfaf7]">
+        {/* Floating toolbar above the grid */}
+        <div className="flex items-center justify-between px-3 py-1.5 bg-white/90 border-b border-stone-200 flex-shrink-0">
+          <span className="text-[11px] text-stone-500 font-medium">
+            {filtered.length} 张结果
+          </span>
+          <ColumnSelector columns={columns} onChange={setColumns} />
+        </div>
+
+        {/* Scrollable card grid */}
+        <div className="flex-1 overflow-y-auto scrollbar-thin p-2">
+          {filtered.length === 0 ? (
+            <div className="text-center py-20 text-stone-400">
+              <p className="text-lg">没有找到匹配的卡牌</p>
+              <p className="text-sm mt-2">尝试调整筛选条件</p>
+            </div>
+          ) : (
+            <CardGrid
+              cards={filtered}
+              onHover={setHoveredCard}
+              onSelect={setSelectedCard}
+              columns={columns}
+            />
+          )}
+        </div>
       </main>
 
-      {/* ── Right: detail sidebar (resident, hover-driven) ───── */}
-      <aside className="w-[280px] flex-shrink-0 bg-[#131f2e] border-l border-[#1e2d42] overflow-y-auto scrollbar-thin flex flex-col">
-        <CardDetailSidebar
-          card={hoveredCard}
-          db={db}
-          onAddToDeck={onAddToDeck}
-        />
-      </aside>
-
-      {/* ── Click modal (for full detail / add to deck) ──────── */}
+      {/* ── Click modal (detail view, no add-to-deck) ────────── */}
       {selectedCard && (
         <CardDetailModal
           card={selectedCard}
           db={db}
           onClose={() => setSelectedCard(null)}
-          onAddToDeck={onAddToDeck}
         />
       )}
     </div>

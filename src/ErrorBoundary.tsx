@@ -25,19 +25,45 @@ export default class ErrorBoundary extends React.Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ padding: 40, color: "#ff6b6b", background: "#1a1a2e", minHeight: "100vh", fontFamily: "monospace" }}>
-          <h2 style={{ marginBottom: 16 }}>React Error Caught</h2>
-          <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+        <div
+          style={{
+            padding: 40,
+            color: "#c43030",
+            background: "#fcfaf7",
+            minHeight: "100vh",
+            fontFamily: "monospace",
+          }}
+        >
+          <h2 style={{ marginBottom: 16, color: "#1a1a2e" }}>React Error Caught</h2>
+          <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", color: "#4a4550" }}>
             {this.state.error?.message}
           </pre>
-          <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", marginTop: 16, opacity: 0.7 }}>
+          <pre
+            style={{
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-all",
+              marginTop: 16,
+              color: "#8a8588",
+              opacity: 0.8,
+            }}
+          >
             {this.state.error?.stack}
           </pre>
           <button
             onClick={() => this.setState({ hasError: false, error: null })}
-            style={{ marginTop: 20, padding: "8px 16px", background: "#e94560", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }}
+            style={{
+              marginTop: 20,
+              padding: "10px 20px",
+              background: "linear-gradient(135deg, #e24b4a, #c43030)",
+              color: "white",
+              border: "none",
+              borderRadius: 8,
+              cursor: "pointer",
+              fontWeight: 600,
+              fontSize: 14,
+            }}
           >
-            Retry
+            重试 Retry
           </button>
         </div>
       );

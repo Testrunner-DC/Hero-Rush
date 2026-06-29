@@ -1,8 +1,7 @@
 /**
- * HelpPage — 游戏帮助页面（jinteki.net/help 风格 Q&A 分区）
+ * HelpPage — 游戏帮助页面（MSA Light Theme Q&A）
  *
- * 深色主题，折叠面板，按主题分区展示超英击战规则。
- * 无外部依赖，纯受控组件。
+ * 亮色主题，折叠面板，按主题分区展示超英击战规则。
  */
 
 import { useState, useCallback } from "react";
@@ -166,15 +165,15 @@ export default function HelpPage() {
   }, []);
 
   return (
-    <div className="h-full overflow-y-auto scrollbar-thin bg-[#0f1923]">
+    <div className="h-full overflow-y-auto scrollbar-thin bg-[#fcfaf7]">
       <div className="max-w-3xl mx-auto p-6 space-y-4">
         {/* Page header */}
         <div className="text-center py-4">
-          <h1 className="text-2xl font-bold text-[#e8eaed] flex items-center justify-center gap-2">
-            <span className="text-red-500">⚡</span>
+          <h1 className="text-2xl font-bold text-stone-800 flex items-center justify-center gap-2">
+            <img src="/logo.png" alt="" className="w-7 h-7 rounded" />
             游戏帮助
           </h1>
-          <p className="text-sm text-[#667788] mt-1.5">
+          <p className="text-sm text-stone-400 mt-1.5">
             超英击战规则指南 · 点击问题展开/收起
           </p>
         </div>
@@ -185,16 +184,16 @@ export default function HelpPage() {
           return (
             <div
               key={section.id}
-              className="bg-[#131f2e] rounded-xl border border-[#1e2d42] overflow-hidden"
+              className="bg-white rounded-xl border border-stone-200 overflow-hidden shadow-card"
             >
               {/* Section header */}
               <button
                 onClick={() => toggleSection(section.id)}
-                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#1a2535] transition"
+                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-stone-50 transition"
               >
-                <div className="w-8 h-8 rounded-lg bg-red-900/30 flex items-center justify-center flex-shrink-0">
+                <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0">
                   <svg
-                    className="w-4 h-4 text-red-400"
+                    className="w-4 h-4 text-red-600"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -207,11 +206,11 @@ export default function HelpPage() {
                     />
                   </svg>
                 </div>
-                <span className="flex-1 text-left text-sm font-bold text-[#e8eaed]">
+                <span className="flex-1 text-left text-sm font-bold text-stone-800">
                   {section.title}
                 </span>
                 <svg
-                  className={`w-4 h-4 text-[#667788] transition-transform ${
+                  className={`w-4 h-4 text-stone-400 transition-transform ${
                     isSectionOpen ? "rotate-180" : ""
                   }`}
                   fill="none"
@@ -225,7 +224,7 @@ export default function HelpPage() {
 
               {/* Section items */}
               {isSectionOpen && (
-                <div className="border-t border-[#1e2d42] divide-y divide-[#1e2d42]">
+                <div className="border-t border-stone-100 divide-y divide-stone-100">
                   {section.items.map((item, idx) => {
                     const itemId = `${section.id}-${idx}`;
                     const isItemOpen = openItems.has(itemId);
@@ -233,20 +232,20 @@ export default function HelpPage() {
                       <div key={itemId}>
                         <button
                           onClick={() => toggleItem(itemId)}
-                          className="w-full flex items-start gap-2.5 px-4 py-2.5 hover:bg-[#1a2535] transition text-left"
+                          className="w-full flex items-start gap-2.5 px-4 py-2.5 hover:bg-stone-50 transition text-left"
                         >
                           <span
                             className={`text-xs font-bold mt-0.5 transition-colors ${
-                              isItemOpen ? "text-red-400" : "text-[#445566]"
+                              isItemOpen ? "text-red-600" : "text-stone-400"
                             }`}
                           >
                             Q
                           </span>
-                          <span className="flex-1 text-sm text-[#c9cdd4] font-medium">
+                          <span className="flex-1 text-sm text-stone-700 font-medium">
                             {item.q}
                           </span>
                           <svg
-                            className={`w-3.5 h-3.5 text-[#667788] mt-0.5 transition-transform flex-shrink-0 ${
+                            className={`w-3.5 h-3.5 text-stone-400 mt-0.5 transition-transform flex-shrink-0 ${
                               isItemOpen ? "rotate-180" : ""
                             }`}
                             fill="none"
@@ -260,10 +259,10 @@ export default function HelpPage() {
                         {isItemOpen && (
                           <div className="px-4 pb-3 pl-10">
                             <div className="flex items-start gap-2.5">
-                              <span className="text-xs font-bold mt-0.5 text-green-400">
+                              <span className="text-xs font-bold mt-0.5 text-green-600">
                                 A
                               </span>
-                              <p className="flex-1 text-sm text-[#8899aa] leading-relaxed whitespace-pre-line">
+                              <p className="flex-1 text-sm text-stone-500 leading-relaxed whitespace-pre-line">
                                 {item.a}
                               </p>
                             </div>
@@ -279,8 +278,8 @@ export default function HelpPage() {
         })}
 
         {/* Footer */}
-        <div className="text-center py-4 text-xs text-[#445566]">
-          <p>超英击战 TCG · 卡牌对战模拟器</p>
+        <div className="text-center py-4 text-xs text-stone-400">
+          <p>斗界竞技场 · 漫威对战卡牌：超英击战</p>
           <p className="mt-1">如有更多问题，请参考游戏规则书或联系开发者</p>
         </div>
       </div>

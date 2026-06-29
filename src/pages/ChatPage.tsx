@@ -1,5 +1,5 @@
 /**
- * ChatPage — 聊天页面
+ * ChatPage — 聊天页面 (MSA Light Theme)
  *
  * 社区交流 / 策略讨论界面
  * 支持消息发送、预设话题快捷入口
@@ -44,7 +44,7 @@ function loadMessages(): ChatMessage[] {
     {
       id: "sys-welcome",
       role: "system",
-      content: "欢迎来到超英击战社区聊天室！在这里可以交流组卡思路、讨论对战策略、寻找对战对手。请文明交流。",
+      content: "欢迎来到斗界竞技场社区聊天室！在这里可以交流组卡思路、讨论对战策略、寻找对战对手。请文明交流。",
       timestamp: Date.now(),
     },
   ];
@@ -135,17 +135,17 @@ export default function ChatPage() {
   }, []);
 
   return (
-    <div className="flex flex-col h-full bg-[#0f1923]">
+    <div className="flex flex-col h-full bg-[#fcfaf7]">
       {/* ── Chat header ─────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-[#0a1120] border-b border-[#1e2d42] flex-shrink-0">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-white border-b border-stone-200 flex-shrink-0">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-          <span className="text-sm font-medium text-[#c9cdd4]">社区聊天室</span>
-          <span className="text-xs text-[#445566]">· {messages.length} 条消息</span>
+          <span className="text-sm font-medium text-stone-700">社区聊天室</span>
+          <span className="text-xs text-stone-400">· {messages.length} 条消息</span>
         </div>
         <button
           onClick={handleClear}
-          className="text-xs text-[#667788] hover:text-red-400 transition"
+          className="text-xs text-stone-400 hover:text-red-600 transition"
         >
           清空记录
         </button>
@@ -162,13 +162,13 @@ export default function ChatPage() {
       </div>
 
       {/* ── Preset topics ───────────────────────────────────────── */}
-      <div className="flex items-center gap-1.5 px-4 py-2 border-t border-[#1e2d42] bg-[#0a1120] flex-shrink-0 overflow-x-auto scrollbar-thin">
-        <span className="text-xs text-[#445566] whitespace-nowrap flex-shrink-0">话题：</span>
+      <div className="flex items-center gap-1.5 px-4 py-2 border-t border-stone-200 bg-white flex-shrink-0 overflow-x-auto scrollbar-thin">
+        <span className="text-xs text-stone-400 whitespace-nowrap flex-shrink-0">话题：</span>
         {PRESET_TOPICS.map((topic) => (
           <button
             key={topic.label}
             onClick={() => handlePresetTopic(topic.prompt)}
-            className="px-2.5 py-1 text-xs rounded-full bg-[#131f2e] text-[#8899aa] hover:bg-red-900/30 hover:text-red-400 transition whitespace-nowrap flex-shrink-0 border border-[#1e2d42]"
+            className="px-2.5 py-1 text-xs rounded-full bg-stone-50 text-stone-500 hover:bg-red-50 hover:text-red-600 transition whitespace-nowrap flex-shrink-0 border border-stone-200"
           >
             {topic.label}
           </button>
@@ -176,7 +176,7 @@ export default function ChatPage() {
       </div>
 
       {/* ── Input area ──────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 px-4 py-3 bg-[#0a1120] border-t border-[#1e2d42] flex-shrink-0">
+      <div className="flex items-center gap-2 px-4 py-3 bg-white border-t border-stone-200 flex-shrink-0">
         <input
           ref={inputRef}
           type="text"
@@ -189,12 +189,12 @@ export default function ChatPage() {
             }
           }}
           placeholder="输入消息，按 Enter 发送..."
-          className="flex-1 px-3 py-2 text-sm rounded-lg bg-[#131f2e] border border-[#2a3a50] text-[#c9cdd4] placeholder-[#445566] focus:outline-none focus:border-red-500 transition"
+          className="flex-1 px-3 py-2 text-sm rounded-lg bg-white border border-stone-200 text-stone-700 placeholder-stone-400 focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 transition"
         />
         <button
           onClick={handleSend}
           disabled={!input.trim()}
-          className="px-4 py-2 rounded-lg text-sm font-medium bg-red-600 text-white hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed transition whitespace-nowrap"
+          className="px-4 py-2 rounded-lg text-sm font-medium bg-red-500 text-white hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed transition whitespace-nowrap shadow-sm"
         >
           发送
         </button>
@@ -213,9 +213,9 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   if (isSystem) {
     return (
       <div className="flex justify-center">
-        <div className="max-w-[80%] px-3 py-2 rounded-lg bg-[#131f2e] border border-[#1e2d42] text-center">
-          <p className="text-xs text-[#8899aa] leading-relaxed">{message.content}</p>
-          <p className="text-[10px] text-[#445566] mt-1">{formatTime(message.timestamp)}</p>
+        <div className="max-w-[80%] px-3 py-2 rounded-lg bg-white border border-stone-200 text-center shadow-sm">
+          <p className="text-xs text-stone-500 leading-relaxed">{message.content}</p>
+          <p className="text-[10px] text-stone-400 mt-1">{formatTime(message.timestamp)}</p>
         </div>
       </div>
     );
@@ -224,17 +224,17 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   return (
     <div className="flex items-start gap-2.5">
       {/* Avatar */}
-      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-red-600/20 border border-red-500/30 flex items-center justify-center">
-        <span className="text-xs font-bold text-red-400">我</span>
+      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-red-100 border border-red-200 flex items-center justify-center">
+        <span className="text-xs font-bold text-red-600">我</span>
       </div>
       {/* Bubble */}
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-2 mb-0.5">
-          <span className="text-xs font-medium text-[#c9cdd4]">玩家</span>
-          <span className="text-[10px] text-[#445566]">{formatTime(message.timestamp)}</span>
+          <span className="text-xs font-medium text-stone-700">玩家</span>
+          <span className="text-[10px] text-stone-400">{formatTime(message.timestamp)}</span>
         </div>
-        <div className="inline-block max-w-full px-3 py-2 rounded-lg rounded-tl-none bg-[#1a2535] border border-[#1e2d42]">
-          <p className="text-sm text-[#e8eaed] leading-relaxed break-words whitespace-pre-wrap">
+        <div className="inline-block max-w-full px-3 py-2 rounded-lg rounded-tl-none bg-stone-50 border border-stone-200">
+          <p className="text-sm text-stone-800 leading-relaxed break-words whitespace-pre-wrap">
             {message.content}
           </p>
         </div>

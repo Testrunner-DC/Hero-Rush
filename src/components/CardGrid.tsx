@@ -1,78 +1,70 @@
 /**
- * CardGrid — pure image grid (jinteki-style)
+ * CardGrid — 卡牌图片网格（MSA Light Theme）
  *
- * No card name text, no extra info — just tightly-packed card images.
- * Card ratio is strictly 746:1041 (≈0.717) using padding-trick.
- * Hover triggers onHover callback for the detail sidebar.
- * Click triggers onSelect (opens modal or adds to deck).
+ * Pure image card grid with placeholder fallback.
+ * Columns dynamically set via `columns` prop.
+ * P2: foilEnabled for card-foil CSS effect, cardScale for image zoom.
  */
 
 import type { Card } from "../types/card";
 
 interface Props {
   cards: Card[];
-  onSelect?: (card: Card) => void;
-  onHover?: (card: Card | null) => void;
-  /** Optional: render a count badge overlay (e.g. "already in deck") */
+  onHover: (card: Card | null) => void;
+  onSelect: (card: Card) => void;
   countFor?: (card: Card) => number;
-  /** Grid columns override */
   columns?: number;
+  /** Enable holographic foil shader overlay */
+  foilEnabled?: boolean;
+  /** Image scale transform (0.6 ~ 1.4, default 1.0) */
+  cardScale?: number;
 }
 
-export default function CardGrid({ cards, onSelect, onHover, countFor, columns }: Props) {
+export default function CardGrid({
+  cards,
+  onHover,
+  onSelect,
+  countFor,
+  columns = 8,
+  foilEnabled = false,
+  cardScale = 1.0,
+}: Props) {
   return (
     <div
-      className="grid gap-1"
-      style={{
-        gridTemplateColumns: `repeat(${columns ?? 7}, minmax(0, 1fr))`,
-      }}
+      className="grid gap-1.5"
+      style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
     >
-      {cards.map((card) => {
-        const count = countFor?.(card) ?? 0;
-        return (
-          <div
-            key={card.id}
-            className="relative cursor-pointer group animate-fadeIn"
-            onMouseEnter={() => onHover?.(card)}
-            onMouseLeave={() => onHover?.(null)}
-            onClick={() => onSelect?.(card)}
-          >
-            {/* Strict 746:1041 ratio container */}
-            <div
-              className="relative w-full rounded-sm overflow-hidden bg-[#0a1120]"
-              style={{ paddingBottom: `${(1041 / 746) * 100}%` }}
-            >
-              <img
-                src={card.image_url}
-                alt={card.name}
-                loading="lazy"
-                className="card-img absolute inset-0 w-full h-full object-cover transition-transform duration-150 group-hover:scale-105 group-hover:z-10 group-hover:ring-2 group-hover:ring-red-400"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.opacity = "0.2";
-                }}
-              />
-              {/* Attribute color stripe (left edge) */}
-              <div
-                className="absolute bottom-0 left-0 w-1 h-full opacity-80"
-                style={{ backgroundColor: card.attribute_color }}
-              />
-              {/* Rarity badge (top-right) */}
-              <div
-                className="absolute top-0.5 right-0.5 px-1 py-0.5 rounded-sm text-[9px] font-bold text-white shadow opacity-0 group-hover:opacity-100 transition"
-                style={{ backgroundColor: card.rarity_color }}
-              >
-                {card.rarity_code}
-              </div>
-              {/* In-deck count badge (top-right) */}
-              {count > 0 && (
-                <div className="absolute top-0.5 right-0.5 bg-green-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold shadow">
-                  {count}
-                </div>
-              )}
-            </div>
+      {cards.map((card) => (
+        <div
+          key={card.id}
+          className={`relative cursor-pointer rounded-lg overflow-hidden bg-stone-100 border border-stone-200 hover:shadow-card-hover hover:border-red-300 transition group ${
+            foilEnabled ? "card-foil" : ""
+          }`}
+          onMouseEnter={() => onHover(card)}
+          onMouseLeave={() => onHover(null)}
+          onClick={() => onSelect(card)}
+        >
+          {/* Scale wrapper: overflow-hidden clips the scaled image */}
+          <div className="overflow-hidden">
+            <img
+              src={card.image_url}
+              alt={card.name}
+              className="card-img w-full object-cover"
+              style={{ transform: `scale(${cardScale})`, transformOrigin: "center" }}
+              loading="lazy"
+              onError={(e) => {
+                const img = e.target as HTMLImageElement;
+                img.style.opacity = "0.2";
+              }}
+            />
           </div>
-        );
-      })}
+          {/* Rarity color bottom bar */}
+          <div
+            className="absolute bottom-0 left-0 right-0 h-0.5 opacity-80"
+            style={{ backgroundColor: card.rarity_color }}
+          />
+        </div>
+      ))}
     </div>
   );
 }

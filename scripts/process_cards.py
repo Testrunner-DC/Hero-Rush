@@ -254,6 +254,9 @@ def main():
         else:
             power = None
 
+        pp_value = safe_int(c.get("pp_value"))
+        r_val = (pp_value - 1) if pp_value is not None else 1
+
         fk = str(c.get("feature") or "").strip()
         sk_raw = c.get("signal_color")
         if sk_raw is not None:
@@ -272,9 +275,10 @@ def main():
             "attribute": safe_int(c["attribute"]),
             "attribute_name": ATTR_MAP.get(safe_int(c["attribute"]), {}).get("name", "未知"),
             "attribute_color": ATTR_MAP.get(safe_int(c["attribute"]), {}).get("color", "#888780"),
-            "pp_value": safe_int(c.get("pp_value")),
+            "pp_value": pp_value,
             "dp_value": dp,
             "power": power,
+            "r": r_val,
             "signal_color": safe_int(c.get("signal_color")) if c.get("signal_color") is not None else None,
             "signal_color_text": signal_map.get(sk, ""),
             "feature": fk if fk else None,

@@ -479,11 +479,11 @@ export default function GameSetup({
   // 注意：此 early return 必须在所有 hooks 之后，否则违反 Rules of Hooks
   if (isLobbyMode && !lobbyDataReady) {
     return (
-      <div className="h-full flex items-center justify-center bg-[#0f1923]">
+      <div className="h-full flex items-center justify-center bg-[var(--msa-bg)]">
         <div className="text-center space-y-4">
           {autoStartError ? (
             <>
-              <p className="text-red-400 text-lg font-medium">⚠ {autoStartError}</p>
+              <p className="text-red-500 text-lg font-medium">⚠ {autoStartError}</p>
               {onBackToLobby && (
                 <button
                   onClick={onBackToLobby}
@@ -496,14 +496,14 @@ export default function GameSetup({
           ) : (
             <>
               <div className="inline-block w-10 h-10 border-3 border-red-500 border-t-transparent rounded-full animate-spin" />
-              <p className="text-[#8899aa] text-sm">正在准备对战...</p>
-              <p className="text-[#667788] text-xs">
+              <p className="text-[var(--msa-text-muted)] text-sm">正在准备对战...</p>
+              <p className="text-[var(--msa-text-muted)] text-xs">
                 卡组：{preselectedDeck!.p1Name}
               </p>
               {onBackToLobby && (
                 <button
                   onClick={onBackToLobby}
-                  className="text-xs text-[#667788] hover:text-[#c9cdd4] transition"
+                  className="text-xs text-[var(--msa-text-muted)] hover:text-[var(--msa-text-secondary)] transition"
                 >
                   ← 返回大厅
                 </button>
@@ -530,8 +530,8 @@ export default function GameSetup({
         onMouseLeave={() => setMulliganHover(null)}
         className={`relative w-16 h-24 rounded-lg border-2 transition-all ${
           isSelected
-            ? "border-red-500 bg-red-900/30 opacity-60"
-            : "border-[#1e2d42] bg-[#131f2e] hover:border-[#3a4a60]"
+            ? "border-red-500 bg-red-50 opacity-60"
+            : "border-[var(--msa-border)] bg-[var(--msa-bg-alt)] hover:border-[var(--msa-border-strong)]"
         }`}
       >
         {card ? (
@@ -543,17 +543,17 @@ export default function GameSetup({
               onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
             />
             <div className="absolute bottom-0 left-0 right-0 bg-black/70 rounded-b-md py-0.5 px-1">
-              <p className="text-[9px] text-white/80 truncate">{card.name}</p>
+              <p className="text-[9px] text-[var(--msa-text-primary)]/80 truncate">{card.name}</p>
             </div>
           </>
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-xs text-[#445566]">
+          <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">
             ?
           </div>
         )}
         {isSelected && (
           <div className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-600 flex items-center justify-center">
-            <span className="text-[10px] text-white">✕</span>
+            <span className="text-[10px] text-[var(--msa-text-primary)]">✕</span>
           </div>
         )}
       </button>
@@ -561,13 +561,13 @@ export default function GameSetup({
   };
 
   return (
-    <div className="h-full overflow-y-auto scrollbar-thin p-6 bg-[#0f1923]">
+    <div className="h-full overflow-y-auto scrollbar-thin p-6 bg-[var(--msa-bg)]">
       <div className="max-w-2xl mx-auto space-y-6">
         {/* Back to lobby button */}
         {onBackToLobby && (
           <button
             onClick={onBackToLobby}
-            className="text-xs text-[#667788] hover:text-[#c9cdd4] transition flex items-center gap-1"
+            className="text-xs text-[var(--msa-text-muted)] hover:text-[var(--msa-text-secondary)] transition flex items-center gap-1"
           >
             ← 返回大厅
           </button>
@@ -587,13 +587,13 @@ export default function GameSetup({
                   i === step
                     ? "bg-red-600 text-white"
                     : s.done
-                    ? "bg-green-900/40 text-green-400"
-                    : "bg-[#1a2535] text-[#667788]"
+                    ? "bg-green-50 text-green-600"
+                    : "bg-[var(--msa-surface)] text-[var(--msa-text-muted)]"
                 }`}
               >
                 {s.label}
               </div>
-              {i < 3 && <div className="w-2 h-0.5 bg-[#2a3a50] shrink-0" />}
+              {i < 3 && <div className="w-2 h-0.5 bg-[var(--msa-border-strong)] shrink-0" />}
             </div>
           ))}
         </div>
@@ -601,23 +601,23 @@ export default function GameSetup({
         {/* ===== Step 0: 洗牌 & 放置 ===== */}
         {step === 0 && (
           <div className="text-center space-y-4 py-8">
-            <h2 className="text-xl font-bold text-[#e8eaed]">准备卡组</h2>
-            <p className="text-[#8899aa] max-w-md mx-auto">
+            <h2 className="text-xl font-bold text-[var(--msa-text-primary)]">准备卡组</h2>
+            <p className="text-[var(--msa-text-muted)] max-w-md mx-auto">
               规则 303.1.a/b：<br />
-              双方将各自的<strong className="text-[#c9cdd4]"> 50 张角色卡</strong>充分洗混后盖放进卡组区域<br />
-              将各自的<strong className="text-[#c9cdd4]"> 9 张冲击卡</strong>盖放进冲击卡组区域
+              双方将各自的<strong className="text-[var(--msa-text-secondary)]"> 50 张角色卡</strong>充分洗混后盖放进卡组区域<br />
+              将各自的<strong className="text-[var(--msa-text-secondary)]"> 9 张冲击卡</strong>盖放进冲击卡组区域
             </p>
 
             <div className="flex justify-center gap-8 mt-4">
               {[1, 2].map((pid) => (
-                <div key={pid} className="border border-[#1e2d42] rounded-xl p-4 w-48 bg-[#131f2e]">
-                  <p className="font-bold text-[#e8eaed]">玩家{pid}</p>
+                <div key={pid} className="border border-[var(--msa-border)] rounded-xl p-4 w-48 bg-[var(--msa-bg-alt)]">
+                  <p className="font-bold text-[var(--msa-text-primary)]">玩家{pid}</p>
                   <div className="mt-2 space-y-2">
-                    <div className="bg-blue-900/20 rounded-lg p-2 text-sm text-blue-400 border border-blue-800/30">
+                    <div className="bg-blue-50 rounded-lg p-2 text-sm text-blue-600 border border-blue-200">
                       📦 主卡组：{db.cards.filter((c) => c.card_type === 1).length}张角色卡
                       <span className="block text-xs text-blue-600">待洗混</span>
                     </div>
-                    <div className="bg-amber-900/20 rounded-lg p-2 text-sm text-amber-400 border border-amber-800/30">
+                    <div className="bg-amber-50 rounded-lg p-2 text-sm text-amber-600 border border-amber-200">
                       ⚡ 冲击卡组：9张
                       <span className="block text-xs text-amber-600">待放置</span>
                     </div>
@@ -641,7 +641,7 @@ export default function GameSetup({
               >
                 {loadingPrecon ? "⏳ 加载预组中..." : "⚡ 快速开始（SD01 vs SD02 预组）"}
               </button>
-              <p className="text-xs text-[#667788] mt-1">
+              <p className="text-xs text-[var(--msa-text-muted)] mt-1">
                 ⚡ 简化模式，跳过调度（直接开始对战）
               </p>
             </div>
@@ -651,8 +651,8 @@ export default function GameSetup({
         {/* ===== Step 1: 决定先攻 ===== */}
         {step === 1 && (
           <div className="text-center space-y-4 py-8">
-            <h2 className="text-xl font-bold text-[#e8eaed]">决定先攻</h2>
-            <p className="text-[#8899aa] max-w-md mx-auto">
+            <h2 className="text-xl font-bold text-[var(--msa-text-primary)]">决定先攻</h2>
+            <p className="text-[var(--msa-text-muted)] max-w-md mx-auto">
               规则 303.1.c：双方以同意的方式决定先攻玩家与后攻玩家
             </p>
 
@@ -666,18 +666,18 @@ export default function GameSetup({
             )}
 
             {rolling && (
-              <div className="px-8 py-2.5 rounded-lg bg-[#2a3a50] text-[#8899aa] font-medium">
+              <div className="px-8 py-2.5 rounded-lg bg-[var(--msa-border-strong)] text-[var(--msa-text-muted)] font-medium">
                 🎲 掷骰中...
               </div>
             )}
 
             {firstPlayerResult && (
               <div className="space-y-4">
-                <div className="inline-block bg-amber-900/20 border border-amber-700/40 rounded-xl px-8 py-4">
-                  <p className="text-2xl font-bold text-amber-400">
+                <div className="inline-block bg-amber-50 border border-amber-200 rounded-xl px-8 py-4">
+                  <p className="text-2xl font-bold text-amber-600">
                     🎉 玩家{firstPlayerResult} 先攻！
                   </p>
-                  <p className="text-sm text-[#8899aa] mt-1">
+                  <p className="text-sm text-[var(--msa-text-muted)] mt-1">
                     玩家{firstPlayerResult === 1 ? 2 : 1} 后攻
                   </p>
                 </div>
@@ -695,31 +695,31 @@ export default function GameSetup({
         {/* ===== Step 2: 抽起始手牌 ===== */}
         {step === 2 && (
           <div className="text-center space-y-4 py-8">
-            <h2 className="text-xl font-bold text-[#e8eaed]">抽取起始手牌</h2>
-            <p className="text-[#8899aa] max-w-md mx-auto">
-              规则 303.1.d：双方从各自卡组抽 <strong className="text-[#c9cdd4]">6 张卡</strong> 作为起始手牌
+            <h2 className="text-xl font-bold text-[var(--msa-text-primary)]">抽取起始手牌</h2>
+            <p className="text-[var(--msa-text-muted)] max-w-md mx-auto">
+              规则 303.1.d：双方从各自卡组抽 <strong className="text-[var(--msa-text-secondary)]">6 张卡</strong> 作为起始手牌
             </p>
 
             <div className="flex justify-center gap-8 mt-6">
               {[1, 2].map((pid) => (
-                <div key={pid} className="border border-[#1e2d42] rounded-xl p-5 w-52 bg-[#131f2e]">
-                  <p className="font-bold text-[#e8eaed]">
+                <div key={pid} className="border border-[var(--msa-border)] rounded-xl p-5 w-52 bg-[var(--msa-bg-alt)]">
+                  <p className="font-bold text-[var(--msa-text-primary)]">
                     玩家{pid}
                     {firstPlayerResult === pid && (
-                      <span className="text-xs text-amber-400 ml-1">★先攻</span>
+                      <span className="text-xs text-amber-600 ml-1">★先攻</span>
                     )}
                   </p>
                   <div className="mt-3 flex justify-center gap-1">
                     {Array.from({ length: 6 }).map((_, i) => (
                       <div
                         key={i}
-                        className="w-10 h-14 bg-gradient-to-br from-[#2a3a50] to-[#0a1120] rounded border border-[#1e2d42] shadow-sm flex items-center justify-center text-xs text-[#445566]"
+                        className="w-10 h-14 bg-gradient-to-br from-[var(--msa-border-strong)] to-[var(--msa-bg)] rounded border border-[var(--msa-border)] shadow-sm flex items-center justify-center text-xs text-gray-400"
                       >
                         ?
                       </div>
                     ))}
                   </div>
-                  <p className="text-xs text-[#667788] mt-2">6 张手牌</p>
+                  <p className="text-xs text-[var(--msa-text-muted)] mt-2">6 张手牌</p>
                 </div>
               ))}
             </div>
@@ -736,9 +736,9 @@ export default function GameSetup({
         {/* ===== Step 3: 调整起始手牌（Mulligan）===== */}
         {step === 3 && (
           <div className="space-y-4 py-4">
-            <h2 className="text-xl font-bold text-[#e8eaed] text-center">调整起始手牌</h2>
-            <p className="text-[#8899aa] max-w-md mx-auto text-center">
-              规则 303.1.e：选中不想要的牌<strong className="text-red-400">放回卡组底</strong>，
+            <h2 className="text-xl font-bold text-[var(--msa-text-primary)] text-center">调整起始手牌</h2>
+            <p className="text-[var(--msa-text-muted)] max-w-md mx-auto text-center">
+              规则 303.1.e：选中不想要的牌<strong className="text-red-500">放回卡组底</strong>，
               然后从卡组顶抽取等量的牌，再洗混卡组
             </p>
 
@@ -746,8 +746,8 @@ export default function GameSetup({
               <>
                 {/* 当前调度玩家提示 */}
                 <div className="text-center">
-                  <div className="inline-block bg-amber-900/20 border border-amber-700/40 rounded-lg px-6 py-2">
-                    <p className="text-sm font-bold text-amber-400">
+                  <div className="inline-block bg-amber-50 border border-amber-200 rounded-lg px-6 py-2">
+                    <p className="text-sm font-bold text-amber-600">
                       玩家{mulliganPlayer} 调整中
                       {firstPlayerResult === mulliganPlayer && (
                         <span className="text-xs text-amber-300 ml-1">★先攻</span>
@@ -757,12 +757,12 @@ export default function GameSetup({
                 </div>
 
                 {/* 手牌选择区 */}
-                <div className="bg-[#131f2e] border border-[#1e2d42] rounded-xl p-4">
+                <div className="bg-[var(--msa-bg-alt)] border border-[var(--msa-border)] rounded-xl p-4">
                   <div className="flex items-center justify-between mb-3">
-                    <span className="text-sm text-[#8899aa]">
+                    <span className="text-sm text-[var(--msa-text-muted)]">
                       玩家{mulliganPlayer} 的手牌（{currentMulliganHand.length}张）
                     </span>
-                    <span className="text-xs text-red-400">
+                    <span className="text-xs text-red-500">
                       已选 {mulliganSelected.length} 张放回
                     </span>
                   </div>
@@ -772,8 +772,8 @@ export default function GameSetup({
 
                   {/* 悬浮详情弹窗 */}
                   {mulliganHoverCard && (
-                    <div className="mt-3 flex gap-3 bg-[#0a1120] border border-[#3a5a7a]/50 rounded-lg p-3">
-                      <div className="w-20 shrink-0 rounded overflow-hidden border border-[#2a3a50]" style={{ aspectRatio: "746 / 1041" }}>
+                    <div className="mt-3 flex gap-3 bg-white/90 border border-[var(--msa-border-strong)] rounded-lg p-3">
+                      <div className="w-20 shrink-0 rounded overflow-hidden border border-[var(--msa-border-strong)]" style={{ aspectRatio: "746 / 1041" }}>
                         <img
                           src={`/cards/${mulliganHoverCard.id}.png`}
                           alt={mulliganHoverCard.name}
@@ -782,15 +782,15 @@ export default function GameSetup({
                         />
                       </div>
                       <div className="flex-1 min-w-0 space-y-1">
-                        <h3 className="text-sm font-bold text-[#e8eaed] truncate">{mulliganHoverCard.name}</h3>
-                        <p className="text-[11px] text-[#8899aa]">
+                        <h3 className="text-sm font-bold text-[var(--msa-text-primary)] truncate">{mulliganHoverCard.name}</h3>
+                        <p className="text-[11px] text-[var(--msa-text-muted)]">
                           {mulliganHoverCard.card_no} · {mulliganHoverCard.card_type_name}
                         </p>
                         <div className="flex gap-2 text-[11px]">
-                          <span className="text-amber-400">Lv{mulliganHoverCard.cost} ({mulliganHoverCard.cost_name})</span>
-                          <span className="text-red-400">战力 {mulliganHoverCard.power ?? "?"}</span>
+                          <span className="text-amber-600">Lv{mulliganHoverCard.cost} ({mulliganHoverCard.cost_name})</span>
+                          <span className="text-red-500">战力 {mulliganHoverCard.power ?? "?"}</span>
                           {mulliganHoverCard.r != null && (
-                            <span className="text-blue-400">R={mulliganHoverCard.r}</span>
+                            <span className="text-blue-600">R={mulliganHoverCard.r}</span>
                           )}
                         </div>
                         <div className="flex gap-2 text-[10px]">
@@ -798,11 +798,11 @@ export default function GameSetup({
                             {mulliganHoverCard.attribute_name}
                           </span>
                           {mulliganHoverCard.feature_text && (
-                            <span className="px-1 py-0.5 rounded bg-white/10 text-white/60">{mulliganHoverCard.feature_text}</span>
+                            <span className="px-1 py-0.5 rounded bg-gray-100 text-[var(--msa-text-muted)]">{mulliganHoverCard.feature_text}</span>
                           )}
                         </div>
                         {mulliganHoverCard.effect && mulliganHoverCard.effect !== "-" && (
-                          <p className="text-[11px] text-[#c9cdd4] leading-relaxed line-clamp-3">
+                          <p className="text-[11px] text-[var(--msa-text-secondary)] leading-relaxed line-clamp-3">
                             {mulliganHoverCard.effect}
                           </p>
                         )}
@@ -815,7 +815,7 @@ export default function GameSetup({
                 <div className="flex justify-center gap-3">
                   <button
                     onClick={skipMulligan}
-                    className="px-6 py-2 rounded-lg bg-stone-700 text-white/70 text-sm font-medium hover:bg-stone-600 transition"
+                    className="px-6 py-2 rounded-lg bg-stone-200 text-stone-700 text-sm font-medium hover:bg-stone-300 transition"
                   >
                     不调整（跳过）
                   </button>
@@ -830,10 +830,10 @@ export default function GameSetup({
 
                 {/* 调度进度指示 */}
                 <div className="flex justify-center gap-4 text-xs">
-                  <span className={p1MulliganDone ? "text-green-400" : "text-[#667788]"}>
+                  <span className={p1MulliganDone ? "text-green-600" : "text-[var(--msa-text-muted)]"}>
                     玩家1 {p1MulliganDone ? "✓" : "○"}
                   </span>
-                  <span className={p2MulliganDone ? "text-green-400" : "text-[#667788]"}>
+                  <span className={p2MulliganDone ? "text-green-600" : "text-[var(--msa-text-muted)]"}>
                     玩家2 {p2MulliganDone ? "✓" : "○"}
                   </span>
                 </div>
@@ -841,11 +841,11 @@ export default function GameSetup({
             ) : (
               /* 调度完成，显示开始按钮 */
               <div className="text-center space-y-4">
-                <div className="inline-block bg-green-900/20 border border-green-700/40 rounded-xl px-8 py-4">
-                  <p className="text-lg font-bold text-green-400">
+                <div className="inline-block bg-green-50 border border-green-200 rounded-xl px-8 py-4">
+                  <p className="text-lg font-bold text-green-600">
                     ✅ 双方调度完成
                   </p>
-                  <p className="text-sm text-[#8899aa] mt-1">
+                  <p className="text-sm text-[var(--msa-text-muted)] mt-1">
                     玩家1：{p1Hand.length}张手牌 | 玩家2：{p2Hand.length}张手牌
                   </p>
                 </div>

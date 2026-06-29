@@ -1,40 +1,59 @@
 classDiagram
     class BattleState {
-        +PlayerState[] players
-        +int activePlayerIndex
-        +int turnNumber
+        +boolean isSetup
+        +SetupPhase setupPhase
+        +TurnPhase turnPhase
+        +PlayerState[2] players
+        +number activePlayerIndex
+        +number turnNumber
+        +number remainingSummons
+        +boolean baseDeployedThisTurn
+        +Record~string,number~ baseMovesUsed
+        +Zone[] conflictZonesCompleted
+        +string[] conflictAttackedCards
+        +string conflictSubPhase
+        +number conflictMovesUsed
+        +Zone currentAttackZone
+        +AttackTarget pendingAttack
+        +PendingSummon pendingSummon
+        +PendingCounter pendingCounter
+        +PendingTargetSelection pendingTargetSelection
+        +EventListener[] eventListeners
+        +Ability[] registeredAbilities
         +Modifier[] modifiers
         +Record~string,string[]~ attachments
-        +PendingCounter pendingCounter
-        +EventListener[] eventListeners
-        +CardEffect[] registeredAbilities
+        +string[] enteredThisTurn
+        +boolean[2] counterUsedThisTurn
+        +Record~string,number~ conflictAttackCount
+        +Record~string,string[]~ temporaryAbilities
+        +string[] effectUsedThisTurn
+        +string[] activatedEffectsThisTurn
+        +string[] mulliganSelected
+        +string[] log
+        +boolean isGameOver
+        +number winner
     }
 
     class PlayerState {
+        +number id
+        +string name
         +string[] deck
         +string[] rushDeck
         +string[] hand
-        +string[] base
-        +FieldZones field
+        +string[] baseCards
+        +string[] baseCovered
+        +FieldLayout field
         +string[] timeline
         +string[] retreat
         +string[] void
         +boolean isFirstPlayer
     }
 
-    class Modifier {
-        +string id
-        +string targetCardId
-        +ModifierType type
-        +int value
-        +Duration duration
-        +string sourceCardId
-    }
-
-    class Attachment {
-        +string hostCardId
-        +string[] attachmentCardIds
-        +int ownerPlayerIdx
+    class FieldLayout {
+        +string[] vanguard
+        +string[] flankLeft
+        +string[] flankRight
+        +string[] rear
     }
 
     class CardEffect {
@@ -42,82 +61,72 @@ classDiagram
         +string cardNo
         +EffectCategory category
         +TriggerTiming trigger
+        +function triggerCondition
         +ActiveSource activeSource
+        +boolean faceDownAfterActive
         +CounterTarget counterTarget
-        +string label
+        +function cost
+        +function condition
+        +function execute
+        +function staticModifier
+        +TargetSpec targetSpec
         +boolean once
+        +string label
+        +boolean isCounterActive
+        +boolean isUnique
+        +string[] keywords
     }
 
     class EffectContext {
         +BattleState state
         +string cardId
-        +int playerIdx
+        +number playerIdx
         +CardDatabase db
-        +Targets targets
+        +TargetInfo targets
         +TriggerInfo triggerInfo
     }
 
-    class EffectRegistry {
-        -Map~string,CardEffect[]~ registry
-        +getEffectsByCardNo(cardNo) CardEffect[]
-        +register(effect) void
-        +triggerEffectsByTiming(timing, ctx) BattleState
+    class GameAction {
+        <<union>>
     }
 
-    class EffectHelpers {
-        +drawCards(ctx, count) BattleState
-        +retreatCard(ctx, cardId, playerIdx) BattleState
-        +attachCard(ctx, attachmentId, hostId) BattleState
-        +detachCard(ctx, attachmentId, hostId) BattleState
-        +trimCard(ctx, cardId, playerIdx) BattleState
-        +addModifier(ctx, targetId, type, value, duration) BattleState
-        +removeModifier(ctx, modifierId) BattleState
-        +moveToBase(ctx, cardId, playerIdx, faceDown) BattleState
-        +summonFromRetreat(ctx, cardId, playerIdx, zone) BattleState
+    class Card {
+        +string id
+        +string card_no
+        +string name
+        +number card_type
+        +number cost
+        +number attribute
+        +string power
+        +string feature
+        +string effect
+        +number r
     }
 
-    class ConditionPredicates {
-        +hasFeature(card, featureId) boolean
-        +fieldCount(state, playerIdx) int
-        +opponentFieldCount(state, playerIdx) int
-        +retreatCount(state, playerIdx, filter) int
-        +baseFaceDownCount(state, playerIdx) int
-        +getCardLevel(db, cardId) int
-        +hasAttachment(state, cardId) boolean
+    class CardDatabase {
+        +number total_cards
+        +number total_variants
+        +Card[] cards
+        +Record card_groups
     }
 
-    class CardEngine {
-        +createGameReducer(db) Reducer
-        +handleSummonToField(state, idx, handIdx, zone) BattleState
-        +handleConfirmAttack(state, tgtIdx, tgtZone, tgtCardId) BattleState
-        +handleEndTurn(state) BattleState
-        +handleDeployToBase(state, idx, handIdx) BattleState
+    class Modifier {
+        +string id
+        +string targetCardId
+        +string type
+        +number value
+        +string duration
+        +string sourceCardId
     }
 
-    class EventSystem {
-        +registerEvent(state, listener) BattleState
-        +unregisterEvent(state, id) BattleState
-        +triggerEvent(state, eventType, context) BattleState
-    }
-
-    class CardUtils {
-        +getCardPower(card) int
-        +getEffectivePower(state, cardId, db) int
-        +getEffectiveR(state, cardId, db) int
-        +getAttachments(state, cardId) string[]
-        +cleanupTurnModifiers(state) BattleState
-    }
-
-    BattleState --> PlayerState
-    BattleState --> Modifier : modifiers[]
-    BattleState --> Attachment : attachments
-    BattleState --> CardEffect : registeredAbilities
-    CardEffect --> EffectContext : executed with
-    EffectRegistry --> CardEffect : manages
-    CardEngine ..> EffectHelpers : uses
-    CardEngine ..> ConditionPredicates : uses
-    CardEngine ..> EventSystem : triggers via
-    EffectHelpers ..> EffectContext : receives
-    ConditionPredicates ..> BattleState : reads
-    CardUtils ..> BattleState : reads modifiers
-    CardEngine ..> CardUtils : uses for power calc
+    BattleState "1" *-- "2" PlayerState
+    PlayerState "1" *-- "1" FieldLayout
+    BattleState "1" *-- "0..*" Modifier
+    BattleState --> CardEffect : 引擎通过 EFFECT_REGISTRY 查找
+    CardEffect ..> EffectContext : 接收
+    EffectContext --> BattleState : 包含当前 state
+    EffectContext --> CardDatabase : 包含 db
+    BattleState --> GameAction : 被 Action 修改
+    CardDatabase "1" *-- "0..*" Card
+    BattleState ..> Card : 通过 cardId 引用
+    PlayerState ..> Card : 存储 cardId 列表

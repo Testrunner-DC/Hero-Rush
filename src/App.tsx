@@ -93,7 +93,7 @@ export default function App() {
     const m = new Map<string, Card>();
     if (db) {
       for (const c of db.cards) {
-        if (!m.has(c.card_no)) m.set(c.card_no, c); // cards sorted by rarity desc, first is highest
+        if (!m.has(c.card_no)) m.set(c.card_no, c);
       }
     }
     return m;
@@ -101,7 +101,6 @@ export default function App() {
 
   // Deck operations (use card_no, not id - game logic treats same card_no as same card)
   const addToDeck = useCallback((card: Card, isRush: boolean) => {
-    // Enforce: main deck = type 1 only, rush deck = type 2 only
     if (!isRush && card.card_type !== 1) {
       alert("角色卡只能加入主卡组！");
       return;
@@ -114,7 +113,7 @@ export default function App() {
     const deck = isRush ? rushDeck : mainDeck;
     const setDeck = isRush ? setRushDeck : setMainDeck;
     const existing = deck.find((e) => e.card_no === card.card_no);
-    const maxCount = isRush ? 9 : 3; // rush cards: max 9 total; character: max 3 per card_no
+    const maxCount = isRush ? 9 : 3;
 
     if (existing) {
       if (existing.count >= maxCount) return;
@@ -224,10 +223,10 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#0f1923]">
+      <div className="flex items-center justify-center min-h-screen bg-[#fcfaf7]">
         <div className="text-center">
-          <div className="inline-block w-8 h-8 border-3 border-red-500 border-t-transparent rounded-full animate-spin mb-3" />
-          <p className="text-[#667788]">加载卡牌数据中...</p>
+          <div className="inline-block w-8 h-8 border-3 border-msa-500 border-t-transparent rounded-full animate-spin mb-3" />
+          <p className="text-stone-500">加载卡牌数据中...</p>
         </div>
       </div>
     );
@@ -235,42 +234,46 @@ export default function App() {
 
   if (error || !db) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#0f1923]">
-        <div className="text-center text-red-500">
+      <div className="flex items-center justify-center min-h-screen bg-[#fcfaf7]">
+        <div className="text-center text-red-600">
           <p className="font-medium">加载失败</p>
-          <p className="text-sm mt-1 text-[#8899aa]">{error}</p>
+          <p className="text-sm mt-1 text-stone-500">{error}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-[#0f1923]">
-      {/* ── Header (jinteki-style nav bar) ─────────────────────── */}
-      <header className="sticky top-0 z-50 h-12 bg-[#0a1120] border-b border-[#1e2d42] flex items-center px-4 gap-6 flex-shrink-0">
+    <div className="flex flex-col h-screen overflow-hidden bg-[#fcfaf7]">
+      {/* ── Header (MSA-style glass-morphism nav bar) ──────────── */}
+      <header className="sticky top-0 z-50 h-12 bg-white/80 backdrop-blur-md border-b border-stone-200 flex items-center px-4 gap-4 flex-shrink-0 shadow-sm">
         {/* Logo */}
-        <span className="text-white font-bold text-sm tracking-wider whitespace-nowrap flex items-center gap-1.5">
-          <span className="text-red-500">⚡</span>
-          超英击战
-        </span>
+        <div className="flex items-center gap-1.5 whitespace-nowrap">
+          <div className="w-7 h-7 rounded-md bg-[#b71c1c] flex items-center justify-center flex-shrink-0">
+            <img src="/logo.png" alt="Logo" className="w-5 h-5 object-contain" />
+          </div>
+          <span className="text-stone-800 font-bold text-sm tracking-wide">
+            斗界竞技场
+          </span>
+        </div>
 
         {/* Nav tabs */}
-        <nav className="flex items-center gap-1 h-full overflow-x-auto scrollbar-thin">
+        <nav className="flex items-center gap-0 h-full overflow-x-auto scrollbar-thin">
           {TAB_ORDER.map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`h-full px-4 text-sm transition relative whitespace-nowrap ${
+              className={`h-full px-3 text-sm font-medium transition relative whitespace-nowrap ${
                 tab === t
-                  ? "text-white after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-red-500"
-                  : "text-[#8899aa] hover:text-[#c9cdd4]"
+                  ? "text-msa-700 after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:bg-msa-500 after:rounded-full"
+                  : "text-stone-500 hover:text-stone-700"
               }`}
             >
               {TAB_LABELS[t]}
               {t === "deck" && deckStats.mainCount > 0 && (
                 <span
                   className={`ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full ${
-                    deckStats.allValid ? "bg-green-900/50 text-green-400" : "bg-amber-900/50 text-amber-400"
+                    deckStats.allValid ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
                   }`}
                 >
                   {deckStats.mainCount}/50
@@ -281,7 +284,7 @@ export default function App() {
         </nav>
 
         {/* Right: card count badge */}
-        <div className="ml-auto text-xs text-[#667788] whitespace-nowrap">
+        <div className="ml-auto text-xs text-stone-400 whitespace-nowrap">
           {db.total_cards} 张卡牌 · {db.total_variants} 个版本
         </div>
       </header>
@@ -293,7 +296,7 @@ export default function App() {
         ) : tab === "chat" ? (
           <ChatPage />
         ) : tab === "search" ? (
-          <CardSearchPage db={db} onAddToDeck={addToDeck} />
+          <CardSearchPage db={db} />
         ) : tab === "plaza" ? (
           <DeckPlazaPage db={db} cardMap={cardMap} onLoadDeck={loadDeckFromPlaza} />
         ) : tab === "deck" ? (

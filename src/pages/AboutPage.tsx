@@ -1,5 +1,5 @@
 /**
- * AboutPage — 关于页面
+ * AboutPage — 关于页面 (MSA Light Theme)
  *
  * 应用信息、版本号、技术栈、致谢、免责声明
  */
@@ -34,22 +34,27 @@ const FEATURES: FeatureItem[] = [
 
 export default function AboutPage() {
   return (
-    <div className="h-full overflow-y-auto scrollbar-thin bg-[#0f1923]">
+    <div className="h-full overflow-y-auto scrollbar-thin bg-[#fcfaf7]">
       <div className="max-w-2xl mx-auto px-6 py-8 space-y-6">
         {/* ── App identity ────────────────────────────────────── */}
         <div className="text-center py-6">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-red-600/20 border border-red-500/30 mb-4">
-            <span className="text-3xl">⚡</span>
-          </div>
-          <h1 className="text-2xl font-black text-white mb-1">
-            超英击战 <span className="text-red-500">TCG</span>
+          <img
+            src="/logo.png"
+            alt="斗界竞技场"
+            className="inline-block w-16 h-16 rounded-2xl shadow-lg border-2 border-red-200 mb-4 object-contain bg-white"
+          />
+          <h1 className="text-2xl font-black text-stone-800 mb-1">
+            斗界竞技场
           </h1>
-          <p className="text-sm text-[#667788]">
+          <p className="text-sm text-stone-500">
+            漫威对战卡牌：超英击战 TCG
+          </p>
+          <p className="text-sm text-stone-400">
             卡牌图鉴 · 智能组卡 · 在线对战
           </p>
-          <div className="inline-flex items-center gap-2 mt-3 px-3 py-1 rounded-full bg-[#131f2e] border border-[#1e2d42]">
+          <div className="inline-flex items-center gap-2 mt-3 px-3 py-1 rounded-full bg-white border border-stone-200">
             <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-            <span className="text-xs text-[#8899aa]">Version 1.0.0</span>
+            <span className="text-xs text-stone-500">Version 1.0.0</span>
           </div>
         </div>
 
@@ -59,10 +64,10 @@ export default function AboutPage() {
             {FEATURES.map((f) => (
               <div
                 key={f.title}
-                className="bg-[#0f1923] rounded-lg border border-[#1e2d42] p-3"
+                className="bg-stone-50 rounded-lg border border-stone-100 p-3"
               >
-                <h4 className="text-sm font-medium text-[#e8eaed] mb-0.5">{f.title}</h4>
-                <p className="text-xs text-[#667788] leading-relaxed">{f.desc}</p>
+                <h4 className="text-sm font-medium text-stone-800 mb-0.5">{f.title}</h4>
+                <p className="text-xs text-stone-400 leading-relaxed">{f.desc}</p>
               </div>
             ))}
           </div>
@@ -74,12 +79,12 @@ export default function AboutPage() {
             {TECH_STACK.map((tech) => (
               <div
                 key={tech.name}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#0f1923] border border-[#1e2d42]"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-stone-50 border border-stone-100"
               >
-                <span className="text-sm font-bold text-red-400 w-6 text-center">{tech.icon}</span>
+                <span className="text-sm font-bold text-red-600 w-6 text-center">{tech.icon}</span>
                 <div>
-                  <p className="text-xs font-medium text-[#c9cdd4]">{tech.name}</p>
-                  <p className="text-[10px] text-[#667788]">{tech.desc}</p>
+                  <p className="text-xs font-medium text-stone-700">{tech.name}</p>
+                  <p className="text-[10px] text-stone-400">{tech.desc}</p>
                 </div>
               </div>
             ))}
@@ -99,7 +104,7 @@ export default function AboutPage() {
 
         {/* ── Disclaimer ──────────────────────────────────────── */}
         <Section title="免责声明" icon="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z">
-          <div className="space-y-2 text-xs text-[#8899aa] leading-relaxed">
+          <div className="space-y-2 text-xs text-stone-500 leading-relaxed">
             <p>
               本应用是一个非商业性质的同好工具，仅供学习交流使用。
             </p>
@@ -116,8 +121,8 @@ export default function AboutPage() {
 
         {/* ── Footer ──────────────────────────────────────────── */}
         <div className="text-center py-4">
-          <p className="text-xs text-[#445566]">
-            Made with ⚡ by 超英击战 TCG · 2025
+          <p className="text-xs text-stone-400">
+            斗界竞技场 · 漫威对战卡牌：超英击战 · 2025
           </p>
         </div>
       </div>
@@ -139,12 +144,12 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="bg-[#131f2e] rounded-xl border border-[#1e2d42] overflow-hidden">
-      <div className="flex items-center gap-2.5 px-4 py-3 border-b border-[#1e2d42]">
-        <svg className="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+    <section className="bg-white rounded-xl border border-stone-200 overflow-hidden shadow-card">
+      <div className="flex items-center gap-2.5 px-4 py-3 border-b border-stone-100">
+        <svg className="w-4 h-4 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
           <path strokeLinecap="round" strokeLinejoin="round" d={icon} />
         </svg>
-        <h2 className="text-sm font-bold text-[#e8eaed]">{title}</h2>
+        <h2 className="text-sm font-bold text-stone-800">{title}</h2>
       </div>
       <div className="p-4">{children}</div>
     </section>
@@ -154,8 +159,8 @@ function Section({
 function RuleRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between py-1">
-      <span className="text-sm text-[#8899aa]">{label}</span>
-      <span className="text-sm text-[#c9cdd4] font-medium">{value}</span>
+      <span className="text-sm text-stone-500">{label}</span>
+      <span className="text-sm text-stone-700 font-medium">{value}</span>
     </div>
   );
 }

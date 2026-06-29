@@ -142,7 +142,7 @@ export default function DeckPlazaPage({ db, cardMap, onLoadDeck }: DeckPlazaPage
   }, [selectedDeck, cardMap, db]);
 
   return (
-    <div className="h-full overflow-y-auto scrollbar-thin p-4 space-y-6 bg-[#0f1923]">
+    <div className="h-full overflow-y-auto scrollbar-thin p-4 space-y-6 bg-[var(--msa-bg)]">
       {/* ── Section: Precon Decks ─────────────────────────────────── */}
       <section>
         <SectionHeader icon="pack" title="官方预组" subtitle="开箱即用的官方预设卡组" />
@@ -151,11 +151,11 @@ export default function DeckPlazaPage({ db, cardMap, onLoadDeck }: DeckPlazaPage
             {[0, 1].map((i) => (
               <div
                 key={i}
-                className="bg-[#1a2535] rounded-xl border border-[#1e2d42] p-4 animate-pulse"
+                className="bg-[var(--msa-surface)] rounded-xl border border-[var(--msa-border)] p-4 animate-pulse"
               >
-                <div className="h-2 bg-[#2a3a50] rounded mb-3" />
-                <div className="h-4 bg-[#2a3a50] rounded w-2/3 mb-2" />
-                <div className="h-3 bg-[#1e2d42] rounded w-1/2" />
+                <div className="h-2 bg-[var(--msa-border-strong)] rounded mb-3" />
+                <div className="h-4 bg-[var(--msa-border-strong)] rounded w-2/3 mb-2" />
+                <div className="h-3 bg-[var(--msa-border)] rounded w-1/2" />
               </div>
             ))}
           </div>
@@ -202,7 +202,7 @@ export default function DeckPlazaPage({ db, cardMap, onLoadDeck }: DeckPlazaPage
       {/* ── Section: Deck Code Import ─────────────────────────────── */}
       <section>
         <SectionHeader icon="link" title="卡组码导入" subtitle="粘贴分享码或链接，导入他人卡组" />
-        <div className="bg-[#1a2535] rounded-xl border border-[#1e2d42] p-4 space-y-3">
+        <div className="bg-[var(--msa-surface)] rounded-xl border border-[var(--msa-border)] p-4 space-y-3">
           <div className="flex gap-2">
             <input
               type="text"
@@ -212,7 +212,7 @@ export default function DeckPlazaPage({ db, cardMap, onLoadDeck }: DeckPlazaPage
                 if (e.key === "Enter") handleImport();
               }}
               placeholder="粘贴卡组码或分享链接（如 https://...#deck=xxx）"
-              className="flex-1 px-3 py-2 text-sm rounded-lg bg-[#0f1923] border border-[#2a3a50] text-[#c9cdd4] placeholder-[#445566] focus:outline-none focus:border-red-500 transition"
+              className="flex-1 px-3 py-2 text-sm rounded-lg bg-[var(--msa-bg)] border border-[var(--msa-border-strong)] text-[var(--msa-text-secondary)] placeholder-[var(--msa-text-placeholder)] focus:outline-none focus:border-red-500 transition"
             />
             <button
               onClick={handleImport}
@@ -221,10 +221,10 @@ export default function DeckPlazaPage({ db, cardMap, onLoadDeck }: DeckPlazaPage
               导入
             </button>
           </div>
-          {importError && <p className="text-sm text-red-400">{importError}</p>}
+          {importError && <p className="text-sm text-red-500">{importError}</p>}
           {importedItem && !selectedDeck && (
             <div className="pt-2">
-              <p className="text-xs text-[#8899aa] mb-2">导入成功！点击下方卡片查看详情：</p>
+              <p className="text-xs text-[var(--msa-text-muted)] mb-2">导入成功！点击下方卡片查看详情：</p>
               <div className="max-w-xs">
                 <DeckCard
                   item={importedItem}
@@ -365,9 +365,9 @@ function SectionHeader({
 
   return (
     <div className="flex items-center gap-2.5 mb-3">
-      <div className="w-8 h-8 rounded-lg bg-red-900/30 flex items-center justify-center">
+      <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
         <svg
-          className="w-4 h-4 text-red-400"
+          className="w-4 h-4 text-[var(--msa-red)]"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -377,8 +377,8 @@ function SectionHeader({
         </svg>
       </div>
       <div>
-        <h2 className="text-sm font-bold text-[#e8eaed] leading-tight">{title}</h2>
-        <p className="text-xs text-[#667788] leading-tight">{subtitle}</p>
+        <h2 className="text-sm font-bold text-[var(--msa-text-primary)] leading-tight">{title}</h2>
+        <p className="text-xs text-[var(--msa-text-muted)] leading-tight">{subtitle}</p>
       </div>
     </div>
   );
@@ -386,7 +386,7 @@ function SectionHeader({
 
 function EmptyState({ message }: { message: string }) {
   return (
-    <div className="text-center py-10 text-[#667788] bg-[#131f2e] rounded-xl border border-dashed border-[#1e2d42]">
+    <div className="text-center py-10 text-[var(--msa-text-muted)] bg-[var(--msa-bg-alt)] rounded-xl border border-dashed border-[var(--msa-border)]">
       <p className="text-sm">{message}</p>
     </div>
   );
@@ -431,9 +431,9 @@ function DeckCard({
     imported: "导入",
   };
   const categoryColor: Record<DeckCategory, string> = {
-    precon: "bg-red-900/40 text-red-400",
-    local: "bg-blue-900/40 text-blue-400",
-    imported: "bg-amber-900/40 text-amber-400",
+    precon: "bg-red-50 text-red-600",
+    local: "bg-blue-50 text-blue-600",
+    imported: "bg-amber-50 text-amber-600",
   };
 
   const typeLabel = cardType === 2 ? "冲击卡组" : "角色卡组";
@@ -441,7 +441,7 @@ function DeckCard({
   return (
     <div
       onClick={onClick}
-      className="group relative cursor-pointer bg-[#1a2535] rounded-xl border border-[#1e2d42] overflow-hidden hover:shadow-lg hover:border-[#2a3a50] transition animate-fadeIn"
+      className="group relative cursor-pointer bg-[var(--msa-surface)] rounded-xl border border-[var(--msa-border)] overflow-hidden hover:shadow-lg hover:border-[var(--msa-border-strong)] transition animate-fadeIn"
     >
       <div
         className="h-1.5"
@@ -449,7 +449,7 @@ function DeckCard({
           background:
             attrColors.length > 0
               ? `linear-gradient(to right, ${attrColors.map((a) => a.color).join(", ")})`
-              : "#2a3a50",
+              : "var(--msa-border-strong)",
         }}
       />
 
@@ -466,7 +466,7 @@ function DeckCard({
                 e.stopPropagation();
                 onDelete();
               }}
-              className="text-[#445566] hover:text-red-400 transition opacity-0 group-hover:opacity-100"
+              className="text-gray-400 hover:text-[var(--msa-red)] transition opacity-0 group-hover:opacity-100"
               title="删除卡组"
             >
               <svg
@@ -486,17 +486,17 @@ function DeckCard({
           )}
         </div>
 
-        <h3 className="text-sm font-bold text-[#e8eaed] group-hover:text-red-400 transition truncate">
+        <h3 className="text-sm font-bold text-[var(--msa-text-primary)] group-hover:text-[var(--msa-red)] transition truncate">
           {deck.name}
         </h3>
 
-        <div className="flex items-center gap-1.5 text-xs text-[#8899aa]">
+        <div className="flex items-center gap-1.5 text-xs text-[var(--msa-text-muted)]">
           <span>{mainCount}张</span>
-          <span className="text-[#445566]">·</span>
+          <span className="text-gray-400">·</span>
           <span>{typeLabel}</span>
           {rushCount > 0 && (
             <>
-              <span className="text-[#445566]">·</span>
+              <span className="text-gray-400">·</span>
               <span>+{rushCount}冲刺</span>
             </>
           )}
@@ -507,7 +507,7 @@ function DeckCard({
             {attrColors.map((a, i) => (
               <span
                 key={i}
-                className="w-3 h-3 rounded-full border border-[#0f1923] shadow-sm"
+                className="w-3 h-3 rounded-full border border-[var(--msa-bg)] shadow-sm"
                 style={{ backgroundColor: a.color }}
                 title={a.name}
               />
@@ -516,7 +516,7 @@ function DeckCard({
         )}
 
         {category === "local" && deck.created_at && (
-          <p className="text-[10px] text-[#667788]">
+          <p className="text-[10px] text-[var(--msa-text-muted)]">
             {new Date(deck.created_at).toLocaleDateString("zh-CN", {
               year: "numeric",
               month: "2-digit",
@@ -530,7 +530,7 @@ function DeckCard({
             e.stopPropagation();
             onLoad();
           }}
-          className="w-full mt-1 px-2 py-1.5 rounded-lg text-xs font-medium bg-[#131f2e] text-[#8899aa] hover:bg-red-900/30 hover:text-red-400 transition border border-[#1e2d42]"
+          className="w-full mt-1 px-2 py-1.5 rounded-lg text-xs font-medium bg-[var(--msa-bg-alt)] text-[var(--msa-text-muted)] hover:bg-red-50 hover:text-[var(--msa-red)] transition border border-[var(--msa-border)]"
         >
           导入到组卡器
         </button>
@@ -564,15 +564,15 @@ function DeckDetailModal({
       onClick={onClose}
     >
       <div
-        className="bg-[#131f2e] rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col border border-[#1e2d42]"
+        className="bg-[var(--msa-bg-alt)] rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col border border-[var(--msa-border)]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#1e2d42]">
-          <h2 className="text-base font-bold text-[#e8eaed] truncate">{deck.name}</h2>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--msa-border)]">
+          <h2 className="text-base font-bold text-[var(--msa-text-primary)] truncate">{deck.name}</h2>
           <button
             onClick={onClose}
-            className="flex-shrink-0 text-[#667788] hover:text-[#c9cdd4] transition"
+            className="flex-shrink-0 text-[var(--msa-text-muted)] hover:text-[var(--msa-text-secondary)] transition"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -584,20 +584,20 @@ function DeckDetailModal({
         <div className="flex-1 overflow-y-auto scrollbar-thin px-5 py-4 space-y-5">
           {/* Quick stats */}
           <div className="flex flex-wrap gap-2">
-            <StatPill label="主卡组" value={`${stats.mainCount}张`} color="bg-[#1a2535] text-[#c9cdd4] border-[#2a3a50]" />
+            <StatPill label="主卡组" value={`${stats.mainCount}张`} color="bg-[var(--msa-surface)] text-[var(--msa-text-secondary)] border-[var(--msa-border-strong)]" />
             {stats.rushCount > 0 && (
-              <StatPill label="冲刺卡" value={`${stats.rushCount}张`} color="bg-amber-900/30 text-amber-400 border-amber-800/40" />
+              <StatPill label="冲刺卡" value={`${stats.rushCount}张`} color="bg-amber-50 text-amber-600 border-amber-200" />
             )}
-            <StatPill label="总卡数" value={`${stats.totalCount}张`} color="bg-blue-900/30 text-blue-400 border-blue-800/40" />
+            <StatPill label="总卡数" value={`${stats.totalCount}张`} color="bg-blue-50 text-blue-600 border-blue-200" />
             {stats.totalPower > 0 && (
-              <StatPill label="总战力" value={stats.totalPower.toLocaleString()} color="bg-red-900/30 text-red-400 border-red-800/40" />
+              <StatPill label="总战力" value={stats.totalPower.toLocaleString()} color="bg-red-50 text-red-600 border-red-200" />
             )}
           </div>
 
           {/* Attribute distribution */}
           {stats.attrDistribution.length > 0 && (
             <div>
-              <h3 className="text-xs font-bold text-[#667788] uppercase tracking-wide mb-2">属性分布</h3>
+              <h3 className="text-xs font-bold text-[var(--msa-text-muted)] uppercase tracking-wide mb-2">属性分布</h3>
               <div className="flex flex-wrap gap-2">
                 {stats.attrDistribution.map((attr) => (
                   <span
@@ -611,7 +611,7 @@ function DeckDetailModal({
                   >
                     <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: attr.color }} />
                     {attr.name}
-                    <span className="text-[#667788]">×{attr.count}</span>
+                    <span className="text-[var(--msa-text-muted)]">×{attr.count}</span>
                   </span>
                 ))}
               </div>
@@ -621,18 +621,18 @@ function DeckDetailModal({
           {/* Lv distribution bar chart */}
           {stats.lvDistribution.length > 0 && (
             <div>
-              <h3 className="text-xs font-bold text-[#667788] uppercase tracking-wide mb-2">Lv 分布</h3>
+              <h3 className="text-xs font-bold text-[var(--msa-text-muted)] uppercase tracking-wide mb-2">Lv 分布</h3>
               <div className="space-y-1.5">
                 {stats.lvDistribution.map((d) => (
                   <div key={d.lv} className="flex items-center gap-2">
-                    <span className="text-xs text-[#8899aa] w-10 flex-shrink-0">Lv{d.lv}</span>
-                    <div className="flex-1 bg-[#0a1120] rounded-full h-4 overflow-hidden border border-[#1e2d42]">
+                    <span className="text-xs text-[var(--msa-text-muted)] w-10 flex-shrink-0">Lv{d.lv}</span>
+                    <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden border border-[var(--msa-border)]">
                       <div
                         className="h-full bg-gradient-to-r from-red-600 to-red-500 rounded-full transition-all duration-300"
                         style={{ width: `${(d.count / maxLvCount) * 100}%` }}
                       />
                     </div>
-                    <span className="text-xs text-[#c9cdd4] w-6 text-right flex-shrink-0">{d.count}</span>
+                    <span className="text-xs text-[var(--msa-text-secondary)] w-6 text-right flex-shrink-0">{d.count}</span>
                   </div>
                 ))}
               </div>
@@ -642,7 +642,7 @@ function DeckDetailModal({
           {/* Main deck card list */}
           {stats.sortedMainCards.length > 0 && (
             <div>
-              <h3 className="text-xs font-bold text-[#667788] uppercase tracking-wide mb-2">
+              <h3 className="text-xs font-bold text-[var(--msa-text-muted)] uppercase tracking-wide mb-2">
                 主卡组 · {stats.mainCount}张
               </h3>
               <div className="space-y-1">
@@ -656,7 +656,7 @@ function DeckDetailModal({
           {/* Rush deck card list */}
           {stats.sortedRushCards.length > 0 && (
             <div>
-              <h3 className="text-xs font-bold text-[#667788] uppercase tracking-wide mb-2">
+              <h3 className="text-xs font-bold text-[var(--msa-text-muted)] uppercase tracking-wide mb-2">
                 冲刺卡组 · {stats.rushCount}张
               </h3>
               <div className="space-y-1">
@@ -669,7 +669,7 @@ function DeckDetailModal({
         </div>
 
         {/* Modal footer */}
-        <div className="flex items-center gap-2 px-5 py-4 border-t border-[#1e2d42] bg-[#0f1923]">
+        <div className="flex items-center gap-2 px-5 py-4 border-t border-[var(--msa-border)] bg-[var(--msa-bg)]">
           <button
             onClick={onLoad}
             className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium bg-red-600 text-white hover:bg-red-500 transition"
@@ -679,14 +679,14 @@ function DeckDetailModal({
           {onDelete && (
             <button
               onClick={onDelete}
-              className="px-4 py-2.5 rounded-lg text-sm font-medium text-red-400 hover:bg-red-900/30 transition"
+              className="px-4 py-2.5 rounded-lg text-sm font-medium hover:text-red-500 hover:bg-red-50 transition"
             >
               删除
             </button>
           )}
           <button
             onClick={onClose}
-            className="px-4 py-2.5 rounded-lg text-sm font-medium text-[#8899aa] hover:bg-[#1a2535] transition"
+            className="px-4 py-2.5 rounded-lg text-sm font-medium text-[var(--msa-text-muted)] hover:bg-[var(--msa-surface)] transition"
           >
             关闭
           </button>
@@ -698,8 +698,8 @@ function DeckDetailModal({
 
 function CardListRow({ card, count }: { card: Card; count: number }) {
   return (
-    <div className="flex items-center gap-2.5 bg-[#0f1923] rounded-lg px-3 py-1.5 hover:bg-[#1a2535] transition border border-[#1e2d42]">
-      <div className="flex-shrink-0 w-7 h-10 rounded overflow-hidden bg-[#0a1120]">
+    <div className="flex items-center gap-2.5 bg-[var(--msa-bg)] rounded-lg px-3 py-1.5 hover:bg-[var(--msa-surface)] transition border border-[var(--msa-border)]">
+      <div className="flex-shrink-0 w-7 h-10 rounded overflow-hidden bg-gray-100">
         <img
           src={card.image_url}
           alt=""
@@ -711,8 +711,8 @@ function CardListRow({ card, count }: { card: Card; count: number }) {
         />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-[#e8eaed] truncate">{card.name}</p>
-        <div className="flex items-center gap-1.5 text-xs text-[#667788]">
+        <p className="text-sm font-medium text-[var(--msa-text-primary)] truncate">{card.name}</p>
+        <div className="flex items-center gap-1.5 text-xs text-[var(--msa-text-muted)]">
           <span>{card.card_no}</span>
           <span>·</span>
           <span>Lv{card.cost}</span>
@@ -729,7 +729,7 @@ function CardListRow({ card, count }: { card: Card; count: number }) {
           />
         </div>
       </div>
-      <div className="flex-shrink-0 text-sm font-bold text-[#c9cdd4]">×{count}</div>
+      <div className="flex-shrink-0 text-sm font-bold text-[var(--msa-text-secondary)]">×{count}</div>
     </div>
   );
 }

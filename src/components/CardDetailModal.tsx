@@ -5,10 +5,9 @@ interface Props {
   card: Card;
   db: CardDatabase;
   onClose: () => void;
-  onAddToDeck: (card: Card, isRush: boolean) => void;
 }
 
-export default function CardDetailModal({ card, db, onClose, onAddToDeck }: Props) {
+export default function CardDetailModal({ card, db, onClose }: Props) {
   const variantIds = db.card_groups[card.card_no] || [card.id];
   const variants = variantIds
     .map((id) => db.cards.find((c) => c.id === id))
@@ -99,7 +98,7 @@ export default function CardDetailModal({ card, db, onClose, onAddToDeck }: Prop
                   </span>
                   {currentCard.pp_value != null && (
                     <span className="px-2.5 py-1 rounded-lg text-xs font-medium bg-purple-50 text-purple-700">
-                      R {currentCard.pp_value}
+                      R {currentCard.r ?? 1}
                     </span>
                   )}
                   {currentCard.power && (
@@ -145,26 +144,6 @@ export default function CardDetailModal({ card, db, onClose, onAddToDeck }: Prop
                   {currentCard.effect}
                 </div>
               </div>
-            )}
-
-            {/* Add to deck buttons - type specific */}
-            {currentCard.card_type === 1 && (
-              /* 角色卡 -> 只能加入主卡组 */
-              <button
-                onClick={() => onAddToDeck(currentCard, false)}
-                className="w-full px-3 py-2.5 rounded-lg text-sm font-medium bg-red-500 text-white hover:bg-red-600 transition shadow-sm"
-              >
-                + 加入主卡组（角色卡）
-              </button>
-            )}
-            {currentCard.card_type === 2 && (
-              /* 冲击卡 -> 只能加入冲击卡组 */
-              <button
-                onClick={() => onAddToDeck(currentCard, true)}
-                className="w-full px-3 py-2.5 rounded-lg text-sm font-medium bg-amber-500 text-white hover:bg-amber-600 transition shadow-sm"
-              >
-                + 加入冲击卡组
-              </button>
             )}
           </div>
         </div>

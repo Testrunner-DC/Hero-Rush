@@ -1,5 +1,5 @@
 /**
- * SettingsPage — 设置页面
+ * SettingsPage — 设置页面 (MSA Light Theme)
  *
  * 应用设置：卡牌显示、组卡默认值、数据管理、关于
  * 设置存储在 localStorage，页面刷新后保留
@@ -12,17 +12,11 @@ import { useState, useCallback, useEffect } from "react";
 // ─────────────────────────────────────────────────────────────────────────
 
 interface AppSettings {
-  /** Show card images (false = text only, saves bandwidth) */
   showCardImages: boolean;
-  /** Default sort in card search */
   defaultSort: "card_no" | "cost" | "power" | "name";
-  /** Cards per row in grid */
   cardsPerRow: 4 | 5 | 6 | 7;
-  /** Auto-save deck on change */
   autoSaveDeck: boolean;
-  /** Confirm before clearing deck */
   confirmClearDeck: boolean;
-  /** Compact mode for deck builder */
   compactDeckBuilder: boolean;
 }
 
@@ -100,16 +94,16 @@ export default function SettingsPage() {
   }, []);
 
   return (
-    <div className="h-full overflow-y-auto scrollbar-thin bg-[#0f1923]">
+    <div className="h-full overflow-y-auto scrollbar-thin bg-[#fcfaf7]">
       <div className="max-w-2xl mx-auto px-6 py-8 space-y-6">
         {/* ── Page header ─────────────────────────────────────── */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-[#e8eaed]">设置</h1>
-            <p className="text-sm text-[#667788] mt-0.5">自定义你的应用体验</p>
+            <h1 className="text-xl font-bold text-stone-800">设置</h1>
+            <p className="text-sm text-stone-400 mt-0.5">自定义你的应用体验</p>
           </div>
           {savedFlash && (
-            <span className="text-xs text-green-400 animate-fadeIn flex items-center gap-1">
+            <span className="text-xs text-green-600 animate-fadeIn flex items-center gap-1">
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
@@ -190,16 +184,16 @@ export default function SettingsPage() {
               value={getStorageSize()}
             />
           </div>
-          <div className="pt-3 border-t border-[#1e2d42] space-y-2">
+          <div className="pt-3 border-t border-stone-100 space-y-2">
             <button
               onClick={handleReset}
-              className="w-full py-2 text-sm rounded-lg bg-[#131f2e] text-[#8899aa] hover:text-white border border-[#2a3a50] transition"
+              className="w-full py-2 text-sm rounded-lg bg-stone-50 text-stone-500 hover:text-stone-700 border border-stone-200 transition"
             >
               恢复默认设置
             </button>
             <button
               onClick={handleClearData}
-              className="w-full py-2 text-sm rounded-lg bg-red-900/20 text-red-400 hover:bg-red-900/30 border border-red-800/40 transition"
+              className="w-full py-2 text-sm rounded-lg bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 transition"
             >
               清除所有本地数据
             </button>
@@ -272,12 +266,12 @@ function SettingsSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="bg-[#131f2e] rounded-xl border border-[#1e2d42] overflow-hidden">
-      <div className="flex items-center gap-2.5 px-4 py-3 border-b border-[#1e2d42]">
-        <svg className="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+    <section className="bg-white rounded-xl border border-stone-200 overflow-hidden shadow-card">
+      <div className="flex items-center gap-2.5 px-4 py-3 border-b border-stone-100">
+        <svg className="w-4 h-4 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
           <path strokeLinecap="round" strokeLinejoin="round" d={icon} />
         </svg>
-        <h2 className="text-sm font-bold text-[#e8eaed]">{title}</h2>
+        <h2 className="text-sm font-bold text-stone-800">{title}</h2>
       </div>
       <div className="p-4 space-y-3">{children}</div>
     </section>
@@ -298,17 +292,17 @@ function ToggleRow({
   return (
     <div className="flex items-center justify-between gap-4">
       <div className="min-w-0">
-        <p className="text-sm text-[#c9cdd4]">{label}</p>
-        <p className="text-xs text-[#667788] mt-0.5">{desc}</p>
+        <p className="text-sm text-stone-700">{label}</p>
+        <p className="text-xs text-stone-400 mt-0.5">{desc}</p>
       </div>
       <button
         onClick={() => onChange(!checked)}
         className={`flex-shrink-0 relative w-11 h-6 rounded-full transition ${
-          checked ? "bg-red-600" : "bg-[#2a3a50]"
+          checked ? "bg-red-500" : "bg-stone-300"
         }`}
       >
         <span
-          className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
+          className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
             checked ? "translate-x-5" : "translate-x-0"
           }`}
         />
@@ -333,13 +327,13 @@ function SelectRow({
   return (
     <div className="flex items-center justify-between gap-4">
       <div className="min-w-0">
-        <p className="text-sm text-[#c9cdd4]">{label}</p>
-        <p className="text-xs text-[#667788] mt-0.5">{desc}</p>
+        <p className="text-sm text-stone-700">{label}</p>
+        <p className="text-xs text-stone-400 mt-0.5">{desc}</p>
       </div>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="flex-shrink-0 px-3 py-1.5 text-sm rounded-lg bg-[#0f1923] border border-[#2a3a50] text-[#c9cdd4] focus:outline-none focus:border-red-500 transition cursor-pointer"
+        className="flex-shrink-0 px-3 py-1.5 text-sm rounded-lg bg-white border border-stone-200 text-stone-700 focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 transition cursor-pointer"
       >
         {options.map((opt) => (
           <option key={opt.value} value={opt.value}>
@@ -354,8 +348,8 @@ function SelectRow({
 function DataRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-sm text-[#8899aa]">{label}</span>
-      <span className="text-sm text-[#c9cdd4] font-medium">{value}</span>
+      <span className="text-sm text-stone-500">{label}</span>
+      <span className="text-sm text-stone-700 font-medium">{value}</span>
     </div>
   );
 }
