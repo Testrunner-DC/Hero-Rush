@@ -137,7 +137,7 @@ export function retreatCount(
  * @returns 基地卡数
  */
 export function baseFaceDownCount(state: BattleState, playerIdx: number): number {
-  return state.players[playerIdx].base.length;
+  return state.players[playerIdx].baseCovered.length;
 }
 
 // ============================================================

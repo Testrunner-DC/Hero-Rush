@@ -131,12 +131,12 @@ const sd02_002_ally: CardEffect = {
 
     // 将战败的机械角色从撤退区移至基地
     const p = state.players[ctx.playerIdx];
-    if (p.retreat.includes(defeatedCardId) && p.base.length < 6) {
+    if (p.retreat.includes(defeatedCardId) && (p.baseCards.length + p.baseCovered.length) < 6) {
       const np = [...state.players] as typeof state.players;
       np[ctx.playerIdx] = {
         ...p,
         retreat: p.retreat.filter((id) => id !== defeatedCardId),
-        base: [...p.base, defeatedCardId],
+        baseCovered: [...p.baseCovered, defeatedCardId],
       };
       state = { ...state, players: np };
     }
@@ -469,7 +469,7 @@ const sd02_010: CardEffect = {
       return card && card.cost === 1 && C.hasFeature(card, 3);
     });
 
-    if (target && p.base.length < 6) {
+    if (target && (p.baseCards.length + p.baseCovered.length) < 6) {
       state = H.moveToBase(state, target, ctx.playerIdx, true);
     }
 
@@ -499,7 +499,7 @@ const sd02_011: CardEffect = {
   execute: (ctx: EffectContext) => {
     let state = ctx.state;
     const p = state.players[ctx.playerIdx];
-    if (p.base.length === 0) return state;
+    if (p.baseCovered.length === 0) return state;
 
     const defeatedCardId = ctx.triggerInfo?.sourceCardId;
     if (!defeatedCardId) return state;
@@ -507,7 +507,7 @@ const sd02_011: CardEffect = {
 
     // 展示基地第一张盖卡
     // TODO: 完整实现需要玩家选择展示哪张基地卡
-    const baseCardId = p.base[0];
+    const baseCardId = p.baseCovered[0];
     const baseCard = ctx.db.cards.find((c) => c.id === baseCardId);
     const baseLv = baseCard?.cost ?? 0;
 
@@ -531,7 +531,7 @@ const sd02_011: CardEffect = {
         const np = [...state.players] as typeof state.players;
         np[ctx.playerIdx] = {
           ...p,
-          base: p.base.filter((id) => id !== baseCardId),
+          baseCovered: p.baseCovered.filter((id) => id !== baseCardId),
           field: { ...p.field, [targetZone]: [...p.field[targetZone], baseCardId] },
         };
         state = { ...state, players: np };
@@ -593,7 +593,7 @@ const sd02_015: CardEffect = {
       return card && card.cost === 1 && C.hasFeature(card, 3);
     });
 
-    if (target && p.base.length < 6) {
+    if (target && (p.baseCards.length + p.baseCovered.length) < 6) {
       state = H.moveToBase(state, target, ctx.playerIdx, true);
     }
 

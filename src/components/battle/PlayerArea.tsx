@@ -51,10 +51,15 @@ export default function PlayerArea({
 
   // 当不再满足移动条件时重置基站移动菜单
   useEffect(() => {
-    if ((!canActInAction && !canMoveInConflict) || handSelect != null) {
+    if (
+      (!canActInAction && !canMoveInConflict) ||
+      handSelect != null ||
+      actionMode.type === "none" ||
+      actionMode.type === "moveMenu"  // 场上角色移动菜单打开时关闭基地移动菜单
+    ) {
       setBaseMoveMenu(null);
     }
-  }, [canActInAction, canMoveInConflict, handSelect]);
+  }, [canActInAction, canMoveInConflict, handSelect, actionMode]);
 
   // ============================================================
   // 渲染卡牌图片（公共方法）
@@ -312,7 +317,7 @@ export default function PlayerArea({
               → {ZONE_LABELS[z]}
             </button>
           ))}
-          {onMoveCard && player.base.length < 6 && (
+          {onMoveCard && (player.baseCards.length + player.baseCovered.length) < 6 && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -380,26 +385,30 @@ export default function PlayerArea({
   // ============================================================
 
   const renderBaseArea = () => {
-    const showDeployButton = handSelect != null && !isRetreatSelectMode && player.base.length < 6;
+    const showDeployButton = handSelect != null && !isRetreatSelectMode && (player.baseCards.length + player.baseCovered.length) < 6;
 
     return (
       <div className="shrink-0 px-2 py-1 bg-black/30 border-y border-[#1e2d42]">
         <div className="flex items-center gap-1.5">
           <span className="text-[11px] text-white/25 font-bold w-8 shrink-0">基地</span>
-          <div className="flex gap-1 items-center min-h-[114px] flex-1 flex-wrap">
-            {player.base.length === 0 && !showDeployButton ? (
+          <div
+            className="flex gap-1 items-center min-h-[114px] flex-1 flex-wrap"
+            onClick={() => {
+              if (baseMoveMenu) setBaseMoveMenu(null);
+            }}
+          >
+            {player.baseCards.length === 0 && player.baseCovered.length === 0 && !showDeployButton ? (
               <span className="text-xs text-white/10">无 (上限6)</span>
             ) : (
               <>
-                {player.base.map((baseCardId, i) => {
+                {/* ===== 号召至基地的角色（公开信息，双方可见） ===== */}
+                {player.baseCards.map((baseCardId) => {
                   const isBaseRetreatSelected = pendingSummon?.selectedRetreatIds.includes(baseCardId) ?? false;
                   const isBaseRetreatSelectable = isRetreatSelectMode && !isBaseRetreatSelected;
                   const baseCard = getCard(baseCardId);
-                  // Bug 2 修正：当前玩家自己的基地正面朝上显示，对手的基地显示卡背
-                  const showFaceUp = !isEnemy;
                   return (
                     <div
-                      key={i}
+                      key={baseCardId}
                       className={`relative w-[4.5rem] rounded shrink-0 shadow-md border flex items-center justify-center transition overflow-hidden ${
                         isBaseRetreatSelected
                           ? "ring-2 ring-red-500 opacity-40 border-red-500/50"
@@ -407,30 +416,26 @@ export default function PlayerArea({
                           ? "cursor-pointer hover:ring-2 hover:ring-red-400 hover:border-red-400/50 border-[#2a3a50]"
                           : baseMoveMenu === baseCardId
                           ? "ring-2 ring-amber-400 border-amber-400 scale-105 z-10"
-                          : showFaceUp
-                          ? "border-[#3a5a7a]/60 border-dashed bg-blue-950/20 cursor-pointer hover:shadow-lg hover:-translate-y-0.5"
-                          : "border-[#1e2d42]"
+                          : "border-[#3a5a7a]/60 border-dashed bg-blue-950/20 cursor-pointer hover:shadow-lg hover:-translate-y-0.5"
                       }`}
                       style={{ aspectRatio: "746 / 1041", maxHeight: "110px" }}
-                      title={showFaceUp
-                        ? `[基地] ${baseCard?.name || baseCardId} (Lv${baseCard?.cost ?? "?"} 战力${baseCard?.power ?? "?"})`
-                        : isRetreatSelectMode ? "点击选择撤退" : `盖放的基地卡 #${i + 1}`}
+                      title={`[号召] ${baseCard?.name || baseCardId} (Lv${baseCard?.cost ?? "?"} 战力${baseCard?.power ?? "?"})`}
                       onClick={(e) => {
                         if (isBaseRetreatSelectable) {
                           e.stopPropagation();
                           onSelectRetreat(baseCardId, "base");
-                        } else if ((canActInAction || canMoveInConflict) && !handSelect && showFaceUp) {
+                        } else if ((canActInAction || canMoveInConflict) && !handSelect) {
                           e.stopPropagation();
                           setBaseMoveMenu(baseMoveMenu === baseCardId ? null : baseCardId);
-                        } else if (showFaceUp && baseCard) {
+                        } else if (baseCard) {
                           e.stopPropagation();
                           onCardHover(baseCard);
                         }
                       }}
-                      onMouseEnter={() => showFaceUp && baseCard && onCardHover(baseCard)}
-                      onMouseLeave={() => showFaceUp && onCardHover(null)}
+                      onMouseEnter={() => baseCard && onCardHover(baseCard)}
+                      onMouseLeave={() => onCardHover(null)}
                     >
-                      {showFaceUp && baseCard ? (
+                      {baseCard ? (
                         <>
                           <img
                             src={`/cards/${baseCard.id}.png`}
@@ -443,8 +448,72 @@ export default function PlayerArea({
                           <span className="absolute bottom-0 left-0 right-0 bg-blue-950/70 text-blue-200 text-[10px] text-center leading-tight py-0.5">
                             Lv{baseCard.cost ?? "?"} {baseCard.power ?? "?"}
                           </span>
-                          <span className="absolute top-0.5 left-0.5 bg-blue-900/80 text-blue-300 text-[8px] px-1 py-0.5 rounded-sm font-medium leading-none">
-                            基地
+                          <span className="absolute top-0.5 left-0.5 bg-green-900/80 text-green-300 text-[8px] px-1 py-0.5 rounded-sm font-medium leading-none">
+                            号召
+                          </span>
+                        </>
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-br from-stone-200 to-stone-300" />
+                      )}
+                      {isBaseRetreatSelected && (
+                        <span className="absolute top-0.5 right-0.5 text-[10px] text-red-400">退</span>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* ===== 盖放部署的卡（隐藏信息：仅自己可见，对手不可见） ===== */}
+                {player.baseCovered.map((baseCardId) => {
+                  const isBaseRetreatSelected = pendingSummon?.selectedRetreatIds.includes(baseCardId) ?? false;
+                  const isBaseRetreatSelectable = isRetreatSelectMode && !isBaseRetreatSelected;
+                  const baseCard = getCard(baseCardId);
+                  const showFaceDown = !isEnemy;
+                  return (
+                    <div
+                      key={baseCardId}
+                      className={`relative w-[4.5rem] rounded shrink-0 shadow-md border flex items-center justify-center transition overflow-hidden ${
+                        isBaseRetreatSelected
+                          ? "ring-2 ring-red-500 opacity-40 border-red-500/50"
+                          : isBaseRetreatSelectable
+                          ? "cursor-pointer hover:ring-2 hover:ring-red-400 hover:border-red-400/50 border-[#2a3a50]"
+                          : baseMoveMenu === baseCardId
+                          ? "ring-2 ring-amber-400 border-amber-400 scale-105 z-10"
+                          : showFaceDown
+                          ? "border-[#1e2d42] cursor-pointer hover:shadow-lg hover:-translate-y-0.5"
+                          : "border-[#1e2d42]"
+                      }`}
+                      style={{ aspectRatio: "746 / 1041", maxHeight: "110px" }}
+                      title={showFaceDown
+                        ? `[部署] ${baseCard?.name || baseCardId} (Lv${baseCard?.cost ?? "?"} 战力${baseCard?.power ?? "?"})`
+                        : "盖放的基地卡"}
+                      onClick={(e) => {
+                        if (isBaseRetreatSelectable) {
+                          e.stopPropagation();
+                          onSelectRetreat(baseCardId, "base");
+                        } else if ((canActInAction || canMoveInConflict) && !handSelect && showFaceDown) {
+                          e.stopPropagation();
+                          setBaseMoveMenu(baseMoveMenu === baseCardId ? null : baseCardId);
+                        }
+                      }}
+                      onMouseEnter={() => showFaceDown && baseCard && onCardHover(baseCard)}
+                      onMouseLeave={() => showFaceDown && onCardHover(null)}
+                    >
+                      {showFaceDown ? (
+                        <>
+                          {baseCard ? (
+                            <img
+                              src={`/cards/${baseCard.id}.png`}
+                              alt={baseCard.name}
+                              className="w-full h-full object-cover opacity-60"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = "none";
+                              }}
+                            />
+                          ) : (
+                            <div className="w-full h-full bg-gradient-to-br from-stone-600 to-stone-700" />
+                          )}
+                          <span className="absolute top-0.5 left-0.5 bg-stone-800/90 text-stone-300 text-[8px] px-1 py-0.5 rounded-sm font-medium leading-none">
+                            部署
                           </span>
                         </>
                       ) : (
@@ -518,7 +587,7 @@ export default function PlayerArea({
                 )}
               </>
             )}
-            <span className="text-[11px] text-white/15 tabular-nums ml-auto">{player.base.length}/6</span>
+            <span className="text-[11px] text-white/15 tabular-nums ml-auto">{(player.baseCards.length + player.baseCovered.length)}/6</span>
           </div>
         </div>
       </div>

@@ -36,8 +36,10 @@ export interface PlayerState {
   rushDeck: string[];
   /** 手牌 */
   hand: string[];
-  /** 基地（盖放的卡牌 id 列表） */
-  base: string[];
+  /** 基地 — 正面向上的角色卡（通过号召放置到基地） */
+  baseCards: string[];
+  /** 基地 — 背面向上盖放的盖卡（通过基地部署放置） */
+  baseCovered: string[];
   /** 战区 — 先锋区 / 侧翼左区 / 侧翼右区 / 后卫区 */
   field: {
     vanguard: string[];   // 先锋区（中上）

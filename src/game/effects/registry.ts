@@ -112,7 +112,8 @@ export function findCardOwner(state: BattleState, cardId: string): number {
     for (const z of ZONE_LIST) {
       if (p.field[z].includes(cardId)) return i;
     }
-    if (p.base.includes(cardId)) return i;
+    if (p.baseCards.includes(cardId)) return i;
+    if (p.baseCovered.includes(cardId)) return i;
     if (p.hand.includes(cardId)) return i;
     // 结附卡也可能在 attachments 中
     for (const attachIds of Object.values(state.attachments)) {

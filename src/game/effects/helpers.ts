@@ -88,7 +88,8 @@ export function retreatCard(
   let npP: PlayerState = { ...p };
   let newField = { ...npP.field };
   for (const z of ZONE_LIST) newField[z] = [...npP.field[z]];
-  let newBase = [...npP.base];
+  let newBaseCards = [...npP.baseCards];
+  let newBaseCovered = [...npP.baseCovered];
   let newRetreat = [...npP.retreat];
   const card = db.cards.find((c) => c.id === cardId);
   let found = false;
@@ -102,9 +103,13 @@ export function retreatCard(
     }
   }
 
-  // 从基地移除
-  if (!found && newBase.includes(cardId)) {
-    newBase = newBase.filter((id) => id !== cardId);
+  // 从基地移除（检查正面和背面）
+  if (!found && newBaseCards.includes(cardId)) {
+    newBaseCards = newBaseCards.filter((id) => id !== cardId);
+    found = true;
+  }
+  if (!found && newBaseCovered.includes(cardId)) {
+    newBaseCovered = newBaseCovered.filter((id) => id !== cardId);
     found = true;
   }
 
@@ -118,7 +123,7 @@ export function retreatCard(
     newRetreat.push(attachId);
   }
 
-  npP = { ...npP, field: newField, base: newBase, retreat: newRetreat };
+  npP = { ...npP, field: newField, baseCards: newBaseCards, baseCovered: newBaseCovered, retreat: newRetreat };
   np[playerIdx] = npP;
 
   // 移除该卡的所有修改器
@@ -290,7 +295,7 @@ export function detachCard(
 
   const p = state.players[playerIdx];
   const np = [...state.players] as typeof state.players;
-  np[playerIdx] = { ...p, base: [...p.base, attachmentId] };
+  np[playerIdx] = { ...p, baseCovered: [...p.baseCovered, attachmentId] };
 
   // 移除结附卡提供的修改器
   const newModifiers = state.modifiers.filter(
@@ -400,7 +405,7 @@ export function moveToBase(
   _faceDown: boolean = true
 ): BattleState {
   const p = state.players[playerIdx];
-  if (p.base.length >= 6) return state;
+  if ((p.baseCards.length + p.baseCovered.length) >= 6) return state;
 
   const np = [...state.players] as typeof state.players;
   let npP = { ...p };
@@ -426,7 +431,7 @@ export function moveToBase(
 
   if (!found) return state;
 
-  npP = { ...npP, field: newField, retreat: newRetreat, base: [...npP.base, cardId] };
+  npP = { ...npP, field: newField, retreat: newRetreat, baseCovered: [...npP.baseCovered, cardId] };
   np[playerIdx] = npP;
 
   return {
@@ -547,13 +552,13 @@ export function discardFromHandToRetreat(
 export function deckTopToBase(state: BattleState, playerIdx: number): BattleState {
   const p = state.players[playerIdx];
   if (p.deck.length === 0) return state;
-  if (p.base.length >= 6) return state;
+  if ((p.baseCards.length + p.baseCovered.length) >= 6) return state;
 
   const deck = [...p.deck];
   const cardId = deck.shift()!;
 
   const np = [...state.players] as typeof state.players;
-  np[playerIdx] = { ...p, deck, base: [...p.base, cardId] };
+  np[playerIdx] = { ...p, deck, baseCovered: [...p.baseCovered, cardId] };
 
   return {
     ...state,

@@ -392,19 +392,35 @@ export function createGameReducer(db: CardDatabase) {
     handIndex: number
   ): BattleState {
     // 验证：活跃玩家 + ACTION 阶段 + 未部署 + 基地<6
-    if (state.activePlayerIndex !== playerIdx || state.turnPhase !== "ACTION") return state;
-    if (state.baseDeployedThisTurn) return state;
-    if (state.players[playerIdx].base.length >= 6) return state;
+    if (state.activePlayerIndex !== playerIdx || state.turnPhase !== "ACTION") {
+      return {
+        ...state,
+        log: [...state.log, "⚠️ 当前无法部署"],
+      };
+    }
+    if (state.baseDeployedThisTurn) {
+      return {
+        ...state,
+        log: [...state.log, "⚠️ 本回合已部署过"],
+      };
+    }
+    const p = state.players[playerIdx];
+    if ((p.baseCards.length + p.baseCovered.length) >= 6) {
+      return {
+        ...state,
+        log: [...state.log, "⚠️ 基地已满"],
+      };
+    }
 
     const np = [...state.players] as typeof state.players;
-    const p = { ...np[playerIdx] };
-    const hand = [...p.hand];
+    const npP = { ...np[playerIdx] };
+    const hand = [...npP.hand];
     const cardId = hand.splice(handIndex, 1)[0];
     const card = db.cards.find((c) => c.id === cardId);
-    const base = [...p.base, cardId];
+    const baseCovered = [...npP.baseCovered, cardId];
 
     // 从卡组抽1张牌
-    const deck = [...p.deck];
+    const deck = [...npP.deck];
     let drawMsg = "";
     if (deck.length > 0) {
       const drawnId = deck.shift()!;
@@ -412,7 +428,8 @@ export function createGameReducer(db: CardDatabase) {
       drawMsg = " → 抽1张牌";
     }
 
-    np[playerIdx] = { ...p, hand, base, deck };
+    const totalBaseCount = npP.baseCards.length + baseCovered.length;
+    np[playerIdx] = { ...npP, hand, baseCovered, deck };
 
     let newState: BattleState = {
       ...state,
@@ -421,7 +438,7 @@ export function createGameReducer(db: CardDatabase) {
       enteredThisTurn: [...state.enteredThisTurn, cardId],
       log: [
         ...state.log,
-        `🏚️ ${p.name} 将「${card?.name || "?"}」盖放进基地 (${base.length}/6)${drawMsg}`,
+        `🏚️ ${npP.name} 将「${card?.name || "?"}」盖放进基地 (${totalBaseCount}/6)${drawMsg}`,
       ],
     };
 
@@ -455,14 +472,24 @@ export function createGameReducer(db: CardDatabase) {
 
     const p = state.players[playerIdx];
     const cardId = p.hand[handIndex];
-    if (!cardId) return state;
+    if (!cardId) {
+      return {
+        ...state,
+        log: [...state.log, "⚠️ 手牌中没有可号召的角色"],
+      };
+    }
     const card = db.cards.find((c) => c.id === cardId);
     const lv = card?.cost ?? 0;
 
     // 检查战区容量（每区域限1张）
-    if (zone !== "base" && p.field[zone].length >= 1) return state;
+    if (zone !== "base" && p.field[zone].length >= 1) {
+      return {
+        ...state,
+        log: [...state.log, "⚠️ 战区已满"],
+      };
+    }
     // 检查基地容量
-    if (zone === "base" && p.base.length >= 6) return state;
+    if (zone === "base" && (p.baseCards.length + p.baseCovered.length) >= 6) return state;
 
     // 唯一性检查：若卡牌拥有【唯一】关键词，我方场上不能存在同名牌
     if (zone !== "base" && card) {
@@ -495,9 +522,13 @@ export function createGameReducer(db: CardDatabase) {
           fieldChars.push({ id: fid, loc: z, lv: fc?.cost ?? 1 });
         }
       }
-      for (const bid of p.base) {
+      for (const bid of p.baseCards) {
         const bc = db.cards.find((c) => c.id === bid);
         fieldChars.push({ id: bid, loc: "base", lv: bc?.cost ?? 1 });
+      }
+      // face-down base cards count as Lv1 per rule 301.21.g
+      for (const bid of p.baseCovered) {
+        fieldChars.push({ id: bid, loc: "base", lv: 1 });
       }
       const totalLv = fieldChars.reduce((s, c) => s + c.lv, 0);
       if (totalLv < lv) return state;
@@ -528,7 +559,7 @@ export function createGameReducer(db: CardDatabase) {
     hand.splice(handIndex, 1);
 
     if (zone === "base") {
-      np[playerIdx] = { ...npP, hand, base: [...npP.base, cardId] };
+      np[playerIdx] = { ...npP, hand, baseCards: [...npP.baseCards, cardId] };
     } else {
       np[playerIdx] = {
         ...npP,
@@ -562,19 +593,6 @@ export function createGameReducer(db: CardDatabase) {
       newState = triggerEffectsByTiming(newState, cardId, "onSummon", db);
     }
 
-    // 号召完成后开启应对窗口（仅战区号召）
-    if (zone !== "base") {
-      newState = {
-        ...newState,
-        pendingCounter: {
-          summoningPlayerIdx: playerIdx,
-          summoningCardId: cardId,
-          summoningZone: zone,
-        },
-        counterPassCount: 0,
-      };
-    }
-
     return checkpoint(newState);
   }
 
@@ -603,10 +621,14 @@ export function createGameReducer(db: CardDatabase) {
 
     // 验证卡牌位置并获取 Lv
     if (loc === "base") {
-      if (!p.base.includes(cardId)) return state;
-      // Bug 2 修正：基地卡按实际 Lv 计算（不再硬编码为1）
-      const baseCard = db.cards.find((c) => c.id === cardId);
-      cardLv = baseCard?.cost ?? 1;
+      if (!p.baseCards.includes(cardId) && !p.baseCovered.includes(cardId)) return state;
+      // face-up base cards use real Lv; face-down covered cards count as Lv1 (rule 301.21.g)
+      if (p.baseCards.includes(cardId)) {
+        const baseCard = db.cards.find((c) => c.id === cardId);
+        cardLv = baseCard?.cost ?? 1;
+      } else {
+        cardLv = 1;
+      }
     } else {
       if (!p.field[loc].includes(cardId)) return state;
       const fc = db.cards.find((c) => c.id === cardId);
@@ -637,7 +659,8 @@ export function createGameReducer(db: CardDatabase) {
     const npP = { ...np[ps.playerIdx] };
     const newField = { ...npP.field };
     for (const z of ZONE_LIST) newField[z] = [...npP.field[z]];
-    let newBase = [...npP.base];
+    let newBaseCards = [...npP.baseCards];
+    let newBaseCovered = [...npP.baseCovered];
     const newRetreat = [...npP.retreat];
     const retreatedNames: string[] = [];
 
@@ -645,8 +668,10 @@ export function createGameReducer(db: CardDatabase) {
     for (const sid of newSelectedIds) {
       const sCard = db.cards.find((c) => c.id === sid);
       retreatedNames.push(sCard?.name || sid);
-      if (newBase.includes(sid)) {
-        newBase = newBase.filter((id) => id !== sid);
+      if (newBaseCards.includes(sid)) {
+        newBaseCards = newBaseCards.filter((id) => id !== sid);
+      } else if (newBaseCovered.includes(sid)) {
+        newBaseCovered = newBaseCovered.filter((id) => id !== sid);
       } else {
         for (const z of ZONE_LIST) {
           if (newField[z].includes(sid)) {
@@ -666,7 +691,8 @@ export function createGameReducer(db: CardDatabase) {
       np[ps.playerIdx] = {
         ...npP,
         hand,
-        base: [...newBase, ps.cardId],
+        baseCards: [...newBaseCards, ps.cardId],
+        baseCovered: newBaseCovered,
         field: newField,
         retreat: newRetreat,
       };
@@ -675,7 +701,8 @@ export function createGameReducer(db: CardDatabase) {
         ...npP,
         hand,
         field: { ...newField, [ps.zone]: [...newField[ps.zone], ps.cardId] },
-        base: newBase,
+        baseCards: newBaseCards,
+        baseCovered: newBaseCovered,
         retreat: newRetreat,
       };
     }
@@ -708,19 +735,6 @@ export function createGameReducer(db: CardDatabase) {
       newState = triggerEffectsByTiming(newState, ps.cardId, "onSummon", db);
     }
 
-    // Lv4+号召完成后开启应对窗口（仅战区号召）
-    if (ps.zone !== "base") {
-      newState = {
-        ...newState,
-        pendingCounter: {
-          summoningPlayerIdx: ps.playerIdx,
-          summoningCardId: ps.cardId,
-          summoningZone: ps.zone,
-        },
-        counterPassCount: 0,
-      };
-    }
-
     return checkpoint(newState);
   }
 
@@ -749,7 +763,12 @@ export function createGameReducer(db: CardDatabase) {
     cardId: string,
     toZone: Zone
   ): BattleState {
-    if (fromZone === toZone) return state;
+    if (fromZone === toZone) {
+      return {
+        ...state,
+        log: [...state.log, "⚠️ 无法移动到相同位置"],
+      };
+    }
 
     const isInAction =
       state.turnPhase === "ACTION" && state.activePlayerIndex === playerIdx;
@@ -759,10 +778,20 @@ export function createGameReducer(db: CardDatabase) {
       state.activePlayerIndex === playerIdx;
     if (!isInAction && !isInConflictAdjust) return state;
 
-    if (isInConflictAdjust && state.conflictMovesUsed >= 4) return state;
+    if (isInConflictAdjust && state.conflictMovesUsed >= 4) {
+      return {
+        ...state,
+        log: [...state.log, "⚠️ 本回合冲突次数已用完"],
+      };
+    }
 
     // 检查目标区域是否已有角色（每区域限1张）
-    if (state.players[playerIdx].field[toZone].length >= 1) return state;
+    if (state.players[playerIdx].field[toZone].length >= 1) {
+      return {
+        ...state,
+        log: [...state.log, "⚠️ 目标位置已满"],
+      };
+    }
 
     const np = [...state.players] as typeof state.players;
     const p = { ...np[playerIdx] };
@@ -809,7 +838,12 @@ export function createGameReducer(db: CardDatabase) {
     cardId: string,
     toLoc: Zone | "base"
   ): BattleState {
-    if (fromLoc === toLoc) return state;
+    if (fromLoc === toLoc) {
+      return {
+        ...state,
+        log: [...state.log, "⚠️ 无法移动到相同位置"],
+      };
+    }
 
     const isInAction =
       state.turnPhase === "ACTION" && state.activePlayerIndex === playerIdx;
@@ -819,48 +853,65 @@ export function createGameReducer(db: CardDatabase) {
       state.activePlayerIndex === playerIdx;
     if (!isInAction && !isInConflictAdjust) return state;
 
-    if (isInConflictAdjust && state.conflictMovesUsed >= 4) return state;
+    if (isInConflictAdjust && state.conflictMovesUsed >= 4) {
+      return {
+        ...state,
+        log: [...state.log, "⚠️ 本回合冲突次数已用完"],
+      };
+    }
 
     // 检查卡牌是否本回合进场
-    if (state.enteredThisTurn.includes(cardId)) return state;
+    if (state.enteredThisTurn.includes(cardId)) {
+      return {
+        ...state,
+        log: [...state.log, "⚠️ 本回合进场的角色无法移动"],
+      };
+    }
 
     const p = state.players[playerIdx];
 
     // 验证卡牌在来源位置
     if (fromLoc === "base") {
-      if (!p.base.includes(cardId)) return state;
+      if (!p.baseCards.includes(cardId) && !p.baseCovered.includes(cardId)) return state;
     } else {
       if (!p.field[fromLoc].includes(cardId)) return state;
     }
 
     // 验证目标位置有空位
     if (toLoc === "base") {
-      if (p.base.length >= 6) return state;
+      if ((p.baseCards.length + p.baseCovered.length) >= 6) return state;
     } else {
-      if (p.field[toLoc].length >= 1) return state;
+      if (p.field[toLoc].length >= 1) {
+        return {
+          ...state,
+          log: [...state.log, "⚠️ 目标位置已满"],
+        };
+      }
     }
 
     const np = [...state.players] as typeof state.players;
     const npP = { ...np[playerIdx] };
-    let newBase = [...npP.base];
+    let newBaseCards = [...npP.baseCards];
+    let newBaseCovered = [...npP.baseCovered];
     const newField = { ...npP.field };
     for (const z of ZONE_LIST) newField[z] = [...npP.field[z]];
 
     // 从来源移除
     if (fromLoc === "base") {
-      newBase = newBase.filter((id) => id !== cardId);
+      newBaseCards = newBaseCards.filter((id) => id !== cardId);
+      newBaseCovered = newBaseCovered.filter((id) => id !== cardId);
     } else {
       newField[fromLoc] = newField[fromLoc].filter((id) => id !== cardId);
     }
 
-    // 添加到目标
+    // 添加到目标（移至基地一律盖放）
     if (toLoc === "base") {
-      newBase = [...newBase, cardId];
+      newBaseCovered = [...newBaseCovered, cardId];
     } else {
       newField[toLoc] = [...newField[toLoc], cardId];
     }
 
-    np[playerIdx] = { ...npP, base: newBase, field: newField };
+    np[playerIdx] = { ...npP, baseCards: newBaseCards, baseCovered: newBaseCovered, field: newField };
 
     const card = db.cards.find((c) => c.id === cardId);
     const fromLabel = fromLoc === "base" ? "基地" : ZONE_LABELS[fromLoc];
@@ -926,7 +977,12 @@ export function createGameReducer(db: CardDatabase) {
     targetZone: Zone,
     targetCardId?: string
   ): BattleState {
-    if (!state.pendingAttack) return state;
+    if (!state.pendingAttack) {
+      return {
+        ...state,
+        log: [...state.log, "⚠️ 没有待确认的行动"],
+      };
+    }
 
     const attackTarget = state.pendingAttack;
 
@@ -934,7 +990,10 @@ export function createGameReducer(db: CardDatabase) {
     if (!targetCardId) {
       const oppCharsInZone = state.players[targetPlayerIdx].field[targetZone];
       if (oppCharsInZone.length > 0 && !hasKeyword(state, attackTarget.attackerCardId, "airRaid", db)) {
-        return state;
+        return {
+          ...state,
+          log: [...state.log, "⚠️ 空袭受限"],
+        };
       }
     }
 
@@ -1469,7 +1528,7 @@ export function createGameReducer(db: CardDatabase) {
     const p = state.players[playerIdx];
     let cardZone: "hand" | "base" | "field" | null = null;
     if (p.hand.includes(cardId)) cardZone = "hand";
-    else if (p.base.includes(cardId)) cardZone = "base";
+    else if (p.baseCards.includes(cardId) || p.baseCovered.includes(cardId)) cardZone = "base";
     else {
       for (const z of ZONE_LIST) {
         if (p.field[z].includes(cardId)) {
@@ -1518,7 +1577,7 @@ export function createGameReducer(db: CardDatabase) {
         for (const z of ZONE_LIST) {
           if (newField[z].includes(cardId)) {
             newField[z] = newField[z].filter((id) => id !== cardId);
-            np[playerIdx] = { ...npP, field: newField, base: [...npP.base, cardId] };
+            np[playerIdx] = { ...npP, field: newField, baseCovered: [...npP.baseCovered, cardId] };
             newState = { ...newState, players: np };
             movedToBase = true;
             break;

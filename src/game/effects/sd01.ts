@@ -219,7 +219,7 @@ const sd01_005: CardEffect = {
   trigger: "onSummon",
   label: "基地撤退+抽卡",
   triggerCondition: (ctx: EffectContext): boolean => {
-    return ctx.state.players[ctx.playerIdx].base.length >= 2;
+    return (ctx.state.players[ctx.playerIdx].baseCards.length + ctx.state.players[ctx.playerIdx].baseCovered.length) >= 2;
   },
   execute: (ctx: EffectContext) => {
     // TODO: 选发确认 — 玩家可选择是否执行此效果
@@ -227,8 +227,8 @@ const sd01_005: CardEffect = {
     // 简化版：撤退前2张基地卡
     let state = ctx.state;
     const p = state.players[ctx.playerIdx];
-    const baseCards = [...p.base];
-    const retreated = baseCards.splice(0, 2);
+    const allBase = [...p.baseCards, ...p.baseCovered];
+    const retreated = allBase.splice(0, 2);
 
     let allRed = true;
     for (const id of retreated) {
@@ -258,7 +258,7 @@ const sd01_006: CardEffect = {
   cost: (ctx: EffectContext): boolean => {
     const p = ctx.state.players[ctx.playerIdx];
     const hasMyField = C.fieldCount(ctx.state, ctx.playerIdx) > 0;
-    const hasMyBase = p.base.length > 0;
+    const hasMyBase = (p.baseCards.length + p.baseCovered.length) > 0;
     return hasMyField && hasMyBase;
   },
   execute: (ctx: EffectContext) => {
@@ -282,8 +282,9 @@ const sd01_006: CardEffect = {
     }
 
     // 2. 撤退我方基地第一张
-    if (state.players[ctx.playerIdx].base.length > 0) {
-      state = H.retreatCard(state, state.players[ctx.playerIdx].base[0], ctx.playerIdx, ctx.db);
+    const allBaseP = [...state.players[ctx.playerIdx].baseCards, ...state.players[ctx.playerIdx].baseCovered];
+    if (allBaseP.length > 0) {
+      state = H.retreatCard(state, allBaseP[0], ctx.playerIdx, ctx.db);
     }
 
     // 3. 撤退敌方战区1张Lv5以下角色
@@ -420,8 +421,8 @@ const sd01_009_retreat: CardEffect = {
     if (p.retreat.length < 2) return state;
 
     // 展示基地第一张盖卡
-    if (p.base.length === 0) return state;
-    const revealedBaseCardId = p.base[0];
+    if (p.baseCovered.length === 0) return state;
+    const revealedBaseCardId = p.baseCovered[0];
     const baseCard = ctx.db.cards.find((c) => c.id === revealedBaseCardId);
     const revealedLv = baseCard?.cost ?? 1;
 
@@ -704,7 +705,7 @@ const sd01_018: CardEffect = {
     const p = state.players[ctx.playerIdx];
 
     // 把卡组顶1张卡盖放进基地
-    if (p.deck.length > 0 && p.base.length < 6) {
+    if (p.deck.length > 0 && (p.baseCards.length + p.baseCovered.length) < 6) {
       state = H.deckTopToBase(state, ctx.playerIdx);
     }
 

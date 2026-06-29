@@ -321,6 +321,9 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
   // Q7: 目标选择 UI 状态
   const [selectedTargetIds, setSelectedTargetIds] = useState<string[]>([]);
 
+  // Toast 通知状态
+  const [toast, setToast] = useState<string | null>(null);
+
   // ===== 大厅状态 =====
   const [lobbyPhase, setLobbyPhase] = useState<LobbyPhase>("lobby");
   const [preselectedDeck, setPreselectedDeck] = useState<PreselectedDeck | null>(null);
@@ -342,6 +345,17 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
   useEffect(() => {
     setSelectedTargetIds([]);
   }, [state?.pendingTargetSelection]);
+
+  // Toast 通知：监听 state.log 变化，将最新的 ⚠️ 日志作为 toast 显示
+  useEffect(() => {
+    if (!state || state.log.length === 0) return;
+    const latestLog = state.log[state.log.length - 1];
+    if (latestLog.startsWith("⚠️")) {
+      setToast(latestLog);
+      const timer = setTimeout(() => setToast(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [state?.log?.length]);
 
   // === 大厅阶段 ===
   if (!state && lobbyPhase === "lobby") {
@@ -408,7 +422,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
       alert("本回合已部署基地！每回合只能部署1次");
       return;
     }
-    if (state.players[playerIdx].base.length >= 6) {
+    if ((state.players[playerIdx].baseCards.length + state.players[playerIdx].baseCovered.length) >= 6) {
       alert("基地区已满（上限6张）！");
       return;
     }
@@ -428,7 +442,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
       alert("该区域已有角色！");
       return;
     }
-    if (zone === "base" && p.base.length >= 6) {
+    if (zone === "base" && (p.baseCards.length + p.baseCovered.length) >= 6) {
       alert("基地区已满（上限6张）！");
       return;
     }
@@ -444,7 +458,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
           fieldChars.push({ id: fid, lv: fc?.cost ?? 1 });
         }
       }
-      for (const bid of p.base) {
+      for (const bid of [...p.baseCards, ...p.baseCovered]) {
         const bc = db.cards.find((c) => c.id === bid);
         fieldChars.push({ id: bid, lv: bc?.cost ?? 1 });
       }
@@ -505,7 +519,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
     }
     // 目标位置有空位
     if (toLoc === "base") {
-      if (state.players[playerIdx].base.length >= 6) {
+      if ((state.players[playerIdx].baseCards.length + state.players[playerIdx].baseCovered.length) >= 6) {
         alert("基地区已满（上限6张）！");
         return;
       }
@@ -570,13 +584,17 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
       startAttack(playerIdx, zone, cardId);
       return;
     }
-    // 行动阶段/冲突调整：点击 = 移动菜单
+    // 行动阶段/冲突调整：点击 = 移动菜单（再次点击同一角色撤销选择）
     const canMove =
       (state.turnPhase === "ACTION" ||
         (state.turnPhase === "CONFLICT" && state.conflictSubPhase === "adjust")) &&
       state.activePlayerIndex === playerIdx;
     if (canMove) {
-      setActionMode({ type: "moveMenu", playerIdx, zone, cardId });
+      if (actionMode.type === "moveMenu" && actionMode.cardId === cardId) {
+        setActionMode({ type: "none" });
+      } else {
+        setActionMode({ type: "moveMenu", playerIdx, zone, cardId });
+      }
     }
   };
 
@@ -1050,7 +1068,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
                 }
 
                 // 检查基地的卡
-                for (const cardId of activeP.base) {
+                for (const cardId of [...activeP.baseCards, ...activeP.baseCovered]) {
                   const card = db.cards.find((c) => c.id === cardId);
                   if (!card) continue;
                   const effects = getActiveEffects(card.card_no);
@@ -1260,7 +1278,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
         <div className="shrink-0 p-2 space-y-1 border-b border-white/5">
           <div className="text-[11px] text-white/30 font-bold tracking-wider">STATS</div>
           <StatRow label="手牌" v1={p1.hand.length} v2={p2.hand.length} />
-          <StatRow label="基地" v1={p1.base.length} v2={p2.base.length} suffix="/6" />
+          <StatRow label="基地" v1={p1.baseCards.length + p1.baseCovered.length} v2={p2.baseCards.length + p2.baseCovered.length} suffix="/6" />
           <StatRow label="场上" v1={getAllFieldCards(p1).length} v2={getAllFieldCards(p2).length} />
           <StatRow label="时间线" v1={p1.timeline.length} v2={p2.timeline.length} suffix="/9" highlight={true} />
           <div className="pt-1 space-y-0.5">
@@ -1286,6 +1304,17 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
         {/* 卡牌详情面板 */}
         <CardDetailPanel card={hoveredCard} />
       </div>
+
+      {/* Toast 通知 */}
+      {toast && (
+        <div
+          className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] px-5 py-2.5 rounded-lg bg-amber-900/90 text-amber-100 text-sm font-medium shadow-2xl backdrop-blur-sm border border-amber-500/30 transition-all duration-300 ${
+            toast ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
+          }`}
+        >
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

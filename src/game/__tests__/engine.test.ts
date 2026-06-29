@@ -193,7 +193,8 @@ function makePlayer(overrides: Partial<PlayerState> = {}): PlayerState {
     deck: [],
     rushDeck: [],
     hand: [],
-    base: [],
+    baseCards: [],
+    baseCovered: [],
     field: {
       vanguard: [],
       flankLeft: [],
@@ -412,7 +413,7 @@ describe("2. 应对阶段（Counter Phase）测试", () => {
     reducer = createGameReducer(mockDb);
   });
 
-  it("handleSummonToField 完成号召后设置 pendingCounter", () => {
+  it("handleSummonToField 行动阶段号召不开启应对窗口", () => {
     const state = makeBattleState({
       turnPhase: "ACTION",
       activePlayerIndex: 0,
@@ -437,13 +438,15 @@ describe("2. 应对阶段（Counter Phase）测试", () => {
     });
 
     expect(result).not.toBeNull();
-    // 号召到战区后应设置 pendingCounter
-    expect(result!.pendingCounter).not.toBeNull();
-    expect(result!.pendingCounter!.summoningPlayerIdx).toBe(0);
-    expect(result!.pendingCounter!.summoningCardId).toBe("GEN-001");
-    expect(result!.pendingCounter!.summoningZone).toBe("vanguard");
-    // counterPassCount 应重置为0
-    expect(result!.counterPassCount).toBe(0);
+    // 行动阶段号召不应设置 pendingCounter（应对窗口已移除）
+    expect(result!.pendingCounter).toBeNull();
+    // 卡牌应成功号召到战区
+    expect(result!.players[0].hand).not.toContain("GEN-001");
+    expect(result!.players[0].field.vanguard).toContain("GEN-001");
+    // remainingSummons 应减1
+    expect(result!.remainingSummons).toBe(2);
+    // enteredThisTurn 应包含该卡牌
+    expect(result!.enteredThisTurn).toContain("GEN-001");
   });
 
   it("TRIGGER_COUNTER 正确号召【应对】角色", () => {
@@ -896,7 +899,7 @@ describe("4. 起动效果（Activate Effect）测试", () => {
           id: 1,
           name: "P1",
           hand: [],
-          base: [],
+          baseCovered: [],
           field: { vanguard: ["GEN-003"], flankLeft: [], flankRight: [], rear: [] },
         }),
         makePlayer({ id: 2, name: "P2", hand: [], field: { vanguard: [], flankLeft: [], flankRight: [], rear: [] } }),
@@ -915,7 +918,7 @@ describe("4. 起动效果（Activate Effect）测试", () => {
     // 卡牌应从场上移至基地
     const p1Field = ZONE_LIST.flatMap((z) => result!.players[0].field[z]);
     expect(p1Field).not.toContain("GEN-003");
-    expect(result!.players[0].base).toContain("GEN-003");
+    expect(result!.players[0].baseCovered).toContain("GEN-003");
   });
 
   it("activeSource 与卡牌区域不匹配时拒绝执行", () => {
@@ -928,7 +931,7 @@ describe("4. 起动效果（Activate Effect）测试", () => {
           id: 1,
           name: "P1",
           hand: ["ATK-001"], // 卡在手牌中
-          base: [],
+          baseCovered: [],
           field: { vanguard: [], flankLeft: [], flankRight: [], rear: [] },
         }),
         makePlayer({ id: 2, name: "P2", hand: [], field: { vanguard: [], flankLeft: [], flankRight: [], rear: [] } }),
@@ -1154,7 +1157,7 @@ describe("7. 战基移动（MOVE_CARD）测试", () => {
         makePlayer({
           id: 1,
           name: "P1",
-          base: [],
+          baseCovered: [],
           field: { vanguard: ["GEN-001"], flankLeft: [], flankRight: [], rear: [] },
         }),
         makePlayer({ id: 2, name: "P2" }),
@@ -1173,7 +1176,7 @@ describe("7. 战基移动（MOVE_CARD）测试", () => {
     // 卡牌从战区移除
     expect(result!.players[0].field.vanguard).not.toContain("GEN-001");
     // 卡牌出现在基地
-    expect(result!.players[0].base).toContain("GEN-001");
+    expect(result!.players[0].baseCovered).toContain("GEN-001");
   });
 
   it("基地→战区移动成功", () => {
@@ -1184,7 +1187,7 @@ describe("7. 战基移动（MOVE_CARD）测试", () => {
         makePlayer({
           id: 1,
           name: "P1",
-          base: ["GEN-001"],
+          baseCovered: ["GEN-001"],
           field: { vanguard: [], flankLeft: [], flankRight: [], rear: [] },
         }),
         makePlayer({ id: 2, name: "P2" }),
@@ -1201,7 +1204,7 @@ describe("7. 战基移动（MOVE_CARD）测试", () => {
 
     expect(result).not.toBeNull();
     // 卡牌从基地移除
-    expect(result!.players[0].base).not.toContain("GEN-001");
+    expect(result!.players[0].baseCovered).not.toContain("GEN-001");
     // 卡牌出现在目标战区
     expect(result!.players[0].field.flankLeft).toContain("GEN-001");
   });
@@ -1214,7 +1217,7 @@ describe("7. 战基移动（MOVE_CARD）测试", () => {
         makePlayer({
           id: 1,
           name: "P1",
-          base: [],
+          baseCovered: [],
           field: { vanguard: ["GEN-001"], flankLeft: [], flankRight: [], rear: [] },
         }),
         makePlayer({ id: 2, name: "P2" }),
@@ -1241,7 +1244,7 @@ describe("7. 战基移动（MOVE_CARD）测试", () => {
         makePlayer({
           id: 1,
           name: "P1",
-          base: ["GEN-001"],
+          baseCovered: ["GEN-001"],
           field: { vanguard: [], flankLeft: [], flankRight: [], rear: [] },
         }),
         makePlayer({ id: 2, name: "P2" }),
@@ -1295,7 +1298,7 @@ describe("7. 战基移动（MOVE_CARD）测试", () => {
         makePlayer({
           id: 1,
           name: "P1",
-          base: ["GEN-001"],
+          baseCovered: ["GEN-001"],
           field: { vanguard: [], flankLeft: [], flankRight: [], rear: [] },
         }),
         makePlayer({ id: 2, name: "P2" }),
@@ -1321,7 +1324,7 @@ describe("7. 战基移动（MOVE_CARD）测试", () => {
         makePlayer({
           id: 1,
           name: "P1",
-          base: ["GEN-001", "GEN-002", "GEN-003", "ATK-001", "DEF-001", "SD01-011-C"],
+          baseCovered: ["GEN-001", "GEN-002", "GEN-003", "ATK-001", "DEF-001", "SD01-011-C"],
           field: { vanguard: ["SD01-017-C"], flankLeft: [], flankRight: [], rear: [] },
         }),
         makePlayer({ id: 2, name: "P2" }),
@@ -1339,7 +1342,7 @@ describe("7. 战基移动（MOVE_CARD）测试", () => {
     // 应返回原状态
     expect(result).toBe(state);
     expect(result!.players[0].field.vanguard).toContain("SD01-017-C");
-    expect(result!.players[0].base.length).toBe(6);
+    expect(result!.players[0].baseCovered.length).toBe(6);
   });
 
   it("战区已有卡牌时拒绝移入", () => {
@@ -1350,7 +1353,7 @@ describe("7. 战基移动（MOVE_CARD）测试", () => {
         makePlayer({
           id: 1,
           name: "P1",
-          base: ["GEN-001"],
+          baseCovered: ["GEN-001"],
           field: { vanguard: ["SD01-017-C"], flankLeft: [], flankRight: [], rear: [] },
         }),
         makePlayer({ id: 2, name: "P2" }),
@@ -1367,7 +1370,7 @@ describe("7. 战基移动（MOVE_CARD）测试", () => {
 
     // 应返回原状态（战区已有卡牌）
     expect(result).toBe(state);
-    expect(result!.players[0].base).toContain("GEN-001");
+    expect(result!.players[0].baseCovered).toContain("GEN-001");
     expect(result!.players[0].field.vanguard).toContain("SD01-017-C");
   });
 
@@ -1380,7 +1383,7 @@ describe("7. 战基移动（MOVE_CARD）测试", () => {
         makePlayer({
           id: 2,
           name: "P2",
-          base: [],
+          baseCovered: [],
           field: { vanguard: ["GEN-001"], flankLeft: [], flankRight: [], rear: [] },
         }),
       ],
@@ -1405,7 +1408,7 @@ describe("7. 战基移动（MOVE_CARD）测试", () => {
         makePlayer({
           id: 1,
           name: "P1",
-          base: [],
+          baseCovered: [],
           field: { vanguard: ["GEN-001"], flankLeft: [], flankRight: [], rear: [] },
         }),
         makePlayer({ id: 2, name: "P2" }),
@@ -1433,7 +1436,7 @@ describe("7. 战基移动（MOVE_CARD）测试", () => {
         makePlayer({
           id: 1,
           name: "P1",
-          base: [],
+          baseCovered: [],
           field: { vanguard: ["GEN-001"], flankLeft: [], flankRight: [], rear: [] },
         }),
         makePlayer({ id: 2, name: "P2" }),
@@ -1449,7 +1452,7 @@ describe("7. 战基移动（MOVE_CARD）测试", () => {
     });
 
     expect(result).not.toBe(state);
-    expect(result!.players[0].base).toContain("GEN-001");
+    expect(result!.players[0].baseCovered).toContain("GEN-001");
     expect(result!.players[0].field.vanguard).not.toContain("GEN-001");
   });
 
@@ -1463,7 +1466,7 @@ describe("7. 战基移动（MOVE_CARD）测试", () => {
         makePlayer({
           id: 1,
           name: "P1",
-          base: [],
+          baseCovered: [],
           field: { vanguard: ["GEN-001"], flankLeft: [], flankRight: [], rear: [] },
         }),
         makePlayer({ id: 2, name: "P2" }),
@@ -1491,7 +1494,7 @@ describe("7. 战基移动（MOVE_CARD）测试", () => {
         makePlayer({
           id: 1,
           name: "P1",
-          base: [],
+          baseCovered: [],
           field: { vanguard: ["GEN-001"], flankLeft: [], flankRight: [], rear: [] },
         }),
         makePlayer({ id: 2, name: "P2" }),
@@ -1519,7 +1522,7 @@ describe("7. 战基移动（MOVE_CARD）测试", () => {
         makePlayer({
           id: 1,
           name: "P1",
-          base: [],
+          baseCovered: [],
           field: { vanguard: ["GEN-001"], flankLeft: [], flankRight: [], rear: [] },
         }),
         makePlayer({ id: 2, name: "P2" }),
@@ -1546,7 +1549,7 @@ describe("7. 战基移动（MOVE_CARD）测试", () => {
         makePlayer({
           id: 1,
           name: "P1",
-          base: [],
+          baseCovered: [],
           field: { vanguard: ["GEN-001"], flankLeft: [], flankRight: [], rear: [] },
         }),
         makePlayer({ id: 2, name: "P2" }),
@@ -1574,7 +1577,7 @@ describe("7. 战基移动（MOVE_CARD）测试", () => {
           id: 1,
           name: "P1",
           deck: [...fillerDeck],
-          base: [],
+          baseCovered: [],
           field: { vanguard: ["GEN-001"], flankLeft: [], flankRight: [], rear: [] },
         }),
         makePlayer({ id: 2, name: "P2", deck: [...fillerDeck] }),

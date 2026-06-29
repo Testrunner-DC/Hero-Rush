@@ -15,9 +15,16 @@ import base64
 import urllib.request
 import urllib.parse
 
-SRC = r"C:/Users/neptu/WorkBuddy/20260430022315/超英击战_卡牌数据.json"
-DST = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "public", "cards.json")
-CARD_IMG_DIR = r"C:/Users/neptu/WorkBuddy/20260430022315/超英击战_卡图_处理后"
+# ── 数据源路径（可通过环境变量 ZHANSHUANG_DIR 覆盖）──
+_zhanshuang_dir = os.environ.get(
+    "ZHANSHUANG_DIR",
+    os.path.join(os.path.expanduser("~"), "WorkBuddy", "zhanshuang")
+)
+SRC = os.path.join(_zhanshuang_dir, "超英击战_卡牌数据.json")
+CARD_IMG_DIR = os.path.join(_zhanshuang_dir, "超英击战_卡图_处理后")
+
+_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DST = os.path.join(_project_root, "public", "cards.json")
 
 # ---------- helpers ----------
 def safe_int(v, default=None):
@@ -56,6 +63,7 @@ def ocr_space_api(image_path, api_key="K87954381888957"):
 
 # ---------- static maps ----------
 RARITY_MAP = {
+    1:  {"code": "PR",  "cn": "促销",  "color": "#B4B2A9"},
     2:  {"code": "TR",  "cn": "特典",  "color": "#D4A017"},
     3:  {"code": "C",   "cn": "普通",  "color": "#B4B2A9"},
     4:  {"code": "U",   "cn": "优通",  "color": "#7B8FA0"},
