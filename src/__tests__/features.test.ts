@@ -279,12 +279,13 @@ describe("Feature 2: DeckStatsView — Cost Curve & Color Distribution", () => {
 describe("Feature 3: DP/PP Multi-dimensional Filters (FilterSidebar)", () => {
   // Replicate the filter logic from CardSearchPage and DeckBuilderPage
   function applyDPFilter(
-    card: { dp_value: number | null },
+    card: { power: string | undefined },
     dpMin: number | "all",
     dpMax: number | "all"
   ): boolean {
-    if (dpMin !== "all" && (card.dp_value == null || card.dp_value < dpMin)) return false;
-    if (dpMax !== "all" && (card.dp_value == null || card.dp_value > dpMax)) return false;
+    const cardPower = card.power ? parseInt(card.power) : null;
+    if (dpMin !== "all" && (cardPower == null || cardPower < dpMin)) return false;
+    if (dpMax !== "all" && (cardPower == null || cardPower > dpMax)) return false;
     return true;
   }
 
@@ -324,28 +325,28 @@ describe("Feature 3: DP/PP Multi-dimensional Filters (FilterSidebar)", () => {
     expect(DEFAULT_FILTERS.ppMax).toBe("all");
   });
 
-  it("DP filter: passes when dpMin/dpMax are 'all'", () => {
-    const card = { dp_value: 500 };
+  it("战力筛选: passes when dpMin/dpMax are 'all'", () => {
+    const card = { power: "500" };
     expect(applyDPFilter(card, "all", "all")).toBe(true);
   });
 
-  it("DP filter: passes when dp_value is within range", () => {
-    const card = { dp_value: 500 };
+  it("战力筛选: passes when power is within range", () => {
+    const card = { power: "500" };
     expect(applyDPFilter(card, 300, 700)).toBe(true);
   });
 
-  it("DP filter: fails when dp_value is below dpMin", () => {
-    const card = { dp_value: 200 };
+  it("战力筛选: fails when power is below dpMin", () => {
+    const card = { power: "200" };
     expect(applyDPFilter(card, 300, "all")).toBe(false);
   });
 
-  it("DP filter: fails when dp_value is above dpMax", () => {
-    const card = { dp_value: 800 };
+  it("战力筛选: fails when power is above dpMax", () => {
+    const card = { power: "800" };
     expect(applyDPFilter(card, "all", 700)).toBe(false);
   });
 
-  it("DP filter: excludes cards with null dp_value", () => {
-    const card = { dp_value: null };
+  it("战力筛选: excludes cards with no power", () => {
+    const card = { power: undefined };
     expect(applyDPFilter(card, 100, "all")).toBe(false);
     expect(applyDPFilter(card, "all", 500)).toBe(false);
   });
@@ -363,8 +364,8 @@ describe("Feature 3: DP/PP Multi-dimensional Filters (FilterSidebar)", () => {
 
   it("PP filter: boundary values are inclusive", () => {
     const card = { pp_value: 5 };
-    expect(applyPPFilter(card, "all", 5)).toBe(true); // dp_value <= dpMax → passes
-    expect(applyPPFilter(card, 5, "all")).toBe(true); // dp_value >= dpMin → passes
+    expect(applyPPFilter(card, "all", 5)).toBe(true); // pp_value <= ppMax → passes
+    expect(applyPPFilter(card, 5, "all")).toBe(true); // pp_value >= ppMin → passes
   });
 
   it("parseRangeValue: empty string → 'all'", () => {

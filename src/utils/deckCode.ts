@@ -2,19 +2,21 @@ import type { Deck, DeckEntry, CardDatabase } from "../types/card";
 
 /**
  * Encode a deck into a compact base64 string for URL sharing.
- * Format: name|card_no:count,card_no:count,...|card_no:count,...
+ * Format: name|card_no:count,card_no:count,...
+ * NOTE: rush_deck is no longer encoded; it is always empty.
  */
 export function encodeDeck(deck: Deck): string {
   const main = deck.main_deck.map((e) => `${e.card_no}:${e.count}`).join(",");
-  const rush = deck.rush_deck.map((e) => `${e.card_no}:${e.count}`).join(",");
-  const raw = `${deck.name || "未命名卡组"}|${main}|${rush}`;
+  const raw = `${deck.name || "未命名卡组"}|${main}`;
   return btoa(unescape(encodeURIComponent(raw)));
 }
 
 export function decodeDeck(code: string): Deck | null {
   try {
     const raw = decodeURIComponent(escape(atob(code)));
-    const [name, main, rush] = raw.split("|");
+    const parts = raw.split("|");
+    const name = parts[0] || "未命名卡组";
+    const main = parts[1] || "";
     const parseEntries = (str: string): DeckEntry[] => {
       if (!str) return [];
       return str
@@ -26,9 +28,9 @@ export function decodeDeck(code: string): Deck | null {
         });
     };
     return {
-      name: name || "未命名卡组",
+      name,
       main_deck: parseEntries(main),
-      rush_deck: parseEntries(rush),
+      rush_deck: [],
       created_at: new Date().toISOString(),
     };
   } catch {
@@ -73,6 +75,7 @@ export interface PreconDeckData {
 /**
  * Convert a precon deck (ID list format) into a standard Deck (DeckEntry format).
  * Groups cards by card_no and counts duplicates.
+ * rush_deck is always empty (impact cards are display-only).
  */
 export function preconToDeck(precon: PreconDeckData, db: CardDatabase): Deck {
   // Build id -> card_no lookup for efficient resolution

@@ -5,7 +5,7 @@
  * Center: full-width image card grid (flex-1, scrollable)
  * No resident detail sidebar — click card opens modal
  *
- * Supports column count control and DP/PP range filters (P0+P1).
+ * Supports column count control and 战力/距离 range filters (P0+P1).
  * ColumnSelector moved to floating toolbar above card grid.
  */
 
@@ -42,7 +42,8 @@ export default function CardSearchPage({ db }: Props) {
         if (
           !c.name.toLowerCase().includes(q) &&
           !c.card_no.toLowerCase().includes(q) &&
-          !c.effect.toLowerCase().includes(q)
+          !c.effect.toLowerCase().includes(q) &&
+          !(c.feature_text || "").toLowerCase().includes(q)
         ) {
           return false;
         }
@@ -52,10 +53,11 @@ export default function CardSearchPage({ db }: Props) {
       if (filterRarity !== "all" && c.rarity !== filterRarity) return false;
       if (filterCost !== "all" && c.cost !== filterCost) return false;
       if (filterPackage !== "all" && c.package_short !== filterPackage) return false;
-      // DP range filter
-      if (dpMin !== "all" && (c.dp_value == null || c.dp_value < dpMin)) return false;
-      if (dpMax !== "all" && (c.dp_value == null || c.dp_value > dpMax)) return false;
-      // PP range filter
+      // 战力 range filter
+      const cardPower = c.power ? parseInt(c.power) : null;
+      if (dpMin !== "all" && (cardPower == null || cardPower < dpMin)) return false;
+      if (dpMax !== "all" && (cardPower == null || cardPower > dpMax)) return false;
+      // 距离 range filter
       if (ppMin !== "all" && (c.pp_value == null || c.pp_value < ppMin)) return false;
       if (ppMax !== "all" && (c.pp_value == null || c.pp_value > ppMax)) return false;
       return true;
@@ -66,7 +68,7 @@ export default function CardSearchPage({ db }: Props) {
         case "cost":
           return a.cost === b.cost ? a.card_no.localeCompare(b.card_no) : a.cost - b.cost;
         case "power":
-          return (b.dp_value || 0) - (a.dp_value || 0) || a.card_no.localeCompare(b.card_no);
+          return (b.power ? parseInt(b.power) : 0) - (a.power ? parseInt(a.power) : 0) || a.card_no.localeCompare(b.card_no);
         case "name":
           return a.name.localeCompare(b.name, "zh-CN");
         default:

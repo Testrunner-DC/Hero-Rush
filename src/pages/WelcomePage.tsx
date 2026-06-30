@@ -165,8 +165,8 @@ export default function WelcomePage({ db, onNavigate }: WelcomePageProps) {
           <TipRow
             step="1"
             title="浏览卡牌图鉴"
-            desc="在「卡牌」页面查看所有卡牌，使用筛选器按属性、费用、稀有度快速定位。"
-            action="去卡牌图鉴"
+            desc="在「卡牌查询」页面查看所有卡牌，使用筛选器按属性、费用、稀有度快速定位。"
+            action="去卡牌查询"
             onAction={() => onNavigate("search")}
           />
           <TipRow

@@ -11,7 +11,7 @@ import type { Card, DeckEntry } from "../types/card";
 
 interface Props {
   mainDeck: DeckEntry[];
-  rushDeck: DeckEntry[];
+  rushDeck?: DeckEntry[];
   cardMap: Map<string, Card>;
 }
 

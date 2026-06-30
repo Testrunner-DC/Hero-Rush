@@ -12,7 +12,7 @@ import type { Card, DeckEntry } from "../types/card";
 
 interface Props {
   mainDeck: DeckEntry[];
-  rushDeck: DeckEntry[];
+  rushDeck?: DeckEntry[];
   cardMap: Map<string, Card>;
   stats: DeckStats;
 }
@@ -36,7 +36,7 @@ function buildCostCurve(
   cardMap: Map<string, Card>
 ): Map<number, number> {
   const hist = new Map<number, number>();
-  const all = [...mainDeck, ...rushDeck];
+  const all = [...mainDeck, ...(rushDeck || [])];
   for (const entry of all) {
     const card = cardMap.get(entry.card_no);
     if (!card) continue;
@@ -53,7 +53,7 @@ function buildColorDist(
   cardMap: Map<string, Card>
 ): Map<string, { name: string; color: string; count: number }> {
   const dist = new Map<string, { name: string; color: string; count: number }>();
-  const all = [...mainDeck, ...rushDeck];
+  const all = [...mainDeck, ...(rushDeck || [])];
   for (const entry of all) {
     const card = cardMap.get(entry.card_no);
     if (!card) continue;
@@ -74,12 +74,12 @@ function buildColorDist(
 
 export default function DeckStatsView({ mainDeck, rushDeck, cardMap, stats }: Props) {
   // ── Cost curve ──────────────────────────────────────────
-  const costHist = buildCostCurve(mainDeck, rushDeck, cardMap);
+  const costHist = buildCostCurve(mainDeck, rushDeck || [], cardMap);
   const maxCostCount = Math.max(1, ...costHist.values());
   const costLabels = ["Lv0", "Lv1", "Lv2", "Lv3", "Lv4", "Lv5", "Lv6+"];
 
   // ── Color distribution ──────────────────────────────────
-  const colorDist = buildColorDist(mainDeck, rushDeck, cardMap);
+  const colorDist = buildColorDist(mainDeck, rushDeck || [], cardMap);
   const totalCards = stats.mainCount + stats.rushCount;
   const colorEntries = [...colorDist.values()].sort((a, b) => b.count - a.count);
 

@@ -16,7 +16,7 @@ type Tab = "welcome" | "chat" | "search" | "plaza" | "deck" | "battle" | "help" 
 const TAB_LABELS: Record<Tab, string> = {
   welcome: "欢迎",
   chat: "聊天",
-  search: "卡牌",
+  search: "卡牌查询",
   plaza: "卡组广场",
   deck: "组卡器",
   battle: "对战",
@@ -29,11 +29,9 @@ const TAB_ORDER: Tab[] = ["welcome", "chat", "search", "plaza", "deck", "battle"
 
 interface DeckStats {
   mainCount: number;
-  rushCount: number;
   colors: string[];
   overThreeNames: string[];
   mainValid: boolean;
-  rushValid: boolean;
   colorValid: boolean;
   nameValid: boolean;
   allValid: boolean;
@@ -48,7 +46,6 @@ export default function App() {
   // Deck state
   const [deckName, setDeckName] = useState("未命名卡组");
   const [mainDeck, setMainDeck] = useState<DeckEntry[]>([]);
-  const [rushDeck, setRushDeck] = useState<DeckEntry[]>([]);
   const [savedDecks, setSavedDecks] = useState<Deck[]>([]);
 
   // Load card database
@@ -82,7 +79,6 @@ export default function App() {
       if (deck) {
         setDeckName(deck.name);
         setMainDeck(deck.main_deck);
-        setRushDeck(deck.rush_deck);
         setTab("deck");
       }
     }
@@ -100,62 +96,56 @@ export default function App() {
   }, [db]);
 
   // Deck operations (use card_no, not id - game logic treats same card_no as same card)
-  const addToDeck = useCallback((card: Card, isRush: boolean) => {
-    if (!isRush && card.card_type !== 1) {
-      alert("角色卡只能加入主卡组！");
-      return;
-    }
-    if (isRush && card.card_type !== 2) {
-      alert("冲击卡只能加入冲击卡组！");
+  // Impact cards (card_type === 2) are no longer added to any deck; they are display-only.
+  const addToDeck = useCallback((card: Card) => {
+    // Impact cards are display-only, not added to any deck
+    if (card.card_type === 2) return;
+    // Only character cards (card_type === 1) can be added
+    if (card.card_type !== 1) {
+      alert("角色卡才能加入卡组！");
       return;
     }
 
-    const deck = isRush ? rushDeck : mainDeck;
-    const setDeck = isRush ? setRushDeck : setMainDeck;
-    const existing = deck.find((e) => e.card_no === card.card_no);
-    const maxCount = isRush ? 9 : 3;
+    const existing = mainDeck.find((e) => e.card_no === card.card_no);
+    const maxCount = 3;
 
     if (existing) {
       if (existing.count >= maxCount) return;
-      setDeck(deck.map((e) => (e.card_no === card.card_no ? { ...e, count: e.count + 1 } : e)));
+      setMainDeck(mainDeck.map((e) => (e.card_no === card.card_no ? { ...e, count: e.count + 1 } : e)));
     } else {
-      setDeck([...deck, { card_no: card.card_no, count: 1 }]);
+      setMainDeck([...mainDeck, { card_no: card.card_no, count: 1 }]);
     }
-  }, [mainDeck, rushDeck]);
+  }, [mainDeck]);
 
-  const removeFromDeck = useCallback((cardNo: string, isRush: boolean) => {
-    const deck = isRush ? rushDeck : mainDeck;
-    const setDeck = isRush ? setRushDeck : setMainDeck;
-    const existing = deck.find((e) => e.card_no === cardNo);
+  const removeFromDeck = useCallback((cardNo: string) => {
+    const existing = mainDeck.find((e) => e.card_no === cardNo);
     if (!existing) return;
     if (existing.count <= 1) {
-      setDeck(deck.filter((e) => e.card_no !== cardNo));
+      setMainDeck(mainDeck.filter((e) => e.card_no !== cardNo));
     } else {
-      setDeck(deck.map((e) => (e.card_no === cardNo ? { ...e, count: e.count - 1 } : e)));
+      setMainDeck(mainDeck.map((e) => (e.card_no === cardNo ? { ...e, count: e.count - 1 } : e)));
     }
-  }, [mainDeck, rushDeck]);
+  }, [mainDeck]);
 
   const clearDeck = useCallback(() => {
     setMainDeck([]);
-    setRushDeck([]);
   }, []);
 
   const saveDeck = useCallback(() => {
     const deck: Deck = {
       name: deckName,
       main_deck: mainDeck,
-      rush_deck: rushDeck,
+      rush_deck: [],
       created_at: new Date().toISOString(),
     };
     saveDeckToLocal(deck);
     setSavedDecks(getLocalDecks());
     alert("卡组已保存!");
-  }, [deckName, mainDeck, rushDeck]);
+  }, [deckName, mainDeck]);
 
   const loadDeck = useCallback((deck: Deck) => {
     setDeckName(deck.name);
     setMainDeck(deck.main_deck);
-    setRushDeck(deck.rush_deck);
   }, []);
 
   const removeDeck = useCallback((name: string) => {
@@ -167,7 +157,7 @@ export default function App() {
     const deck: Deck = {
       name: deckName,
       main_deck: mainDeck,
-      rush_deck: rushDeck,
+      rush_deck: [],
       created_at: new Date().toISOString(),
     };
     const code = encodeDeck(deck);
@@ -177,20 +167,18 @@ export default function App() {
     }).catch(() => {
       prompt("复制以下链接分享卡组:", url);
     });
-  }, [deckName, mainDeck, rushDeck]);
+  }, [deckName, mainDeck]);
 
   // Load deck from plaza: load the deck into the builder and switch to deck tab
   const loadDeckFromPlaza = useCallback((deck: Deck) => {
     setDeckName(deck.name);
     setMainDeck(deck.main_deck);
-    setRushDeck(deck.rush_deck);
     setTab("deck");
   }, []);
 
   // Deck validation
   const deckStats = useMemo<DeckStats>(() => {
     const mainCount = mainDeck.reduce((s, e) => s + e.count, 0);
-    const rushCount = rushDeck.reduce((s, e) => s + e.count, 0);
     const colors = new Set<number>();
     const nameCounts: Record<string, number> = {};
 
@@ -210,16 +198,14 @@ export default function App() {
 
     return {
       mainCount,
-      rushCount,
       colors: colorArray,
       overThreeNames: overThree.map(([n]) => n),
       mainValid: mainCount === 50,
-      rushValid: rushCount === 9,
       colorValid: colors.size <= 2,
       nameValid: overThree.length === 0,
-      allValid: mainCount === 50 && rushCount === 9 && colors.size <= 2 && overThree.length === 0,
+      allValid: mainCount === 50 && colors.size <= 2 && overThree.length === 0,
     };
-  }, [mainDeck, rushDeck, cardMap, db]);
+  }, [mainDeck, cardMap, db]);
 
   if (loading) {
     return (
@@ -306,7 +292,6 @@ export default function App() {
             deckName={deckName}
             setDeckName={setDeckName}
             mainDeck={mainDeck}
-            rushDeck={rushDeck}
             stats={deckStats}
             savedDecks={savedDecks}
             onAdd={addToDeck}

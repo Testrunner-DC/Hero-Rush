@@ -4,7 +4,7 @@
  * Vertical layout with color dot buttons, small button groups for type/level/rarity/package.
  * Light theme, used in both CardSearchPage and DeckBuilderPage.
  *
- * Supports DP (战力) and PP (距离) range filters (P1).
+ * Supports 战力 and 距离 range filters (P1).
  */
 
 import type { CardDatabase } from "../types/card";
@@ -289,9 +289,9 @@ export default function FilterSidebar({ db, state, onChange, onReset, resultCoun
         </div>
       </div>
 
-      {/* ── DP (战力) ────────────────────────────────────────── */}
+      {/* ── 战力 ────────────────────────────────────────── */}
       <div>
-        <p className={sectionTitle}>战力 (DP)</p>
+        <p className={sectionTitle}>战力</p>
         <div className="flex items-center gap-1.5">
           <input
             type="number"
@@ -311,9 +311,9 @@ export default function FilterSidebar({ db, state, onChange, onReset, resultCoun
         </div>
       </div>
 
-      {/* ── PP (距离) ────────────────────────────────────────── */}
+      {/* ── 距离 ────────────────────────────────────────── */}
       <div>
-        <p className={sectionTitle}>距离 (PP)</p>
+        <p className={sectionTitle}>距离</p>
         <div className="flex items-center gap-1.5">
           <input
             type="number"

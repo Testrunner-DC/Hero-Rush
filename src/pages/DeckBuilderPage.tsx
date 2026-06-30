@@ -7,8 +7,10 @@
  * Bottom:     hover card detail strip
  *
  * P0: Column selector on left panel, Stats view with cost curve + color distribution
- * P1: DP/PP range filters, Import/Export deck codes
+ * P1: 战力/距离 range filters, Import/Export deck codes
  * P2: Sample hand simulator, foil effect, card scale, sort dropdowns in deck sections
+ *
+ * NOTE: Impact cards (card_type === 2) are display-only and not added to any deck.
  */
 
 import { useState, useMemo, useCallback } from "react";
@@ -28,11 +30,9 @@ import { encodeDeck, decodeDeck, extractDeckCode } from "../utils/deckCode";
 
 interface DeckStats {
   mainCount: number;
-  rushCount: number;
   colors: string[];
   overThreeNames: string[];
   mainValid: boolean;
-  rushValid: boolean;
   colorValid: boolean;
   nameValid: boolean;
   allValid: boolean;
@@ -44,11 +44,10 @@ interface Props {
   deckName: string;
   setDeckName: (v: string) => void;
   mainDeck: DeckEntry[];
-  rushDeck: DeckEntry[];
   stats: DeckStats;
   savedDecks: Deck[];
-  onAdd: (card: Card, isRush: boolean) => void;
-  onRemove: (cardNo: string, isRush: boolean) => void;
+  onAdd: (card: Card) => void;
+  onRemove: (cardNo: string) => void;
   onClear: () => void;
   onSave: () => void;
   onLoad: (deck: Deck) => void;
@@ -56,14 +55,13 @@ interface Props {
   onShare: () => void;
 }
 
-type PickerTab = "all" | "main" | "rush";
+type PickerTab = "all" | "main";
 type RightViewMode = "gallery" | "stats" | "hand";
 type DeckSort = "energy" | "power" | "name";
 
 const TAB_CONFIG: { key: PickerTab; label: string; activeClass: string }[] = [
   { key: "all", label: "全部", activeClass: "bg-stone-700 text-white" },
   { key: "main", label: "角色卡", activeClass: "bg-red-600 text-white" },
-  { key: "rush", label: "冲击卡", activeClass: "bg-amber-600 text-white" },
 ];
 
 const SORT_LABELS: Record<DeckSort, string> = {
@@ -85,7 +83,6 @@ export default function DeckBuilderPage(props: Props) {
     deckName,
     setDeckName,
     mainDeck,
-    rushDeck,
     stats,
     savedDecks,
     onAdd,
@@ -112,11 +109,9 @@ export default function DeckBuilderPage(props: Props) {
   const [foilEnabled, setFoilEnabled] = useState(false);
   const [cardScale, setCardScale] = useState(1.0);
   const [mainSort, setMainSort] = useState<DeckSort>("energy");
-  const [rushSort, setRushSort] = useState<DeckSort>("energy");
 
   // ── Collapse state for right-column sections ──
   const [mainCollapsed, setMainCollapsed] = useState(false);
-  const [rushCollapsed, setRushCollapsed] = useState(false);
   const [savedCollapsed, setSavedCollapsed] = useState(false);
 
   // ── Filter handlers ──
@@ -139,7 +134,7 @@ export default function DeckBuilderPage(props: Props) {
     const deck: Deck = {
       name: deckName,
       main_deck: mainDeck,
-      rush_deck: rushDeck,
+      rush_deck: [],
       created_at: new Date().toISOString(),
     };
     const code = encodeDeck(deck);
@@ -148,7 +143,7 @@ export default function DeckBuilderPage(props: Props) {
     }).catch(() => {
       prompt("复制以下卡组码:", code);
     });
-  }, [deckName, mainDeck, rushDeck]);
+  }, [deckName, mainDeck]);
 
   // ── Import handler: decode → clear → add all cards ────
   const handleImport = useCallback(
@@ -162,15 +157,7 @@ export default function DeckBuilderPage(props: Props) {
         const card = cardMap.get(entry.card_no);
         if (card) {
           for (let i = 0; i < entry.count; i++) {
-            onAdd(card, false);
-          }
-        }
-      }
-      for (const entry of deck.rush_deck) {
-        const card = cardMap.get(entry.card_no);
-        if (card) {
-          for (let i = 0; i < entry.count; i++) {
-            onAdd(card, true);
+            onAdd(card);
           }
         }
       }
@@ -196,17 +183,17 @@ export default function DeckBuilderPage(props: Props) {
     const { search, filterAttr, filterRarity, filterCost, filterPackage, sortBy, dpMin, dpMax, ppMin, ppMax } = filters;
     let result = pickerCards.filter((c) => {
       if (pickerTab === "main" && c.card_type !== 1) return false;
-      if (pickerTab === "rush" && c.card_type !== 2) return false;
       if (search) {
         const q = search.toLowerCase();
-        if (!c.name.toLowerCase().includes(q) && !c.card_no.toLowerCase().includes(q)) return false;
+        if (!c.name.toLowerCase().includes(q) && !c.card_no.toLowerCase().includes(q) && !(c.feature_text || "").toLowerCase().includes(q)) return false;
       }
       if (filterAttr !== "all" && c.attribute !== filterAttr) return false;
       if (filterRarity !== "all" && c.rarity !== filterRarity) return false;
       if (filterCost !== "all" && c.cost !== filterCost) return false;
       if (filterPackage !== "all" && c.package_short !== filterPackage) return false;
-      if (dpMin !== "all" && (c.dp_value == null || c.dp_value < dpMin)) return false;
-      if (dpMax !== "all" && (c.dp_value == null || c.dp_value > dpMax)) return false;
+      const cardPower = c.power ? parseInt(c.power) : null;
+      if (dpMin !== "all" && (cardPower == null || cardPower < dpMin)) return false;
+      if (dpMax !== "all" && (cardPower == null || cardPower > dpMax)) return false;
       if (ppMin !== "all" && (c.pp_value == null || c.pp_value < ppMin)) return false;
       if (ppMax !== "all" && (c.pp_value == null || c.pp_value > ppMax)) return false;
       return true;
@@ -217,7 +204,7 @@ export default function DeckBuilderPage(props: Props) {
         case "cost":
           return a.cost === b.cost ? a.card_no.localeCompare(b.card_no) : a.cost - b.cost;
         case "power":
-          return (b.dp_value || 0) - (a.dp_value || 0);
+          return (b.power ? parseInt(b.power) : 0) - (a.power ? parseInt(a.power) : 0);
         case "name":
           return a.name.localeCompare(b.name, "zh-CN");
         default:
@@ -230,32 +217,28 @@ export default function DeckBuilderPage(props: Props) {
   // ── Count for a card in the current deck ──
   const countFor = useCallback(
     (card: Card): number => {
-      if (pickerTab === "all") {
-        const deck = card.card_type === 2 ? rushDeck : mainDeck;
-        return deck.find((e) => e.card_no === card.card_no)?.count || 0;
-      }
-      const deck = pickerTab === "main" ? mainDeck : rushDeck;
-      return deck.find((e) => e.card_no === card.card_no)?.count || 0;
+      // Impact cards (card_type === 2) are never in any deck
+      if (card.card_type === 2) return 0;
+      return mainDeck.find((e) => e.card_no === card.card_no)?.count || 0;
     },
-    [pickerTab, mainDeck, rushDeck]
+    [mainDeck]
   );
 
   // ── Card select handler ──
   const handleCardSelect = useCallback(
     (card: Card) => {
-      if (pickerTab === "all") {
-        if (card.card_type === 1) {
-          onAdd(card, false);
-        } else if (card.card_type === 2) {
-          onAdd(card, true);
-        } else {
-          setSelectedCard(card);
-        }
+      // Impact cards (card_type === 2) are display-only, do nothing on click
+      if (card.card_type === 2) {
+        setSelectedCard(card);
+        return;
+      }
+      if (card.card_type === 1) {
+        onAdd(card);
       } else {
-        onAdd(card, pickerTab === "rush");
+        setSelectedCard(card);
       }
     },
-    [pickerTab, onAdd]
+    [onAdd]
   );
 
   // ── Sort utility for deck entries ──
@@ -272,9 +255,9 @@ export default function DeckBuilderPage(props: Props) {
               ? ca.name.localeCompare(cb.name, "zh-CN")
               : ca.cost - cb.cost;
           case "power":
-            return (cb.dp_value || 0) === (ca.dp_value || 0)
+            return (cb.power ? parseInt(cb.power) : 0) === (ca.power ? parseInt(ca.power) : 0)
               ? ca.name.localeCompare(cb.name, "zh-CN")
-              : (cb.dp_value || 0) - (ca.dp_value || 0);
+              : (cb.power ? parseInt(cb.power) : 0) - (ca.power ? parseInt(ca.power) : 0);
           case "name":
             return ca.name.localeCompare(cb.name, "zh-CN");
           default:
@@ -291,13 +274,8 @@ export default function DeckBuilderPage(props: Props) {
     [mainDeck, mainSort, sortEntries]
   );
 
-  const sortedRushDeck = useMemo(
-    () => sortEntries(rushDeck, rushSort),
-    [rushDeck, rushSort, sortEntries]
-  );
-
   // ── Render deck entry row ──
-  const renderDeckEntry = (entry: DeckEntry, isRush: boolean) => {
+  const renderDeckEntry = (entry: DeckEntry) => {
     const card = cardMap.get(entry.card_no);
     if (!card) return null;
     return (
@@ -334,7 +312,7 @@ export default function DeckBuilderPage(props: Props) {
         </div>
         <div className="flex items-center gap-0.5 flex-shrink-0">
           <button
-            onClick={() => onRemove(entry.card_no, isRush)}
+            onClick={() => onRemove(entry.card_no)}
             className="w-5 h-5 rounded bg-[var(--msa-surface)] text-[var(--msa-text-muted)] hover:text-[var(--msa-red)] text-xs flex items-center justify-center transition"
           >
             −
@@ -343,7 +321,7 @@ export default function DeckBuilderPage(props: Props) {
             {entry.count}
           </span>
           <button
-            onClick={() => onAdd(card, isRush)}
+            onClick={() => onAdd(card)}
             className="w-5 h-5 rounded bg-[var(--msa-surface)] text-[var(--msa-text-muted)] hover:text-green-600 text-xs flex items-center justify-center transition"
           >
             +
@@ -402,13 +380,6 @@ export default function DeckBuilderPage(props: Props) {
             }`}
           >
             主卡组 {stats.mainCount}/50
-          </span>
-          <span
-            className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-              stats.rushValid ? "bg-green-50 text-green-600" : "bg-amber-50 text-amber-600"
-            }`}
-          >
-            冲击 {stats.rushCount}/9
           </span>
           {stats.colors.length > 0 && (
             <span
@@ -608,14 +579,14 @@ export default function DeckBuilderPage(props: Props) {
             {rightViewMode === "stats" ? (
               <DeckStatsView
                 mainDeck={mainDeck}
-                rushDeck={rushDeck}
+                rushDeck={[]}
                 cardMap={cardMap}
-                stats={stats}
+                stats={{ ...stats, rushCount: 0, rushValid: true }}
               />
             ) : rightViewMode === "hand" ? (
               <SampleHandView
                 mainDeck={mainDeck}
-                rushDeck={rushDeck}
+                rushDeck={[]}
                 cardMap={cardMap}
               />
             ) : (
@@ -643,36 +614,7 @@ export default function DeckBuilderPage(props: Props) {
                           点击卡牌加入卡组
                         </p>
                       ) : (
-                        sortedMainDeck.map((e) => renderDeckEntry(e, false))
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Rush deck section */}
-                <div className="border-b border-[var(--msa-border)]">
-                  <button
-                    onClick={() => setRushCollapsed(!rushCollapsed)}
-                    className="sticky top-0 z-10 w-full flex items-center gap-1.5 bg-white/95 px-2.5 py-2 border-b border-[var(--msa-border)] hover:bg-[var(--msa-surface-hover)] transition"
-                  >
-                    <span className="text-[var(--msa-text-muted)] flex-shrink-0">
-                      {collapseArrow(rushCollapsed)}
-                    </span>
-                    <span className="text-[11px] text-[var(--msa-text-muted)] font-semibold uppercase tracking-wide">
-                      冲击卡组 · {stats.rushCount}/9
-                    </span>
-                    <div className="ml-auto" onClick={(e) => e.stopPropagation()}>
-                      {renderSortSelect(rushSort, setRushSort)}
-                    </div>
-                  </button>
-                  {!rushCollapsed && (
-                    <div className="p-1.5 space-y-0.5">
-                      {sortedRushDeck.length === 0 ? (
-                        <p className="text-center text-[11px] text-gray-400 py-4">
-                          切换冲击卡 tab 后加入
-                        </p>
-                      ) : (
-                        sortedRushDeck.map((e) => renderDeckEntry(e, true))
+                        sortedMainDeck.map((e) => renderDeckEntry(e))
                       )}
                     </div>
                   )}
@@ -721,8 +663,6 @@ export default function DeckBuilderPage(props: Props) {
                                 </p>
                                 <p className="text-[10px] text-[var(--msa-text-muted)] leading-tight">
                                   {deck.main_deck.reduce((s, e) => s + e.count, 0)}/50
-                                  {deck.rush_deck.length > 0 &&
-                                    ` · ${deck.rush_deck.reduce((s, e) => s + e.count, 0)}R`}
                                 </p>
                               </div>
                             </button>

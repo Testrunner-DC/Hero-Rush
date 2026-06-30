@@ -3,6 +3,7 @@
  *
  * Displays the hovered card's large image + stats + effect text.
  * Updates in real-time on hover. Shows empty state when no card is hovered.
+ * Impact cards (card_type === 2) do not show an "add to deck" button.
  */
 
 import { useState, useEffect } from "react";
@@ -11,7 +12,7 @@ import type { Card, CardDatabase } from "../types/card";
 interface Props {
   card: Card | null;
   db: CardDatabase;
-  onAddToDeck?: (card: Card, isRush: boolean) => void;
+  onAddToDeck?: (card: Card) => void;
   showAddButton?: boolean;
 }
 
@@ -161,25 +162,15 @@ export default function CardDetailSidebar({ card, db, onAddToDeck, showAddButton
         </div>
       )}
 
-      {/* ── Add to deck buttons ──────────────────────────────── */}
-      {showAddButton && onAddToDeck && (
-        <div className="pt-2 space-y-1.5">
-          {currentCard.card_type === 1 && (
-            <button
-              onClick={() => onAddToDeck(currentCard, false)}
-              className="w-full px-3 py-2 rounded-lg text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition"
-            >
-              + 加入主卡组
-            </button>
-          )}
-          {currentCard.card_type === 2 && (
-            <button
-              onClick={() => onAddToDeck(currentCard, true)}
-              className="w-full px-3 py-2 rounded-lg text-xs font-medium bg-amber-500 text-white hover:bg-amber-600 transition"
-            >
-              + 加入冲击卡组
-            </button>
-          )}
+      {/* ── Add to deck button ──────────────────────────────── */}
+      {showAddButton && onAddToDeck && currentCard.card_type === 1 && (
+        <div className="pt-2">
+          <button
+            onClick={() => onAddToDeck(currentCard)}
+            className="w-full px-3 py-2 rounded-lg text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition"
+          >
+            + 加入主卡组
+          </button>
         </div>
       )}
     </div>
