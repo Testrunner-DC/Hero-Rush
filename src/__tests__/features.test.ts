@@ -273,33 +273,33 @@ describe("Feature 2: DeckStatsView — Cost Curve & Color Distribution", () => {
 });
 
 // ============================================================
-// Feature 3: DP/PP Multi-dimensional Filters
+// Feature 3: Power/Distance Multi-dimensional Filters
 // ============================================================
 
-describe("Feature 3: DP/PP Multi-dimensional Filters (FilterSidebar)", () => {
+describe("Feature 3: Power/Distance Multi-dimensional Filters (FilterSidebar)", () => {
   // Replicate the filter logic from CardSearchPage and DeckBuilderPage
-  function applyDPFilter(
+  function applyPowerFilter(
     card: { power: string | undefined },
-    dpMin: number | "all",
-    dpMax: number | "all"
+    powerMin: number | "all",
+    powerMax: number | "all"
   ): boolean {
     const cardPower = card.power ? parseInt(card.power) : null;
-    if (dpMin !== "all" && (cardPower == null || cardPower < dpMin)) return false;
-    if (dpMax !== "all" && (cardPower == null || cardPower > dpMax)) return false;
+    if (powerMin !== "all" && (cardPower == null || cardPower < powerMin)) return false;
+    if (powerMax !== "all" && (cardPower == null || cardPower > powerMax)) return false;
     return true;
   }
 
-  function applyPPFilter(
+  function applyDistanceFilter(
     card: { pp_value: number | null },
-    ppMin: number | "all",
-    ppMax: number | "all"
+    distanceMin: number | "all",
+    distanceMax: number | "all"
   ): boolean {
-    if (ppMin !== "all" && (card.pp_value == null || card.pp_value < ppMin)) return false;
-    if (ppMax !== "all" && (card.pp_value == null || card.pp_value > ppMax)) return false;
+    if (distanceMin !== "all" && (card.pp_value == null || card.pp_value < distanceMin)) return false;
+    if (distanceMax !== "all" && (card.pp_value == null || card.pp_value > distanceMax)) return false;
     return true;
   }
 
-  it("FilterState type includes dpMin/dpMax/ppMin/ppMax fields", () => {
+  it("FilterState type includes powerMin/powerMax/distanceMin/distanceMax fields", () => {
     // Verify FilterState interface (imported from FilterSidebar) has the fields
     // We check this by testing DEFAULT_FILTERS
     const DEFAULT_FILTERS = {
@@ -310,62 +310,62 @@ describe("Feature 3: DP/PP Multi-dimensional Filters (FilterSidebar)", () => {
       filterCost: "all" as const,
       filterPackage: "all" as const,
       sortBy: "card_no" as const,
-      dpMin: "all" as const,
-      dpMax: "all" as const,
-      ppMin: "all" as const,
-      ppMax: "all" as const,
+      powerMin: "all" as const,
+      powerMax: "all" as const,
+      distanceMin: "all" as const,
+      distanceMax: "all" as const,
     };
-    expect(DEFAULT_FILTERS).toHaveProperty("dpMin");
-    expect(DEFAULT_FILTERS).toHaveProperty("dpMax");
-    expect(DEFAULT_FILTERS).toHaveProperty("ppMin");
-    expect(DEFAULT_FILTERS).toHaveProperty("ppMax");
-    expect(DEFAULT_FILTERS.dpMin).toBe("all");
-    expect(DEFAULT_FILTERS.dpMax).toBe("all");
-    expect(DEFAULT_FILTERS.ppMin).toBe("all");
-    expect(DEFAULT_FILTERS.ppMax).toBe("all");
+    expect(DEFAULT_FILTERS).toHaveProperty("powerMin");
+    expect(DEFAULT_FILTERS).toHaveProperty("powerMax");
+    expect(DEFAULT_FILTERS).toHaveProperty("distanceMin");
+    expect(DEFAULT_FILTERS).toHaveProperty("distanceMax");
+    expect(DEFAULT_FILTERS.powerMin).toBe("all");
+    expect(DEFAULT_FILTERS.powerMax).toBe("all");
+    expect(DEFAULT_FILTERS.distanceMin).toBe("all");
+    expect(DEFAULT_FILTERS.distanceMax).toBe("all");
   });
 
-  it("战力筛选: passes when dpMin/dpMax are 'all'", () => {
+  it("战力筛选: passes when powerMin/powerMax are 'all'", () => {
     const card = { power: "500" };
-    expect(applyDPFilter(card, "all", "all")).toBe(true);
+    expect(applyPowerFilter(card, "all", "all")).toBe(true);
   });
 
   it("战力筛选: passes when power is within range", () => {
     const card = { power: "500" };
-    expect(applyDPFilter(card, 300, 700)).toBe(true);
+    expect(applyPowerFilter(card, 300, 700)).toBe(true);
   });
 
-  it("战力筛选: fails when power is below dpMin", () => {
+  it("战力筛选: fails when power is below powerMin", () => {
     const card = { power: "200" };
-    expect(applyDPFilter(card, 300, "all")).toBe(false);
+    expect(applyPowerFilter(card, 300, "all")).toBe(false);
   });
 
-  it("战力筛选: fails when power is above dpMax", () => {
+  it("战力筛选: fails when power is above powerMax", () => {
     const card = { power: "800" };
-    expect(applyDPFilter(card, "all", 700)).toBe(false);
+    expect(applyPowerFilter(card, "all", 700)).toBe(false);
   });
 
   it("战力筛选: excludes cards with no power", () => {
     const card = { power: undefined };
-    expect(applyDPFilter(card, 100, "all")).toBe(false);
-    expect(applyDPFilter(card, "all", 500)).toBe(false);
+    expect(applyPowerFilter(card, 100, "all")).toBe(false);
+    expect(applyPowerFilter(card, "all", 500)).toBe(false);
   });
 
-  it("PP filter: excludes cards with null pp_value", () => {
+  it("距离筛选: excludes cards with null pp_value", () => {
     const card = { pp_value: null };
-    expect(applyPPFilter(card, 1, "all")).toBe(false);
-    expect(applyPPFilter(card, "all", 5)).toBe(false);
+    expect(applyDistanceFilter(card, 1, "all")).toBe(false);
+    expect(applyDistanceFilter(card, "all", 5)).toBe(false);
   });
 
-  it("PP filter: passes when pp_value is within range", () => {
+  it("距离筛选: passes when pp_value is within range", () => {
     const card = { pp_value: 3 };
-    expect(applyPPFilter(card, 1, 5)).toBe(true);
+    expect(applyDistanceFilter(card, 1, 5)).toBe(true);
   });
 
-  it("PP filter: boundary values are inclusive", () => {
+  it("距离筛选: boundary values are inclusive", () => {
     const card = { pp_value: 5 };
-    expect(applyPPFilter(card, "all", 5)).toBe(true); // pp_value <= ppMax → passes
-    expect(applyPPFilter(card, 5, "all")).toBe(true); // pp_value >= ppMin → passes
+    expect(applyDistanceFilter(card, "all", 5)).toBe(true); // pp_value <= distanceMax → passes
+    expect(applyDistanceFilter(card, 5, "all")).toBe(true); // pp_value >= distanceMin → passes
   });
 
   it("parseRangeValue: empty string → 'all'", () => {
@@ -397,17 +397,17 @@ describe("Feature 3: DP/PP Multi-dimensional Filters (FilterSidebar)", () => {
     expect(parseRangeValue("abc")).toBe("all");
   });
 
-  it("DEFAULT_FILTERS reset clears dpMin/dpMax/ppMin/ppMax to 'all'", () => {
+  it("DEFAULT_FILTERS reset clears powerMin/powerMax/distanceMin/distanceMax to 'all'", () => {
     const DEFAULT_FILTERS = {
-      dpMin: "all" as const,
-      dpMax: "all" as const,
-      ppMin: "all" as const,
-      ppMax: "all" as const,
+      powerMin: "all" as const,
+      powerMax: "all" as const,
+      distanceMin: "all" as const,
+      distanceMax: "all" as const,
     };
-    expect(DEFAULT_FILTERS.dpMin).toBe("all");
-    expect(DEFAULT_FILTERS.dpMax).toBe("all");
-    expect(DEFAULT_FILTERS.ppMin).toBe("all");
-    expect(DEFAULT_FILTERS.ppMax).toBe("all");
+    expect(DEFAULT_FILTERS.powerMin).toBe("all");
+    expect(DEFAULT_FILTERS.powerMax).toBe("all");
+    expect(DEFAULT_FILTERS.distanceMin).toBe("all");
+    expect(DEFAULT_FILTERS.distanceMax).toBe("all");
   });
 });
 

@@ -19,10 +19,10 @@ export interface FilterState {
   filterCost: number | "all";
   filterPackage: string | "all";
   sortBy: SortBy;
-  dpMin: number | "all";
-  dpMax: number | "all";
-  ppMin: number | "all";
-  ppMax: number | "all";
+  powerMin: number | "all";
+  powerMax: number | "all";
+  distanceMin: number | "all";
+  distanceMax: number | "all";
 }
 
 export const DEFAULT_FILTERS: FilterState = {
@@ -33,10 +33,10 @@ export const DEFAULT_FILTERS: FilterState = {
   filterCost: "all",
   filterPackage: "all",
   sortBy: "card_no",
-  dpMin: "all",
-  dpMax: "all",
-  ppMin: "all",
-  ppMax: "all",
+  powerMin: "all",
+  powerMax: "all",
+  distanceMin: "all",
+  distanceMax: "all",
 };
 
 interface Props {
@@ -76,10 +76,10 @@ export default function FilterSidebar({ db, state, onChange, onReset, resultCoun
     filterCost,
     filterPackage,
     sortBy,
-    dpMin,
-    dpMax,
-    ppMin,
-    ppMax,
+    powerMin,
+    powerMax,
+    distanceMin,
+    distanceMax,
   } = state;
 
   const sectionTitle = compact
@@ -295,16 +295,16 @@ export default function FilterSidebar({ db, state, onChange, onReset, resultCoun
         <div className="flex items-center gap-1.5">
           <input
             type="number"
-            value={dpMin === "all" ? "" : dpMin}
-            onChange={(e) => onChange({ dpMin: parseRangeValue(e.target.value) })}
+            value={powerMin === "all" ? "" : powerMin}
+            onChange={(e) => onChange({ powerMin: parseRangeValue(e.target.value) })}
             placeholder="最小"
             className="w-[60px] bg-white border border-stone-200 rounded text-sm text-stone-700 placeholder-stone-400 px-2 py-1.5 focus:outline-none focus:border-red-400 focus:ring-1 focus:ring-red-100 transition"
           />
           <span className="text-stone-400 text-xs">—</span>
           <input
             type="number"
-            value={dpMax === "all" ? "" : dpMax}
-            onChange={(e) => onChange({ dpMax: parseRangeValue(e.target.value) })}
+            value={powerMax === "all" ? "" : powerMax}
+            onChange={(e) => onChange({ powerMax: parseRangeValue(e.target.value) })}
             placeholder="最大"
             className="w-[60px] bg-white border border-stone-200 rounded text-sm text-stone-700 placeholder-stone-400 px-2 py-1.5 focus:outline-none focus:border-red-400 focus:ring-1 focus:ring-red-100 transition"
           />
@@ -317,16 +317,16 @@ export default function FilterSidebar({ db, state, onChange, onReset, resultCoun
         <div className="flex items-center gap-1.5">
           <input
             type="number"
-            value={ppMin === "all" ? "" : ppMin}
-            onChange={(e) => onChange({ ppMin: parseRangeValue(e.target.value) })}
+            value={distanceMin === "all" ? "" : distanceMin}
+            onChange={(e) => onChange({ distanceMin: parseRangeValue(e.target.value) })}
             placeholder="最小"
             className="w-[60px] bg-white border border-stone-200 rounded text-sm text-stone-700 placeholder-stone-400 px-2 py-1.5 focus:outline-none focus:border-red-400 focus:ring-1 focus:ring-red-100 transition"
           />
           <span className="text-stone-400 text-xs">—</span>
           <input
             type="number"
-            value={ppMax === "all" ? "" : ppMax}
-            onChange={(e) => onChange({ ppMax: parseRangeValue(e.target.value) })}
+            value={distanceMax === "all" ? "" : distanceMax}
+            onChange={(e) => onChange({ distanceMax: parseRangeValue(e.target.value) })}
             placeholder="最大"
             className="w-[60px] bg-white border border-stone-200 rounded text-sm text-stone-700 placeholder-stone-400 px-2 py-1.5 focus:outline-none focus:border-red-400 focus:ring-1 focus:ring-red-100 transition"
           />

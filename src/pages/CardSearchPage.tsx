@@ -35,7 +35,7 @@ export default function CardSearchPage({ db }: Props) {
   }, []);
 
   const filtered = useMemo(() => {
-    const { search, filterType, filterAttr, filterRarity, filterCost, filterPackage, sortBy, dpMin, dpMax, ppMin, ppMax } = filters;
+    const { search, filterType, filterAttr, filterRarity, filterCost, filterPackage, sortBy, powerMin, powerMax, distanceMin, distanceMax } = filters;
     let result = db.cards.filter((c) => {
       if (search) {
         const q = search.toLowerCase();
@@ -55,11 +55,11 @@ export default function CardSearchPage({ db }: Props) {
       if (filterPackage !== "all" && c.package_short !== filterPackage) return false;
       // 战力 range filter
       const cardPower = c.power ? parseInt(c.power) : null;
-      if (dpMin !== "all" && (cardPower == null || cardPower < dpMin)) return false;
-      if (dpMax !== "all" && (cardPower == null || cardPower > dpMax)) return false;
+      if (powerMin !== "all" && (cardPower == null || cardPower < powerMin)) return false;
+      if (powerMax !== "all" && (cardPower == null || cardPower > powerMax)) return false;
       // 距离 range filter
-      if (ppMin !== "all" && (c.pp_value == null || c.pp_value < ppMin)) return false;
-      if (ppMax !== "all" && (c.pp_value == null || c.pp_value > ppMax)) return false;
+      if (distanceMin !== "all" && (c.pp_value == null || c.pp_value < distanceMin)) return false;
+      if (distanceMax !== "all" && (c.pp_value == null || c.pp_value > distanceMax)) return false;
       return true;
     });
 

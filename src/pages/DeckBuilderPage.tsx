@@ -180,7 +180,7 @@ export default function DeckBuilderPage(props: Props) {
   }, [db.cards]);
 
   const filteredPicker = useMemo(() => {
-    const { search, filterAttr, filterRarity, filterCost, filterPackage, sortBy, dpMin, dpMax, ppMin, ppMax } = filters;
+    const { search, filterAttr, filterRarity, filterCost, filterPackage, sortBy, powerMin, powerMax, distanceMin, distanceMax } = filters;
     let result = pickerCards.filter((c) => {
       if (pickerTab === "main" && c.card_type !== 1) return false;
       if (search) {
@@ -192,10 +192,10 @@ export default function DeckBuilderPage(props: Props) {
       if (filterCost !== "all" && c.cost !== filterCost) return false;
       if (filterPackage !== "all" && c.package_short !== filterPackage) return false;
       const cardPower = c.power ? parseInt(c.power) : null;
-      if (dpMin !== "all" && (cardPower == null || cardPower < dpMin)) return false;
-      if (dpMax !== "all" && (cardPower == null || cardPower > dpMax)) return false;
-      if (ppMin !== "all" && (c.pp_value == null || c.pp_value < ppMin)) return false;
-      if (ppMax !== "all" && (c.pp_value == null || c.pp_value > ppMax)) return false;
+      if (powerMin !== "all" && (cardPower == null || cardPower < powerMin)) return false;
+      if (powerMax !== "all" && (cardPower == null || cardPower > powerMax)) return false;
+      if (distanceMin !== "all" && (c.pp_value == null || c.pp_value < distanceMin)) return false;
+      if (distanceMax !== "all" && (c.pp_value == null || c.pp_value > distanceMax)) return false;
       return true;
     });
 
