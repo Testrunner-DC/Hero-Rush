@@ -25,7 +25,7 @@ const TAB_LABELS: Record<Tab, string> = {
   about: "关于",
 };
 
-const TAB_ORDER: Tab[] = ["welcome", "chat", "search", "plaza", "deck", "battle", "help", "settings", "about"];
+const TAB_ORDER: Tab[] = ["chat", "search", "plaza", "deck", "battle", "help", "settings", "about"];
 
 interface DeckStats {
   mainCount: number;
@@ -233,15 +233,18 @@ export default function App() {
     <div className="flex flex-col h-screen overflow-hidden bg-[#fcfaf7]">
       {/* ── Header (MSA-style glass-morphism nav bar) ──────────── */}
       <header className="sticky top-0 z-50 h-12 bg-white/80 backdrop-blur-md border-b border-stone-200 flex items-center px-4 gap-4 flex-shrink-0 shadow-sm">
-        {/* Logo */}
-        <div className="flex items-center gap-1.5 whitespace-nowrap">
+        {/* Logo — click to go to Welcome page */}
+        <button
+          onClick={() => setTab("welcome")}
+          className="flex items-center gap-1.5 whitespace-nowrap hover:opacity-80 transition"
+        >
           <div className="w-7 h-7 rounded-md bg-[#b71c1c] flex items-center justify-center flex-shrink-0">
             <img src="/logo.png" alt="Logo" className="w-5 h-5 object-contain" />
           </div>
           <span className="text-stone-800 font-bold text-sm tracking-wide">
             斗界竞技场
           </span>
-        </div>
+        </button>
 
         {/* Nav tabs */}
         <nav className="flex items-center gap-0 h-full overflow-x-auto scrollbar-thin">

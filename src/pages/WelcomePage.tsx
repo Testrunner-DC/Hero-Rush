@@ -1,66 +1,121 @@
 /**
  * WelcomePage — 欢迎页 / 首页 (MSA Light Theme)
  *
- * Hero 区域（含 illustration 占位）+ 功能快捷入口 + 最近更新 + 数据统计
+ * Hero 区域（含 illustration 占位）+ 数据统计 + 4 个 MSA 风格纵向卡片区域 + Footer
  */
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { CardDatabase } from "../types/card";
+import { getLocalDecks } from "../utils/deckCode";
 
 interface WelcomePageProps {
   db: CardDatabase;
   onNavigate: (tab: string) => void;
 }
 
-interface FeatureCard {
-  tab: string;
-  icon: string;
-  title: string;
-  desc: string;
-  color: string;
+/** ── 伪数据：赛季排行榜 ──────────────────────────────────────── */
+
+interface RankingEntry {
+  rank: number;
+  name: string;
+  score: number;
+  winRate: string;
 }
 
-const FEATURES: FeatureCard[] = [
+const RANKING_DATA: RankingEntry[] = [
+  { rank: 1,  name: "钢铁侠本侠",     score: 1200, winRate: "78%" },
+  { rank: 2,  name: "SpiderNoir",     score: 1147, winRate: "72%" },
+  { rank: 3,  name: "灭霸响指",       score: 1053, winRate: "69%" },
+  { rank: 4,  name: "loklee",         score: 994,  winRate: "65%" },
+  { rank: 5,  name: "绯红结界",       score: 972,  winRate: "63%" },
+  { rank: 6,  name: "ThorOdinson",    score: 941,  winRate: "61%" },
+  { rank: 7,  name: "夜魔降临",       score: 889,  winRate: "58%" },
+  { rank: 8,  name: "CaptainM",       score: 854,  winRate: "56%" },
+  { rank: 9,  name: "星爵别跑",       score: 827,  winRate: "54%" },
+  { rank: 10, name: "BlackWidowXD",   score: 798,  winRate: "52%" },
+  { rank: 11, name: "浩克不是绿胖",   score: 765,  winRate: "49%" },
+  { rank: 12, name: "冬日战士零号",   score: 731,  winRate: "47%" },
+];
+
+/** ── 伪数据：最新动态 ───────────────────────────────────────── */
+
+interface NewsEntry {
+  date: string;
+  title: string;
+  summary: string;
+}
+
+const NEWS_DATA: NewsEntry[] = [
   {
-    tab: "search",
-    icon: "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z",
-    title: "卡牌图鉴",
-    desc: "浏览全部卡牌，按属性、费用、稀有度筛选",
-    color: "#b71c1c",
+    date: "2026-06-28",
+    title: "新卡包「混沌之战」即将上线",
+    summary:
+      "包含全新传奇卡牌「绯红女巫」与「快银」，预计下周更新，敬请关注。",
   },
   {
-    tab: "plaza",
-    icon: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1",
-    title: "卡组广场",
-    desc: "官方预组、社区卡组、卡组码导入",
-    color: "#378ADD",
+    date: "2026-06-25",
+    title: "赛季排行系统正式开放",
+    summary:
+      "玩家现在可以在首页查看实时赛季排名，与全国玩家同台竞技。",
   },
   {
-    tab: "deck",
-    icon: "M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z",
-    title: "组卡器",
-    desc: "构建你的专属卡组，实时校验合规性",
-    color: "#d4a853",
+    date: "2026-06-20",
+    title: "版本 2.4 更新日志：平衡性调整",
+    summary:
+      "「美国队长」战力上调、「洛基」诡计体系获得新支援卡，详见更新日志。",
   },
   {
-    tab: "battle",
-    icon: "M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
-    title: "在线对战",
-    desc: "P2P 实时对战，与好友切磋",
-    color: "#639922",
+    date: "2026-06-15",
+    title: "开发者日志：P2P 对战底层重构",
+    summary:
+      "WebRTC 信令链路已全面升级，延迟降低约 40%，断线重连体验大幅提升。",
+  },
+  {
+    date: "2026-06-10",
+    title: "「无限手套」活动即将结束",
+    summary:
+      "限时活动「无限手套」将于 7 月 1 日截止，请尽快完成挑战领取限定卡背。",
+  },
+  {
+    date: "2026-06-04",
+    title: "社区锦标赛 S2 报名开启",
+    summary:
+      "第二届斗界社区锦标赛现已开放报名，前 32 强将获得实体卡包奖励。",
   },
 ];
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Main Component
+// ═══════════════════════════════════════════════════════════════════════════
+
 export default function WelcomePage({ db, onNavigate }: WelcomePageProps) {
   const stats = useMemo(() => {
-    const attrCount = Object.keys(db.attributes || {}).length;
-    const packageCount = new Set(db.cards.map((c) => c.package_short)).size;
-    return {
-      totalCards: db.total_cards,
-      totalVariants: db.total_variants,
-      attrCount,
-      packageCount,
-    };
+    // Count completed battles from localStorage battleHistory
+    let battlesCompleted: number = 0;
+    try {
+      const raw = localStorage.getItem("battleHistory");
+      if (raw) {
+        const history = JSON.parse(raw);
+        if (Array.isArray(history)) {
+          battlesCompleted = history.filter(
+            (entry: unknown) =>
+              typeof entry === "object" &&
+              entry !== null &&
+              (entry as Record<string, unknown>).status === "completed"
+          ).length;
+        }
+      }
+    } catch {
+      battlesCompleted = 0;
+    }
+
+    // Count saved public decks
+    const publicDecks: number = getLocalDecks().length;
+
+    // Online players — placeholder for WebSocket integration
+    const onlinePlayers: string = "...";
+
+    return { battlesCompleted, publicDecks, onlinePlayers };
   }, [db]);
 
   return (
@@ -93,104 +148,38 @@ export default function WelcomePage({ db, onNavigate }: WelcomePageProps) {
           <p className="text-white/90 text-lg mb-8 drop-shadow-[0_1px_4px_rgba(0,0,0,0.5)]">
             漫威对战卡牌：超英击战 对战网页
           </p>
-
-          {/* CTA buttons */}
-          <div className="flex items-center justify-center gap-3">
-            <button
-              onClick={() => onNavigate("search")}
-              className="px-7 py-3 rounded-xl bg-gradient-to-r from-msa-500 to-msa-700 text-white font-semibold hover:from-msa-600 hover:to-msa-800 transition shadow-lg"
-            >
-              浏览卡牌
-            </button>
-            <button
-              onClick={() => onNavigate("deck")}
-              className="px-7 py-3 rounded-xl bg-white/90 backdrop-blur-sm text-stone-800 font-semibold hover:bg-white transition border border-white/30 shadow-lg"
-            >
-              开始组卡
-            </button>
-          </div>
         </div>
       </section>
 
       {/* ── Stats Bar ───────────────────────────────────────────── */}
       <section className="border-y border-stone-200 bg-white">
         <div className="max-w-5xl mx-auto px-8 py-3 flex items-center justify-around gap-4">
-          <StatItem value={stats.totalCards} label="卡牌种类" />
+          <StatItem value={stats.battlesCompleted} label="已进行对局" />
           <Divider />
-          <StatItem value={stats.totalVariants} label="卡牌版本" />
+          <StatItem value={stats.publicDecks} label="公开卡组" />
           <Divider />
-          <StatItem value={stats.attrCount} label="属性" />
-          <Divider />
-          <StatItem value={stats.packageCount} label="卡包" />
+          <StatItem value={stats.onlinePlayers} label="在线玩家" />
         </div>
       </section>
 
-      {/* ── Feature Cards ───────────────────────────────────────── */}
+      {/* ── 区域 1：赛季排行 ────────────────────────────────────── */}
       <section className="max-w-5xl mx-auto px-8 py-10">
-        <h2 className="text-sm font-bold text-stone-500 uppercase tracking-wide mb-4">功能导航</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {FEATURES.map((f) => (
-            <button
-              key={f.tab}
-              onClick={() => onNavigate(f.tab)}
-              className="group bg-white rounded-xl border border-stone-200 p-5 text-left hover:shadow-card-hover hover:border-msa-400 transition shadow-card"
-            >
-              <div
-                className="w-10 h-10 rounded-lg flex items-center justify-center mb-3 transition group-hover:scale-110"
-                style={{ backgroundColor: `${f.color}18` }}
-              >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke={f.color}
-                  strokeWidth={1.8}
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d={f.icon} />
-                </svg>
-              </div>
-              <h3 className="text-sm font-bold text-stone-800 mb-1 group-hover:text-msa-700 transition">
-                {f.title}
-              </h3>
-              <p className="text-xs text-stone-400 leading-relaxed">{f.desc}</p>
-            </button>
-          ))}
-        </div>
+        <SeasonRankingCard data={RANKING_DATA} />
       </section>
 
-      {/* ── Quick Tips ──────────────────────────────────────────── */}
-      <section className="max-w-5xl mx-auto px-8 pb-10">
-        <h2 className="text-sm font-bold text-stone-500 uppercase tracking-wide mb-4">快速上手</h2>
-        <div className="bg-white rounded-xl border border-stone-200 divide-y divide-stone-100 shadow-card">
-          <TipRow
-            step="1"
-            title="浏览卡牌图鉴"
-            desc="在「卡牌查询」页面查看所有卡牌，使用筛选器按属性、费用、稀有度快速定位。"
-            action="去卡牌查询"
-            onAction={() => onNavigate("search")}
-          />
-          <TipRow
-            step="2"
-            title="构建你的卡组"
-            desc="在「组卡器」中拖拽卡牌构建卡组，系统会实时校验 50 张主卡组 + 9 张冲击卡的合规性。"
-            action="打开组卡器"
-            onAction={() => onNavigate("deck")}
-          />
-          <TipRow
-            step="3"
-            title="探索卡组广场"
-            desc="在「卡组广场」查看官方预组、保存的卡组，或通过卡组码导入他人分享的卡组。"
-            action="逛卡组广场"
-            onAction={() => onNavigate("plaza")}
-          />
-          <TipRow
-            step="4"
-            title="开始在线对战"
-            desc="在「对战」页面创建房间或加入好友房间，进行实时 P2P 对战。"
-            action="进入对战"
-            onAction={() => onNavigate("battle")}
-          />
-        </div>
+      {/* ── 区域 2：最新动态 ────────────────────────────────────── */}
+      <section className="max-w-5xl mx-auto px-8 py-10">
+        <DevUpdatesCard data={NEWS_DATA} onNavigate={onNavigate} />
+      </section>
+
+      {/* ── 区域 3：卡牌图鉴 ────────────────────────────────────── */}
+      <section className="max-w-5xl mx-auto px-8 py-10">
+        <CardGallery db={db} onNavigate={onNavigate} />
+      </section>
+
+      {/* ── 区域 4：关于斗界竞技场 ──────────────────────────────── */}
+      <section className="max-w-5xl mx-auto px-8 py-10">
+        <AboutArena onNavigate={onNavigate} />
       </section>
 
       {/* ── Footer ──────────────────────────────────────────────── */}
@@ -205,11 +194,13 @@ export default function WelcomePage({ db, onNavigate }: WelcomePageProps) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
 // Sub-components
-// ─────────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
 
-function StatItem({ value, label }: { value: number; label: string }) {
+/** ── StatItem ────────────────────────────────────────────────── */
+
+function StatItem({ value, label }: { value: string | number; label: string }) {
   return (
     <div className="text-center">
       <p className="text-2xl font-black text-stone-800">{value}</p>
@@ -218,38 +209,297 @@ function StatItem({ value, label }: { value: number; label: string }) {
   );
 }
 
+/** ── Divider ─────────────────────────────────────────────────── */
+
 function Divider() {
   return <div className="w-px h-8 bg-stone-200" />;
 }
 
-function TipRow({
-  step,
-  title,
-  desc,
-  action,
-  onAction,
+/** ── SeasonRankingCard — 区域 1：赛季排行 ───────────────────── */
+
+/** Available tabs inside the season ranking card. */
+type SeasonTab = "ranking" | "ongoing" | "completed";
+
+/**
+ * Return a rank-appropriate colour:
+ *   rank 1 → gold, rank 2 → silver, rank 3 → bronze, others → warm grey.
+ */
+function getRankColor(rank: number): string {
+  if (rank === 1) return "#e8c868"; // gold
+  if (rank === 2) return "#c0c0c0"; // silver
+  if (rank === 3) return "#cd7f32"; // bronze
+  return "#a8a29e"; // stone-400
+}
+
+function SeasonRankingCard({ data }: { data: RankingEntry[] }) {
+  const [activeTab, setActiveTab] = useState<SeasonTab>("ranking");
+
+  const tabs: { key: SeasonTab; label: string }[] = [
+    { key: "ranking", label: "赛季排名" },
+    { key: "ongoing", label: "进行中对局" },
+    { key: "completed", label: "已完成对局" },
+  ];
+
+  return (
+    <div className="bg-white rounded-xl border border-stone-200 shadow-card p-5">
+      {/* ── Header: title + season name ── */}
+      <div className="flex items-baseline justify-between mb-4">
+        <h2 className="text-lg font-black text-stone-800">赛季排行</h2>
+        <span className="text-sm text-stone-400">幻影咏叹 .2</span>
+      </div>
+
+      {/* ── Tab pills ── */}
+      <div className="flex gap-2 mb-5">
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={
+              "px-4 py-1.5 text-sm font-medium rounded-full transition " +
+              (activeTab === tab.key
+                ? "bg-msa-600 text-white"
+                : "text-stone-400 hover:text-stone-600")
+            }
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Tab content ── */}
+      {activeTab === "ranking" && (
+        <div className="max-h-[480px] overflow-y-auto scrollbar-thin">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-xs text-stone-400 uppercase tracking-wide border-b border-stone-100">
+                <th className="text-left pb-2 font-medium">排名</th>
+                <th className="text-left pb-2 font-medium">玩家</th>
+                <th className="text-right pb-2 font-medium">积分</th>
+                <th className="text-right pb-2 font-medium">胜率</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((entry) => {
+                const rankColor = getRankColor(entry.rank);
+                return (
+                  <tr
+                    key={entry.rank}
+                    className="border-b border-stone-50 last:border-0"
+                  >
+                    {/* Rank */}
+                    <td className="py-2.5">
+                      <span
+                        className="inline-flex items-center justify-center w-8 h-6 text-xs font-bold"
+                        style={{ color: rankColor }}
+                      >
+                        {String(entry.rank).padStart(2, "0")}
+                      </span>
+                    </td>
+
+                    {/* Player name */}
+                    <td className="py-2.5 font-medium text-stone-800">
+                      {entry.name}
+                    </td>
+
+                    {/* Score */}
+                    <td className="py-2.5 text-right text-stone-600 tabular-nums">
+                      {entry.score.toLocaleString()}
+                    </td>
+
+                    {/* Win rate */}
+                    <td className="py-2.5 text-right text-stone-500 tabular-nums">
+                      {entry.winRate}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {activeTab === "ongoing" && (
+        <div className="py-12 text-center text-sm text-stone-400">
+          暂无进行中的对局
+        </div>
+      )}
+
+      {activeTab === "completed" && (
+        <div className="py-12 text-center text-sm text-stone-400">
+          暂无已完成的对局
+        </div>
+      )}
+
+      {/* ── Season countdown ── */}
+      <div className="mt-5 pt-4 border-t border-stone-100 flex items-center gap-2">
+        <span className="text-xs text-stone-400">赛季剩余</span>
+        <span className="text-sm font-bold text-msa-600 tabular-nums">
+          14 天 06:32:15
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** ── DevUpdatesCard — 区域 2：最新动态 ──────────────────────── */
+
+function DevUpdatesCard({
+  data,
+  onNavigate,
 }: {
-  step: string;
-  title: string;
-  desc: string;
-  action: string;
-  onAction: () => void;
+  data: NewsEntry[];
+  onNavigate: (tab: string) => void;
+}) {
+  /** Format ISO date string into a short Chinese-style label. */
+  const formatDate = (iso: string): string => {
+    try {
+      const d = new Date(iso);
+      return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+    } catch {
+      return iso;
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-stone-200 shadow-card p-5">
+      {/* ── Header: title + view all ── */}
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-black text-stone-800">最新动态</h2>
+        <button
+          onClick={() => onNavigate("plaza")}
+          className="text-xs text-msa-600 hover:text-msa-500 font-medium transition"
+        >
+          查看全部 →
+        </button>
+      </div>
+
+      {/* ── News list ── */}
+      <ul className="divide-y divide-stone-100">
+        {data.map((entry, idx) => (
+          <li key={idx} className="py-3 first:pt-0 last:pb-0">
+            {/* Date */}
+            <p className="text-xs text-stone-400 mb-1">
+              {formatDate(entry.date)}
+            </p>
+
+            {/* Title — clickable MSA red link */}
+            <button
+              onClick={() => onNavigate("plaza")}
+              className="text-sm font-bold text-msa-600 hover:text-msa-500 transition text-left"
+            >
+              {entry.title}
+            </button>
+
+            {/* Summary */}
+            <p className="text-xs text-stone-500 leading-relaxed mt-1">
+              {entry.summary}
+            </p>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** ── CardGallery — 区域 3：卡牌图鉴 ─────────────────────────── */
+
+function CardGallery({
+  db,
+  onNavigate,
+}: {
+  db: CardDatabase;
+  onNavigate: (tab: string) => void;
+}) {
+  /** Pick up to 6 cards that have distinct card_no (unique game cards). */
+  const displayCards = useMemo(() => {
+    const seen = new Set<string>();
+    const result: typeof db.cards = [];
+    for (const card of db.cards) {
+      if (seen.has(card.card_no)) continue;
+      seen.add(card.card_no);
+      result.push(card);
+      if (result.length >= 6) break;
+    }
+    return result;
+  }, [db]);
+
+  return (
+    <div className="bg-white rounded-xl border border-stone-200 shadow-card p-5">
+      {/* ── Header ── */}
+      <h2 className="text-lg font-black text-stone-800 mb-5">卡牌图鉴</h2>
+
+      {/* ── Card grid ── */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        {displayCards.map((card) => (
+          <div key={card.id} className="flex flex-col items-center">
+            <img
+              src={`/cards/${card.id}.png`}
+              alt={card.name}
+              className="w-full rounded-lg shadow-md object-contain bg-stone-50"
+              loading="lazy"
+            />
+            <p className="mt-2 text-xs text-stone-600 text-center leading-tight">
+              {card.name}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Browse all button ── */}
+      <div className="mt-6 pt-4 border-t border-stone-100 text-center">
+        <button
+          onClick={() => onNavigate("search")}
+          className="text-sm font-medium text-msa-600 hover:text-msa-500 transition"
+        >
+          浏览全部卡牌 →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** ── AboutArena — 区域 4：关于斗界竞技场 ───────────────────── */
+
+function AboutArena({
+  onNavigate,
+}: {
+  onNavigate: (tab: string) => void;
 }) {
   return (
-    <div className="flex items-center gap-4 p-4">
-      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-msa-50 border border-msa-300 flex items-center justify-center text-sm font-bold text-msa-700">
-        {step}
+    <div className="bg-white rounded-xl border border-stone-200 shadow-card p-5">
+      {/* ── Header ── */}
+      <h2 className="text-lg font-black text-stone-800 mb-4">
+        关于斗界竞技场
+      </h2>
+
+      {/* ── Intro text ── */}
+      <div className="text-sm text-stone-600 leading-relaxed space-y-3 mb-6">
+        <p>
+          斗界竞技场是一个免费的漫威对战卡牌（超英击战）在线对战平台。
+        </p>
+        <p>
+          在这里你可以浏览全部卡牌、组建自己的专属卡组、与全国玩家实时对战。
+        </p>
+        <p>
+          平台持续更新最新卡包与赛季内容，欢迎加入斗界社区。
+        </p>
       </div>
-      <div className="flex-1 min-w-0">
-        <h4 className="text-sm font-medium text-stone-800 mb-0.5">{title}</h4>
-        <p className="text-xs text-stone-400 leading-relaxed">{desc}</p>
+
+      {/* ── Quick links ── */}
+      <div className="pt-4 border-t border-stone-100 flex gap-6">
+        <button
+          onClick={() => onNavigate("search")}
+          className="text-sm font-medium text-msa-600 hover:text-msa-500 transition"
+        >
+          卡牌数据库 →
+        </button>
+        <button
+          onClick={() => onNavigate("builder")}
+          className="text-sm font-medium text-msa-600 hover:text-msa-500 transition"
+        >
+          组卡器 →
+        </button>
       </div>
-      <button
-        onClick={onAction}
-        className="flex-shrink-0 text-xs text-msa-600 hover:text-msa-500 font-medium whitespace-nowrap transition"
-      >
-        {action} →
-      </button>
     </div>
   );
 }
