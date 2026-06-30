@@ -194,8 +194,9 @@ export default function DeckBuilderPage(props: Props) {
       const cardPower = c.power ? parseInt(c.power) : null;
       if (powerMin !== "all" && (cardPower == null || cardPower < powerMin)) return false;
       if (powerMax !== "all" && (cardPower == null || cardPower > powerMax)) return false;
-      if (distanceMin !== "all" && (c.pp_value == null || c.pp_value < distanceMin)) return false;
-      if (distanceMax !== "all" && (c.pp_value == null || c.pp_value > distanceMax)) return false;
+      // 距离 range filter（匹配卡片显示的 R 值，即 c.r）
+      if (distanceMin !== "all" && (c.r == null || c.r < distanceMin)) return false;
+      if (distanceMax !== "all" && (c.r == null || c.r > distanceMax)) return false;
       return true;
     });
 

@@ -306,24 +306,24 @@ function computeDeckStats(deck: Deck, cardMap: Map<string, Card>, db: CardDataba
   });
 
   // --- distanceDistribution (distance value, stacked by attribute, skip null) ---
-  const ppAttrMap: Record<number, Record<number, number>> = {};
+  const rAttrMap: Record<number, Record<number, number>> = {};
   for (const e of deck.main_deck) {
     const card = cardMap.get(e.card_no);
-    if (card && card.pp_value != null) {
-      const pp = card.pp_value;
-      if (!ppAttrMap[pp]) ppAttrMap[pp] = {};
-      ppAttrMap[pp][card.attribute] = (ppAttrMap[pp][card.attribute] || 0) + e.count;
+    if (card && card.r != null) {
+      const rVal = card.r;
+      if (!rAttrMap[rVal]) rAttrMap[rVal] = {};
+      rAttrMap[rVal][card.attribute] = (rAttrMap[rVal][card.attribute] || 0) + e.count;
     }
   }
-  const distanceDistribution: DeckDetailStats["distanceDistribution"] = Object.entries(ppAttrMap)
-    .map(([pp, attrMap]) => {
+  const distanceDistribution: DeckDetailStats["distanceDistribution"] = Object.entries(rAttrMap)
+    .map(([rVal, attrMap]) => {
       const attrs = Object.entries(attrMap)
         .map(([attr, count]) => {
           const attrData = db.attributes[attr];
           return { attribute: Number(attr), name: attrData ? attrData.name : "未知", color: attrData ? attrData.color : "#ccc", count };
         })
         .sort((a, b) => b.count - a.count);
-      return { pp: Number(pp), attrs, total: attrs.reduce((s, a) => s + a.count, 0) };
+      return { pp: Number(rVal), attrs, total: attrs.reduce((s, a) => s + a.count, 0) };
     })
     .sort((a, b) => a.pp - b.pp);
 
@@ -500,7 +500,7 @@ function DeckDetailView({ deck, stats, cardMap, db, onBack, onLoad, onDelete, on
       switch (sortMode) {
         case "cost": cmp = a.cost - b.cost; break;
         case "power": cmp = (a.power ? parseInt(a.power) : 0) - (b.power ? parseInt(b.power) : 0); break;
-        case "distance": cmp = (a.pp_value || 0) - (b.pp_value || 0); break;
+        case "distance": cmp = (a.r || 0) - (b.r || 0); break;
         case "number": cmp = a.card_no.localeCompare(b.card_no); break;
       }
       if (cmp === 0) cmp = a.card_no.localeCompare(b.card_no);

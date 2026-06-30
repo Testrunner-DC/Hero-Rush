@@ -295,6 +295,7 @@ export default function FilterSidebar({ db, state, onChange, onReset, resultCoun
         <div className="flex items-center gap-1.5">
           <input
             type="number"
+            step={500}
             value={powerMin === "all" ? "" : powerMin}
             onChange={(e) => onChange({ powerMin: parseRangeValue(e.target.value) })}
             placeholder="最小"
@@ -303,6 +304,7 @@ export default function FilterSidebar({ db, state, onChange, onReset, resultCoun
           <span className="text-stone-400 text-xs">—</span>
           <input
             type="number"
+            step={500}
             value={powerMax === "all" ? "" : powerMax}
             onChange={(e) => onChange({ powerMax: parseRangeValue(e.target.value) })}
             placeholder="最大"

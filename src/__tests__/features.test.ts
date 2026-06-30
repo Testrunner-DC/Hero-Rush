@@ -145,6 +145,7 @@ describe("Feature 2: DeckStatsView — Cost Curve & Color Distribution", () => {
       attribute_name: "科技",
       attribute_color: "#ff0000",
       pp_value: null,
+      r: undefined,
       dp_value: null,
       power: "1000",
       signal_color: null,
@@ -290,12 +291,12 @@ describe("Feature 3: Power/Distance Multi-dimensional Filters (FilterSidebar)", 
   }
 
   function applyDistanceFilter(
-    card: { pp_value: number | null },
+    card: { r?: number },
     distanceMin: number | "all",
     distanceMax: number | "all"
   ): boolean {
-    if (distanceMin !== "all" && (card.pp_value == null || card.pp_value < distanceMin)) return false;
-    if (distanceMax !== "all" && (card.pp_value == null || card.pp_value > distanceMax)) return false;
+    if (distanceMin !== "all" && (card.r == null || card.r < distanceMin)) return false;
+    if (distanceMax !== "all" && (card.r == null || card.r > distanceMax)) return false;
     return true;
   }
 
@@ -351,21 +352,21 @@ describe("Feature 3: Power/Distance Multi-dimensional Filters (FilterSidebar)", 
     expect(applyPowerFilter(card, "all", 500)).toBe(false);
   });
 
-  it("距离筛选: excludes cards with null pp_value", () => {
-    const card = { pp_value: null };
-    expect(applyDistanceFilter(card, 1, "all")).toBe(false);
-    expect(applyDistanceFilter(card, "all", 5)).toBe(false);
+  it("距离筛选: excludes cards with null R", () => {
+    const card = {};
+    expect(applyDistanceFilter(card, 0, "all")).toBe(false);
+    expect(applyDistanceFilter(card, "all", 3)).toBe(false);
   });
 
-  it("距离筛选: passes when pp_value is within range", () => {
-    const card = { pp_value: 3 };
-    expect(applyDistanceFilter(card, 1, 5)).toBe(true);
+  it("距离筛选: passes when R is within range", () => {
+    const card = { r: 2 };
+    expect(applyDistanceFilter(card, 0, 4)).toBe(true);
   });
 
   it("距离筛选: boundary values are inclusive", () => {
-    const card = { pp_value: 5 };
-    expect(applyDistanceFilter(card, "all", 5)).toBe(true); // pp_value <= distanceMax → passes
-    expect(applyDistanceFilter(card, 5, "all")).toBe(true); // pp_value >= distanceMin → passes
+    const card = { r: 4 };
+    expect(applyDistanceFilter(card, "all", 4)).toBe(true); // r <= distanceMax → passes
+    expect(applyDistanceFilter(card, 4, "all")).toBe(true); // r >= distanceMin → passes
   });
 
   it("parseRangeValue: empty string → 'all'", () => {
@@ -561,6 +562,7 @@ describe("Feature 4: local storage operations", () => {
           attribute_name: "科技",
           attribute_color: "#ff0000",
           pp_value: null,
+          r: undefined,
           dp_value: null,
           power: "1000",
           signal_color: null,
@@ -588,6 +590,7 @@ describe("Feature 4: local storage operations", () => {
           attribute_name: "科技",
           attribute_color: "#ff0000",
           pp_value: null,
+          r: undefined,
           dp_value: null,
           power: "2000",
           signal_color: null,
