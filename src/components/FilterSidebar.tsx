@@ -5,6 +5,12 @@
  * Light theme, used in both CardSearchPage and DeckBuilderPage.
  *
  * Supports 战力 and 距离 range filters (P1).
+ *
+ * When multiSelect=true (DeckBuilder):
+ *   - Type section is hidden
+ *   - Color / Level / Rarity become multi-select toggle groups
+ *   - Section titles show selected counts
+ *   - "全选" button clears the selection array (shows all)
  */
 
 import type { CardDatabase } from "../types/card";
@@ -23,6 +29,12 @@ export interface FilterState {
   powerMax: number | "all";
   distanceMin: number | "all";
   distanceMax: number | "all";
+  /** Multi-select: attribute ids (empty = show all). Used when multiSelect=true. */
+  selectedAttrs: number[];
+  /** Multi-select: rarity ids (empty = show all). Used when multiSelect=true. */
+  selectedRarities: number[];
+  /** Multi-select: cost values (empty = show all). Used when multiSelect=true. */
+  selectedCosts: number[];
 }
 
 export const DEFAULT_FILTERS: FilterState = {
@@ -37,6 +49,9 @@ export const DEFAULT_FILTERS: FilterState = {
   powerMax: "all",
   distanceMin: "all",
   distanceMax: "all",
+  selectedAttrs: [],
+  selectedRarities: [],
+  selectedCosts: [],
 };
 
 interface Props {
@@ -48,6 +63,8 @@ interface Props {
   compact?: boolean;
   /** When true, skip rendering the search box + result count row. Used when the parent renders search externally. */
   hideSearch?: boolean;
+  /** When true, enable multi-select for color/level/rarity filters. Hides type section. */
+  multiSelect?: boolean;
 }
 
 const SORT_LABELS: Record<SortBy, string> = {
@@ -67,7 +84,16 @@ const PACKAGE_OPTIONS: { value: string; label: string }[] = [
   { value: "TB01", label: "TB01" },
 ];
 
-export default function FilterSidebar({ db, state, onChange, onReset, resultCount, compact = false, hideSearch = false }: Props) {
+export default function FilterSidebar({
+  db,
+  state,
+  onChange,
+  onReset,
+  resultCount,
+  compact = false,
+  hideSearch = false,
+  multiSelect = false,
+}: Props) {
   const {
     search,
     filterType,
@@ -80,6 +106,9 @@ export default function FilterSidebar({ db, state, onChange, onReset, resultCoun
     powerMax,
     distanceMin,
     distanceMax,
+    selectedAttrs,
+    selectedRarities,
+    selectedCosts,
   } = state;
 
   const sectionTitle = compact
@@ -93,6 +122,10 @@ export default function FilterSidebar({ db, state, onChange, onReset, resultCoun
     const n = parseInt(v, 10);
     return isNaN(n) ? "all" : n;
   };
+
+  /** Toggle a value in/out of an array (multi-select helper). */
+  const toggleIn = (arr: number[], val: number): number[] =>
+    arr.includes(val) ? arr.filter((x) => x !== val) : [...arr, val];
 
   return (
     <div className={compact ? "grid grid-cols-2 gap-x-3 gap-y-2" : "space-y-4"}>
@@ -146,116 +179,233 @@ export default function FilterSidebar({ db, state, onChange, onReset, resultCoun
 
       {/* ── Color (attribute) — dot buttons ──────────────────── */}
       <div>
-        <p className={sectionTitle}>颜色</p>
+        <p className={sectionTitle}>
+          颜色{multiSelect && selectedAttrs.length > 0 ? ` (${selectedAttrs.length})` : ""}
+        </p>
         <div className="flex flex-wrap gap-1.5">
-          <button
-            onClick={() => onChange({ filterAttr: "all" })}
-            className={`w-6 h-6 rounded-full border-2 transition flex items-center justify-center text-[10px] font-bold ${
-              filterAttr === "all"
-                ? "border-stone-800 text-stone-800"
-                : "border-transparent text-stone-500 hover:text-stone-700"
-            } bg-stone-300`}
-            title="全部"
-          >
-            全
-          </button>
-          {Object.entries(db.attributes).map(([k, v]) => (
-            <button
-              key={k}
-              onClick={() => onChange({ filterAttr: Number(k) })}
-              className={`w-6 h-6 rounded-full border-2 transition ${
-                filterAttr === Number(k) ? "border-stone-800 scale-110" : "border-transparent hover:scale-105"
-              }`}
-              style={{ backgroundColor: v.color }}
-              title={v.name}
-            />
-          ))}
+          {multiSelect ? (
+            <>
+              <button
+                onClick={() => onChange({ selectedAttrs: [] })}
+                className={`w-6 h-6 rounded-full border-2 transition flex items-center justify-center text-[10px] font-bold ${
+                  selectedAttrs.length === 0
+                    ? "border-stone-800 text-stone-800"
+                    : "border-transparent text-stone-500 hover:text-stone-700"
+                } bg-stone-300`}
+                title="全选"
+              >
+                全
+              </button>
+              {Object.entries(db.attributes).map(([k, v]) => {
+                const isSelected = selectedAttrs.includes(Number(k));
+                return (
+                  <button
+                    key={k}
+                    onClick={() => onChange({ selectedAttrs: toggleIn(selectedAttrs, Number(k)) })}
+                    className={`w-6 h-6 rounded-full border-2 transition ${
+                      isSelected ? "border-stone-800 scale-110" : "border-transparent hover:scale-105"
+                    }`}
+                    style={{ backgroundColor: v.color }}
+                    title={v.name}
+                  />
+                );
+              })}
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => onChange({ filterAttr: "all" })}
+                className={`w-6 h-6 rounded-full border-2 transition flex items-center justify-center text-[10px] font-bold ${
+                  filterAttr === "all"
+                    ? "border-stone-800 text-stone-800"
+                    : "border-transparent text-stone-500 hover:text-stone-700"
+                } bg-stone-300`}
+                title="全部"
+              >
+                全
+              </button>
+              {Object.entries(db.attributes).map(([k, v]) => (
+                <button
+                  key={k}
+                  onClick={() => onChange({ filterAttr: Number(k) })}
+                  className={`w-6 h-6 rounded-full border-2 transition ${
+                    filterAttr === Number(k) ? "border-stone-800 scale-110" : "border-transparent hover:scale-105"
+                  }`}
+                  style={{ backgroundColor: v.color }}
+                  title={v.name}
+                />
+              ))}
+            </>
+          )}
         </div>
       </div>
 
       {/* ── Type ─────────────────────────────────────────────── */}
-      <div>
-        <p className={sectionTitle}>类型</p>
-        <div className="flex flex-wrap gap-1">
-          {([
-            { v: "all", l: "全部" },
-            { v: "1", l: "角色" },
-            { v: "2", l: "冲击" },
-          ] as const).map((opt) => (
-            <button
-              key={opt.v}
-              onClick={() => onChange({ filterType: opt.v === "all" ? "all" : Number(opt.v) })}
-              className={`${btnBase} rounded transition ${
-                String(filterType) === opt.v
-                  ? "bg-red-500 text-white"
-                  : "bg-stone-100 text-stone-500 hover:text-stone-700 hover:bg-stone-200"
-              }`}
-            >
-              {opt.l}
-            </button>
-          ))}
+      {/* Hidden when multiSelect is enabled (DeckBuilder mode) */}
+      {!multiSelect && (
+        <div>
+          <p className={sectionTitle}>类型</p>
+          <div className="flex flex-wrap gap-1">
+            {([
+              { v: "all", l: "全部" },
+              { v: "1", l: "角色" },
+              { v: "2", l: "冲击" },
+            ] as const).map((opt) => (
+              <button
+                key={opt.v}
+                onClick={() => onChange({ filterType: opt.v === "all" ? "all" : Number(opt.v) })}
+                className={`${btnBase} rounded transition ${
+                  String(filterType) === opt.v
+                    ? "bg-red-500 text-white"
+                    : "bg-stone-100 text-stone-500 hover:text-stone-700 hover:bg-stone-200"
+                }`}
+              >
+                {opt.l}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ── Level (cost) ─────────────────────────────────────── */}
       <div>
-        <p className={sectionTitle}>等级</p>
+        <p className={sectionTitle}>
+          等级{multiSelect && selectedCosts.length > 0 ? ` (${selectedCosts.length})` : ""}
+        </p>
         <div className="flex flex-wrap gap-1">
-          {(["all", 0, 1, 2, 3, 4, 5, 6] as const).map((v) => (
-            <button
-              key={v}
-              onClick={() => onChange({ filterCost: v })}
-              className={`${btnBase} rounded transition ${
-                filterCost === v
-                  ? "bg-red-500 text-white"
-                  : "bg-stone-100 text-stone-500 hover:text-stone-700 hover:bg-stone-200"
-              }`}
-            >
-              {v === "all" ? "全部" : `Lv${v}`}
-            </button>
-          ))}
+          {multiSelect ? (
+            <>
+              <button
+                onClick={() => onChange({ selectedCosts: [] })}
+                className={`${btnBase} rounded transition ${
+                  selectedCosts.length === 0
+                    ? "bg-red-500 text-white"
+                    : "bg-stone-100 text-stone-500 hover:text-stone-700 hover:bg-stone-200"
+                }`}
+              >
+                全选
+              </button>
+              {([0, 1, 2, 3, 4, 5, 6] as const).map((v) => {
+                const isSelected = selectedCosts.includes(v);
+                return (
+                  <button
+                    key={v}
+                    onClick={() => onChange({ selectedCosts: toggleIn(selectedCosts, v) })}
+                    className={`${btnBase} rounded transition ${
+                      isSelected
+                        ? "bg-red-500 text-white"
+                        : "bg-stone-100 text-stone-500 hover:text-stone-700 hover:bg-stone-200"
+                    }`}
+                  >
+                    Lv{v}
+                  </button>
+                );
+              })}
+            </>
+          ) : (
+            (["all", 0, 1, 2, 3, 4, 5, 6] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => onChange({ filterCost: v })}
+                className={`${btnBase} rounded transition ${
+                  filterCost === v
+                    ? "bg-red-500 text-white"
+                    : "bg-stone-100 text-stone-500 hover:text-stone-700 hover:bg-stone-200"
+                }`}
+              >
+                {v === "all" ? "全部" : `Lv${v}`}
+              </button>
+            ))
+          )}
         </div>
       </div>
 
       {/* ── Rarity ───────────────────────────────────────────── */}
       <div>
-        <p className={sectionTitle}>稀有度</p>
+        <p className={sectionTitle}>
+          稀有度{multiSelect && selectedRarities.length > 0 ? ` (${selectedRarities.length})` : ""}
+        </p>
         <div className="flex flex-wrap gap-1">
-          <button
-            onClick={() => onChange({ filterRarity: "all" })}
-            className={`${btnBase} rounded transition ${
-              filterRarity === "all"
-                ? "bg-red-500 text-white"
-                : "bg-stone-100 text-stone-500 hover:text-stone-700 hover:bg-stone-200"
-            }`}
-          >
-            全部
-          </button>
-          {Object.entries(db.rarities)
-            .sort(([, a], [, b]) => {
-              const order = (code: string) =>
-                code === "N" ? 0 : code === "R" ? 1 : code === "SR" ? 2 : code === "SSR" ? 3 : code === "UR" ? 4 : code === "MR" ? 5 : 6;
-              return order(a.code) - order(b.code);
-            })
-            .map(([k, v]) => (
+          {multiSelect ? (
+            <>
               <button
-                key={k}
-                onClick={() => onChange({ filterRarity: Number(k) })}
-                className={`${btnBase} rounded transition border ${
-                  filterRarity === Number(k)
-                    ? "text-white"
-                    : "text-stone-500 hover:text-stone-700 bg-stone-100 border-stone-200"
+                onClick={() => onChange({ selectedRarities: [] })}
+                className={`${btnBase} rounded transition ${
+                  selectedRarities.length === 0
+                    ? "bg-red-500 text-white"
+                    : "bg-stone-100 text-stone-500 hover:text-stone-700 hover:bg-stone-200"
                 }`}
-                style={
-                  filterRarity === Number(k)
-                    ? { backgroundColor: v.color, borderColor: v.color }
-                    : {}
-                }
-                title={v.cn}
               >
-                {v.code}
+                全选
               </button>
-            ))}
+              {Object.entries(db.rarities)
+                .sort(([, a], [, b]) => {
+                  const order = (code: string) =>
+                    code === "N" ? 0 : code === "R" ? 1 : code === "SR" ? 2 : code === "SSR" ? 3 : code === "UR" ? 4 : code === "MR" ? 5 : 6;
+                  return order(a.code) - order(b.code);
+                })
+                .map(([k, v]) => {
+                  const isSelected = selectedRarities.includes(Number(k));
+                  return (
+                    <button
+                      key={k}
+                      onClick={() => onChange({ selectedRarities: toggleIn(selectedRarities, Number(k)) })}
+                      className={`${btnBase} rounded transition border ${
+                        isSelected
+                          ? "text-white"
+                          : "text-stone-500 hover:text-stone-700 bg-stone-100 border-stone-200"
+                      }`}
+                      style={
+                        isSelected
+                          ? { backgroundColor: v.color, borderColor: v.color }
+                          : {}
+                      }
+                      title={v.cn}
+                    >
+                      {v.code}
+                    </button>
+                  );
+                })}
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => onChange({ filterRarity: "all" })}
+                className={`${btnBase} rounded transition ${
+                  filterRarity === "all"
+                    ? "bg-red-500 text-white"
+                    : "bg-stone-100 text-stone-500 hover:text-stone-700 hover:bg-stone-200"
+                }`}
+              >
+                全部
+              </button>
+              {Object.entries(db.rarities)
+                .sort(([, a], [, b]) => {
+                  const order = (code: string) =>
+                    code === "N" ? 0 : code === "R" ? 1 : code === "SR" ? 2 : code === "SSR" ? 3 : code === "UR" ? 4 : code === "MR" ? 5 : 6;
+                  return order(a.code) - order(b.code);
+                })
+                .map(([k, v]) => (
+                  <button
+                    key={k}
+                    onClick={() => onChange({ filterRarity: Number(k) })}
+                    className={`${btnBase} rounded transition border ${
+                      filterRarity === Number(k)
+                        ? "text-white"
+                        : "text-stone-500 hover:text-stone-700 bg-stone-100 border-stone-200"
+                    }`}
+                    style={
+                      filterRarity === Number(k)
+                        ? { backgroundColor: v.color, borderColor: v.color }
+                        : {}
+                    }
+                    title={v.cn}
+                  >
+                    {v.code}
+                  </button>
+                ))}
+            </>
+          )}
         </div>
       </div>
 
@@ -281,7 +431,7 @@ export default function FilterSidebar({ db, state, onChange, onReset, resultCoun
                 filterPackage === pkg.value
                   ? "bg-red-500 text-white"
                   : "bg-stone-100 text-stone-500 hover:text-stone-700 hover:bg-stone-200"
-            }`}
+              }`}
             >
               {pkg.label}
             </button>

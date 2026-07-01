@@ -1,7 +1,7 @@
 /**
  * SampleHandView — 起手模拟视图
  *
- * Draws 5 random cards from the main deck (respecting card counts).
+ * Draws 6 random cards from the main deck (respecting card counts).
  * Displays cards in a horizontal layout with level distribution stats.
  * P2 feature for DeckBuilderPage right panel.
  */
@@ -53,7 +53,7 @@ export default function SampleHandView({ mainDeck, cardMap }: Props) {
     const picked: DrawnCard[] = [];
     const seen = new Set<string>();
     for (const cardNo of shuffled) {
-      if (picked.length >= 5) break;
+      if (picked.length >= 6) break;
       if (seen.has(cardNo)) continue;
       const card = cardMap.get(cardNo);
       if (!card) continue;
@@ -112,12 +112,12 @@ export default function SampleHandView({ mainDeck, cardMap }: Props) {
             {drawn.map(({ card, cardNo }) => (
               <div
                 key={cardNo}
-                className="flex-shrink-0 w-[80px] bg-white rounded-lg border border-stone-200 overflow-hidden shadow-sm hover:shadow-md transition"
+                className="flex-shrink-0 w-[64px] bg-white rounded-lg border border-stone-200 overflow-hidden shadow-sm hover:shadow-md transition"
               >
                 <img
                   src={card.image_url}
                   alt={card.name}
-                  className="w-full h-[110px] object-cover bg-white/90"
+                  className="w-full h-[88px] object-cover bg-white/90"
                   loading="lazy"
                   onError={(e) => {
                     (e.target as HTMLImageElement).style.opacity = "0.2";
@@ -188,7 +188,7 @@ export default function SampleHandView({ mainDeck, cardMap }: Props) {
             <svg className="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15.182 15.182a4.5 4.5 0 01-6.364 0M21 12a9 9 0 11-18 0 9 9 0 0118 0zM9.75 9.75c0 .414-.168.75-.375.75S9 10.164 9 9.75 9.168 9 9.375 9s.375.336.375.75zm-.375 0h.008v.015h-.008V9.75zm5.625 0c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75zm-.375 0h.008v.015h-.008V9.75z" />
             </svg>
-            <p className="text-sm">点击「抽牌」模拟起手 5 张</p>
+            <p className="text-sm">点击「抽牌」模拟起手 6 张</p>
             <p className="text-xs mt-1 opacity-70">从主卡组随机抽取</p>
           </div>
         </div>

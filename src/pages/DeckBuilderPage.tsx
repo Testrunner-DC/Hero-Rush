@@ -3,22 +3,22 @@
  *
  * Top bar:    deck name + stats badges + save/import/share/clear buttons
  * Left (~60%): type tabs, collapsible filters, column selector, card grid
- * Right (~380px): view tabs (Gallery/Stats/Hand), control toolbar, content
+ * Right (~456px): view tabs (已选/Stats/Hand), control toolbar, content
  * Bottom:     hover card detail strip
  *
  * P0: Column selector on left panel, Stats view with cost curve + color distribution
  * P1: 战力/距离 range filters, Import/Export deck codes
- * P2: Sample hand simulator, foil effect, card scale, sort dropdowns in deck sections
+ * P2: Sample hand simulator, sort dropdowns in deck sections
  *
  * NOTE: Impact cards (card_type === 2) are display-only and not added to any deck.
  */
 
 import { useState, useMemo, useCallback } from "react";
 import type { CardDatabase, Card, Deck, DeckEntry } from "../types/card";
+import ColumnSelector from "../components/ColumnSelector";
 import FilterSidebar, { DEFAULT_FILTERS, type FilterState } from "../components/FilterSidebar";
 import CardGrid from "../components/CardGrid";
 import CardDetailModal from "../components/CardDetailModal";
-import ColumnSelector from "../components/ColumnSelector";
 import DeckStatsView from "../components/DeckStatsView";
 import SampleHandView from "../components/SampleHandView";
 import ImportDeckModal from "../components/ImportDeckModal";
@@ -106,8 +106,6 @@ export default function DeckBuilderPage(props: Props) {
 
   // ── Right panel state ──
   const [rightViewMode, setRightViewMode] = useState<RightViewMode>("gallery");
-  const [foilEnabled, setFoilEnabled] = useState(false);
-  const [cardScale, setCardScale] = useState(1.0);
   const [mainSort, setMainSort] = useState<DeckSort>("energy");
 
   // ── Collapse state for right-column sections ──
@@ -167,20 +165,15 @@ export default function DeckBuilderPage(props: Props) {
     [onClear, onAdd, cardMap, setDeckName]
   );
 
-  // ── Card picker (unique card_nos, highest rarity) ──
+  // ── Card picker (all cards including rarity variants) ──
   const pickerCards = useMemo(() => {
-    const seen = new Set<string>();
-    const result: Card[] = [];
-    for (const card of db.cards) {
-      if (seen.has(card.card_no)) continue;
-      seen.add(card.card_no);
-      result.push(card);
-    }
-    return result;
+    // Deck builder shows ALL rarity variants so users can pick their preferred version.
+    // Deck counting still uses card_no, so different rarities of the same card count as one.
+    return db.cards;
   }, [db.cards]);
 
   const filteredPicker = useMemo(() => {
-    const { search, filterAttr, filterRarity, filterCost, filterPackage, sortBy, powerMin, powerMax, distanceMin, distanceMax } = filters;
+    const { search, filterAttr, filterRarity, filterCost, filterPackage, sortBy, powerMin, powerMax, distanceMin, distanceMax, selectedAttrs, selectedRarities, selectedCosts } = filters;
     let result = pickerCards.filter((c) => {
       if (pickerTab === "main" && c.card_type !== 1) return false;
       if (search) {
@@ -190,6 +183,10 @@ export default function DeckBuilderPage(props: Props) {
       if (filterAttr !== "all" && c.attribute !== filterAttr) return false;
       if (filterRarity !== "all" && c.rarity !== filterRarity) return false;
       if (filterCost !== "all" && c.cost !== filterCost) return false;
+      // Multi-select filters (DeckBuilder mode — used when arrays are non-empty)
+      if (selectedAttrs.length > 0 && !selectedAttrs.includes(c.attribute)) return false;
+      if (selectedRarities.length > 0 && !selectedRarities.includes(c.rarity)) return false;
+      if (selectedCosts.length > 0 && !selectedCosts.includes(c.cost)) return false;
       if (filterPackage !== "all" && c.package_short !== filterPackage) return false;
       const cardPower = c.power ? parseInt(c.power) : null;
       if (powerMin !== "all" && (cardPower == null || cardPower < powerMin)) return false;
@@ -282,20 +279,19 @@ export default function DeckBuilderPage(props: Props) {
     return (
       <div
         key={entry.card_no}
-        className="flex items-center gap-1.5 px-1.5 py-1 rounded hover:bg-[var(--msa-surface-hover)] group transition"
+        className="flex items-center gap-1.5 px-1.5 py-1.5 rounded hover:bg-[var(--msa-surface-hover)] group transition"
         onMouseEnter={() => setHoveredCard(card)}
         onMouseLeave={() => setHoveredCard(null)}
       >
         <div
-          className="w-0.5 h-7 rounded-full flex-shrink-0"
+          className="w-0.5 h-16 rounded-full flex-shrink-0"
           style={{ backgroundColor: card.attribute_color }}
         />
-        <div className="w-7 h-10 flex-shrink-0 overflow-hidden rounded-sm">
+        <div className="w-12 h-[68px] flex-shrink-0 overflow-hidden rounded-sm">
           <img
             src={card.image_url}
             alt=""
-            className={`w-7 h-10 object-cover rounded-sm bg-white/90 ${foilEnabled ? "card-foil" : ""}`}
-            style={{ transform: `scale(${cardScale})`, transformOrigin: "center" }}
+            className="w-12 h-[68px] object-cover rounded-sm bg-white/90"
             loading="lazy"
             onError={(e) => {
               (e.target as HTMLImageElement).style.opacity = "0.2";
@@ -482,6 +478,7 @@ export default function DeckBuilderPage(props: Props) {
                   resultCount={filteredPicker.length}
                   compact
                   hideSearch
+                  multiSelect
                 />
               </div>
             </div>
@@ -506,15 +503,13 @@ export default function DeckBuilderPage(props: Props) {
                 onSelect={handleCardSelect}
                 countFor={countFor}
                 columns={columns}
-                foilEnabled={foilEnabled}
-                cardScale={cardScale}
               />
             )}
           </main>
         </div>
 
         {/* ── RIGHT COLUMN ── */}
-        <div className="w-[380px] flex-shrink-0 bg-white/90 border-l border-[var(--msa-border)] flex flex-col overflow-hidden">
+        <div className="w-[456px] flex-shrink-0 bg-white/90 border-l border-[var(--msa-border)] flex flex-col overflow-hidden">
           {/* View mode tabs */}
           <div className="flex items-center gap-0.5 p-1 bg-[var(--msa-bg-alt)] border-b border-[var(--msa-border)] flex-shrink-0">
             {(["gallery", "stats", "hand"] as const).map((mode) => (
@@ -527,52 +522,9 @@ export default function DeckBuilderPage(props: Props) {
                     : "bg-[var(--msa-surface)] text-[var(--msa-text-muted)] hover:text-[var(--msa-text-primary)]"
                 }`}
               >
-                {mode === "gallery" ? "画廊" : mode === "stats" ? "统计" : "起手"}
+                {mode === "gallery" ? "已选" : mode === "stats" ? "统计" : "起手"}
               </button>
             ))}
-          </div>
-
-          {/* Control toolbar */}
-          <div className="flex items-center gap-2 px-2.5 py-1.5 bg-white border-b border-[var(--msa-border)] flex-shrink-0 overflow-x-auto scrollbar-thin">
-            <div className="flex items-center gap-1 flex-shrink-0">
-              <span className="text-[10px] text-stone-400">列</span>
-              <ColumnSelector columns={columns} onChange={setColumns} compact />
-            </div>
-
-            <div className="w-px h-3 bg-stone-200 flex-shrink-0" />
-
-            <button
-              onClick={() => setFoilEnabled(!foilEnabled)}
-              className={`flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded border transition flex-shrink-0 ${
-                foilEnabled
-                  ? "bg-amber-50 border-amber-300 text-amber-700"
-                  : "bg-white border-stone-200 text-stone-400 hover:text-stone-600"
-              }`}
-              title="闪卡光泽效果"
-            >
-              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M10 2l1.8 5.5H17.5l-4.6 3.3 1.8 5.5L10 13l-4.7 3.3 1.8-5.5-4.6-3.3h5.7L10 2z" />
-              </svg>
-              闪卡
-            </button>
-
-            <div className="w-px h-3 bg-stone-200 flex-shrink-0" />
-
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              <span className="text-[10px] text-stone-400 whitespace-nowrap">卡图</span>
-              <span className="text-[10px] text-stone-400">小</span>
-              <input
-                type="range"
-                min="0.6"
-                max="1.4"
-                step="0.1"
-                value={cardScale}
-                onChange={(e) => setCardScale(parseFloat(e.target.value))}
-                className="w-14 h-1 accent-red-600 cursor-pointer flex-shrink-0"
-                title="卡片缩放"
-              />
-              <span className="text-[10px] text-stone-400">大</span>
-            </div>
           </div>
 
           {/* Right panel content */}
@@ -602,7 +554,7 @@ export default function DeckBuilderPage(props: Props) {
                       {collapseArrow(mainCollapsed)}
                     </span>
                     <span className="text-[11px] text-[var(--msa-text-muted)] font-semibold uppercase tracking-wide">
-                      主卡组 · {stats.mainCount}/50
+                      当前选择 · {stats.mainCount}/50
                     </span>
                     <div className="ml-auto" onClick={(e) => e.stopPropagation()}>
                       {renderSortSelect(mainSort, setMainSort)}

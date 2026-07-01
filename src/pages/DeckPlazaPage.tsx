@@ -738,28 +738,25 @@ function DeckDetailView({ deck, stats, cardMap, db, onBack, onLoad, onDelete, on
                   {stats.powerDistribution.length === 0 ? (
                     <p className="text-xs text-stone-400 py-3 text-center">暂无数据</p>
                   ) : (
-                    <div className="flex items-end gap-1 h-24">
+                    <div className="flex flex-col gap-1">
                       {stats.powerDistribution.map((item) => {
-                        const heightPct = item.total > 0 ? (item.total / maxPower) * 100 : 0;
+                        const widthPct = maxPower > 0 ? (item.total / maxPower) * 100 : 0;
                         return (
-                          <div key={item.pw} className="flex-1 flex flex-col items-center h-full justify-end">
-                            <span className="text-[9px] font-medium text-stone-600">{item.total || ""}</span>
-                            <div
-                              style={{ height: `${Math.max(heightPct, item.total > 0 ? 4 : 0)}%`, minHeight: item.total > 0 ? "6px" : "0" }}
-                              className="w-full rounded-t flex flex-col justify-end overflow-hidden"
-                            >
+                          <div key={item.pw} className="flex items-center gap-1.5">
+                            <span className="text-[9px] text-stone-500 w-7 text-right flex-shrink-0">{item.pw}</span>
+                            <div className="flex-1 h-3 bg-stone-100 rounded-full overflow-hidden flex">
                               {item.attrs.map((attr) => {
-                                const attrPct = item.total > 0 ? (attr.count / item.total) * 100 : 0;
+                                const attrW = item.total > 0 ? (attr.count / item.total) * widthPct : 0;
                                 return (
                                   <div
                                     key={attr.attribute}
-                                    style={{ height: `${attrPct}%`, backgroundColor: attr.color, minHeight: attr.count > 0 ? "2px" : "0" }}
+                                    style={{ width: `${attrW}%`, backgroundColor: attr.color, minWidth: attr.count > 0 ? "4px" : "0" }}
                                     title={`${attr.name}: ${attr.count}`}
                                   />
                                 );
                               })}
                             </div>
-                            <span className="text-[9px] text-stone-400 mt-0.5">{item.pw}</span>
+                            <span className="text-[9px] text-stone-600 w-5 text-right flex-shrink-0">{item.total}</span>
                           </div>
                         );
                       })}
@@ -798,25 +795,27 @@ function DeckDetailView({ deck, stats, cardMap, db, onBack, onLoad, onDelete, on
                   {stats.featureDistribution.length === 0 ? (
                     <p className="text-xs text-stone-400 py-3 text-center">暂无特性数据</p>
                   ) : (
-                    <div className="space-y-1.5">
+                    <div className="flex flex-col gap-1">
                       {stats.featureDistribution.map((item) => {
-                        const pct = maxFeature > 0 ? (item.total / maxFeature) * 100 : 0;
+                        const widthPct = maxFeature > 0 ? (item.total / maxFeature) * 100 : 0;
                         return (
                           <div key={item.feature} className="flex items-center gap-1.5">
-                            <span className="text-[10px] text-stone-600 w-14 flex-shrink-0 truncate" title={item.feature}>{item.feature}</span>
-                            <span className="text-[10px] text-stone-500 w-4 text-right flex-shrink-0">{item.total}</span>
-                            <div className="flex-1 h-2 bg-stone-100 rounded-full overflow-hidden flex">
+                            <span className="text-[9px] text-stone-500 w-12 text-right flex-shrink-0 truncate" title={item.feature}>
+                              {item.feature.length > 4 ? item.feature.slice(0, 4) + "\u2026" : item.feature}
+                            </span>
+                            <div className="flex-1 h-3 bg-stone-100 rounded-full overflow-hidden flex">
                               {item.attrs.map((attr) => {
-                                const attrPct = item.total > 0 ? (attr.count / item.total) * 100 : 0;
+                                const attrW = item.total > 0 ? (attr.count / item.total) * widthPct : 0;
                                 return (
                                   <div
                                     key={attr.attribute}
-                                    style={{ width: `${attrPct}%`, backgroundColor: attr.color, minWidth: attr.count > 0 ? "3px" : "0" }}
+                                    style={{ width: `${attrW}%`, backgroundColor: attr.color, minWidth: attr.count > 0 ? "4px" : "0" }}
                                     title={`${attr.name}: ${attr.count}`}
                                   />
                                 );
                               })}
                             </div>
+                            <span className="text-[9px] text-stone-600 w-5 text-right flex-shrink-0">{item.total}</span>
                           </div>
                         );
                       })}
