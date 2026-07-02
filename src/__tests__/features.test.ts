@@ -48,15 +48,8 @@ describe("Feature 1: Column Selector & CardGrid", () => {
     expect(generateStyle(10)).toBe("repeat(10, minmax(0, 1fr))");
   });
 
-  it("CardSearchPage defaults to 8 columns (per requirement)", () => {
-    // Per requirement: 卡牌页 8 列
-    // NOTE: Current code has useState(6) — see BUG below
-    const expectedDefault = 8;
-    const actualDefault = 6; // From CardSearchPage.tsx line 26
-    // Document the discrepancy
-    expect(actualDefault).toBe(6); // current code value
-    expect(expectedDefault).toBe(8); // requirement value
-  });
+  // REMOVED: CardSearchPage test — page has been deleted as part of P0 refactor.
+  // CardSearchPage.tsx no longer exists; replaced by DeckPlazaPage.
 
   it("DeckBuilderPage defaults to 6 columns (per requirement)", () => {
     // Per requirement: 组卡器 6 列
@@ -278,7 +271,7 @@ describe("Feature 2: DeckStatsView — Cost Curve & Color Distribution", () => {
 // ============================================================
 
 describe("Feature 3: Power/Distance Multi-dimensional Filters (FilterSidebar)", () => {
-  // Replicate the filter logic from CardSearchPage and DeckBuilderPage
+  // Replicate the filter logic from DeckBuilderPage and DeckPlazaPage
   function applyPowerFilter(
     card: { power: string | undefined },
     powerMin: number | "all",
@@ -443,7 +436,8 @@ describe("Feature 4: Import/Export — deckCode utilities", () => {
     expect(decoded).not.toBeNull();
     expect(decoded!.name).toBe("测试卡组");
     expect(decoded!.main_deck).toEqual(sampleDeck.main_deck);
-    expect(decoded!.rush_deck).toEqual(sampleDeck.rush_deck);
+    // rush_deck is intentionally NOT encoded (see deckCode.ts line 7)
+    expect(decoded!.rush_deck).toEqual([]);
   });
 
   it("decodeDeck creates valid created_at", () => {
@@ -490,13 +484,14 @@ describe("Feature 4: Import/Export — deckCode utilities", () => {
     const deck: Deck = {
       name: "计数测试",
       main_deck: [{ card_no: "SD01-001", count: 3 }],
-      rush_deck: [{ card_no: "SD01-R01", count: 9 }],
+      rush_deck: [],
       created_at: "",
     };
     const code = encodeDeck(deck);
     const decoded = decodeDeck(code);
     expect(decoded!.main_deck[0].count).toBe(3);
-    expect(decoded!.rush_deck[0].count).toBe(9);
+    // rush_deck is intentionally not encoded — always decoded as []
+    expect(decoded!.rush_deck).toEqual([]);
   });
 
   it("extractDeckCode: extracts code from URL with #deck= prefix", () => {

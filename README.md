@@ -134,10 +134,11 @@ npm test           # 运行测试
 - **Effect Registry**：柯里化注入的卡效注册表，SD01/SD02 全量卡效已实现
 - **Phase State Machine**：回合阶段自动机（准备→主要→战斗→结束）
 
-详细架构见 [`docs/BATTLE_DEV_GUIDE.md`](./docs/BATTLE_DEV_GUIDE.md)。
+详细架构见 [`docs/BATTLE_DEV_GUIDE.md`](./docs/BATTLE_DEV_GUIDE.md)。对战参数调优见 [`docs/BATTLE_ENGINE_EDITOR_MANUAL.md`](./docs/BATTLE_ENGINE_EDITOR_MANUAL.md)。
 
 ## 📝 最近更新
 
+- **2026-07-02**：新增《项目经理手册》和《对战引擎编辑手册》，完善文档体系
 - **2026-06-29**：组卡器筛选默认收起、搜索框常驻、筛选内容 2 列网格布局
 - **2026-06-28**：组卡器右侧面板对标 PA 重构（画廊/统计/起手三视图）、P2 起手模拟+闪卡+卡图缩放、卡牌页列控制移至工具栏
 - **2026-06-27**：主页 UI 重构（MSA Light 主题、Logo+插画+统计）、卡牌/组卡页面排布对标 Piltover Archive

@@ -46,8 +46,16 @@ export interface DeckEntry {
 }
 
 export interface Deck {
+  id?: string;
+  user_id?: string;
   name: string;
   main_deck: DeckEntry[];
   rush_deck: DeckEntry[];
   created_at: string;
+  description?: string;
+  is_published?: boolean;
+  author_nickname?: string;
+  author_avatar_url?: string;
+  favorite_count?: number;
+  is_favorited?: boolean;
 }

@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { Routes, Route, useNavigate, useLocation, Link, Navigate } from "react-router-dom";
 import type { CardDatabase, Card, Deck, DeckEntry } from "./types/card";
 import { encodeDeck, decodeDeck, saveDeckToLocal, getLocalDecks, deleteLocalDeck } from "./utils/deckCode";
-import CardSearchPage from "./pages/CardSearchPage";
+import { useAuth } from "./hooks/useAuth";
+import UserMenu from "./components/UserMenu";
 import DeckPlazaPage from "./pages/DeckPlazaPage";
 import DeckBuilderPage from "./pages/DeckBuilderPage";
 import BattlePage from "./pages/BattlePage";
@@ -9,23 +11,17 @@ import HelpPage from "./pages/HelpPage";
 import WelcomePage from "./pages/WelcomePage";
 import ChatPage from "./pages/ChatPage";
 import SettingsPage from "./pages/SettingsPage";
-import AboutPage from "./pages/AboutPage";
+import AuthPage from "./pages/AuthPage";
+import ProfilePage from "./pages/ProfilePage";
 
-type Tab = "welcome" | "chat" | "search" | "plaza" | "deck" | "battle" | "help" | "settings" | "about";
-
-const TAB_LABELS: Record<Tab, string> = {
-  welcome: "欢迎",
-  chat: "聊天",
-  search: "卡牌查询",
-  plaza: "卡组广场",
-  deck: "组卡器",
-  battle: "对战",
-  help: "帮助",
-  settings: "设置",
-  about: "关于",
-};
-
-const TAB_ORDER: Tab[] = ["chat", "search", "plaza", "deck", "battle", "help", "settings", "about"];
+const NAV_TABS: { path: string; label: string }[] = [
+  { path: "/chat", label: "聊天" },
+  { path: "/plaza", label: "卡组广场" },
+  { path: "/builder", label: "组卡器" },
+  { path: "/battle", label: "对战" },
+  { path: "/help", label: "帮助" },
+  { path: "/settings", label: "设置" },
+];
 
 interface DeckStats {
   mainCount: number;
@@ -38,8 +34,11 @@ interface DeckStats {
 }
 
 export default function App() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { isAuthenticated } = useAuth();
+
   const [db, setDb] = useState<CardDatabase | null>(null);
-  const [tab, setTab] = useState<Tab>("welcome");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -79,9 +78,10 @@ export default function App() {
       if (deck) {
         setDeckName(deck.name);
         setMainDeck(deck.main_deck);
-        setTab("deck");
+        navigate(`/builder?code=${code}`, { replace: true });
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Map: card_no -> Card (first/highest rarity variant for display)
@@ -96,11 +96,8 @@ export default function App() {
   }, [db]);
 
   // Deck operations (use card_no, not id - game logic treats same card_no as same card)
-  // Impact cards (card_type === 2) are no longer added to any deck; they are display-only.
   const addToDeck = useCallback((card: Card) => {
-    // Impact cards are display-only, not added to any deck
     if (card.card_type === 2) return;
-    // Only character cards (card_type === 1) can be added
     if (card.card_type !== 1) {
       alert("角色卡才能加入卡组！");
       return;
@@ -169,12 +166,12 @@ export default function App() {
     });
   }, [deckName, mainDeck]);
 
-  // Load deck from plaza: load the deck into the builder and switch to deck tab
+  // Load deck from plaza: load the deck into the builder and navigate to builder
   const loadDeckFromPlaza = useCallback((deck: Deck) => {
     setDeckName(deck.name);
     setMainDeck(deck.main_deck);
-    setTab("deck");
-  }, []);
+    navigate("/builder");
+  }, [navigate]);
 
   // Deck validation
   const deckStats = useMemo<DeckStats>(() => {
@@ -229,13 +226,15 @@ export default function App() {
     );
   }
 
+  const isDeckPath = location.pathname === "/builder";
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-[#fcfaf7]">
       {/* ── Header (MSA-style glass-morphism nav bar) ──────────── */}
       <header className="sticky top-0 z-50 h-12 bg-white/80 backdrop-blur-md border-b border-stone-200 flex items-center px-4 gap-4 flex-shrink-0 shadow-sm">
         {/* Logo — click to go to Welcome page */}
-        <button
-          onClick={() => setTab("welcome")}
+        <Link
+          to="/"
           className="flex items-center gap-1.5 whitespace-nowrap hover:opacity-80 transition"
         >
           <div className="w-7 h-7 rounded-md bg-[#b71c1c] flex items-center justify-center flex-shrink-0">
@@ -244,76 +243,75 @@ export default function App() {
           <span className="text-stone-800 font-bold text-sm tracking-wide">
             斗界竞技场
           </span>
-        </button>
+        </Link>
 
         {/* Nav tabs */}
         <nav className="flex items-center gap-0 h-full overflow-x-auto scrollbar-thin">
-          {TAB_ORDER.map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`h-full px-3 text-sm font-medium transition relative whitespace-nowrap ${
-                tab === t
-                  ? "text-msa-700 after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:bg-msa-500 after:rounded-full"
-                  : "text-stone-500 hover:text-stone-700"
-              }`}
-            >
-              {TAB_LABELS[t]}
-              {t === "deck" && deckStats.mainCount > 0 && (
-                <span
-                  className={`ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full ${
-                    deckStats.allValid ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
-                  }`}
-                >
-                  {deckStats.mainCount}/50
-                </span>
-              )}
-            </button>
-          ))}
+          {NAV_TABS.map((tab) => {
+            const isActive = location.pathname === tab.path;
+            return (
+              <Link
+                key={tab.path}
+                to={tab.path}
+                className={`h-full px-3 text-sm font-medium transition relative whitespace-nowrap flex items-center ${
+                  isActive
+                    ? "text-msa-700 after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:bg-msa-500 after:rounded-full"
+                    : "text-stone-500 hover:text-stone-700"
+                }`}
+              >
+                {tab.label}
+                {tab.path === "/builder" && deckStats.mainCount > 0 && (
+                  <span
+                    className={`ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full ${
+                      deckStats.allValid ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
+                    }`}
+                  >
+                    {deckStats.mainCount}/50
+                  </span>
+                )}
+              </Link>
+            );
+          })}
         </nav>
 
-        {/* Right: card count badge */}
-        <div className="ml-auto text-xs text-stone-400 whitespace-nowrap">
-          {db.total_cards} 张卡牌 · {db.total_variants} 个版本
+        {/* Right: UserMenu */}
+        <div className="ml-auto">
+          <UserMenu />
         </div>
       </header>
 
       {/* ── Main content (full height, each page manages its own scroll) ── */}
       <main className="flex-1 overflow-hidden">
-        {tab === "welcome" ? (
-          <WelcomePage db={db} onNavigate={(t) => setTab(t as Tab)} />
-        ) : tab === "chat" ? (
-          <ChatPage />
-        ) : tab === "search" ? (
-          <CardSearchPage db={db} />
-        ) : tab === "plaza" ? (
-          <DeckPlazaPage db={db} cardMap={cardMap} onLoadDeck={loadDeckFromPlaza} />
-        ) : tab === "deck" ? (
-          <DeckBuilderPage
-            db={db}
-            cardMap={cardMap}
-            deckName={deckName}
-            setDeckName={setDeckName}
-            mainDeck={mainDeck}
-            stats={deckStats}
-            savedDecks={savedDecks}
-            onAdd={addToDeck}
-            onRemove={removeFromDeck}
-            onClear={clearDeck}
-            onSave={saveDeck}
-            onLoad={loadDeck}
-            onDelete={removeDeck}
-            onShare={shareDeck}
-          />
-        ) : tab === "battle" ? (
-          <BattlePage db={db} savedDecks={savedDecks} cardMap={cardMap} />
-        ) : tab === "help" ? (
-          <HelpPage />
-        ) : tab === "settings" ? (
-          <SettingsPage />
-        ) : (
-          <AboutPage />
-        )}
+        <Routes>
+          <Route path="/" element={<WelcomePage db={db} />} />
+          <Route path="/login" element={<AuthPage />} />
+          <Route path="/chat" element={<ChatPage />} />
+          <Route path="/plaza" element={<DeckPlazaPage db={db} cardMap={cardMap} onLoadDeck={loadDeckFromPlaza} />} />
+          <Route path="/builder" element={
+            <DeckBuilderPage
+              db={db}
+              cardMap={cardMap}
+              deckName={deckName}
+              setDeckName={setDeckName}
+              mainDeck={mainDeck}
+              stats={deckStats}
+              savedDecks={savedDecks}
+              onAdd={addToDeck}
+              onRemove={removeFromDeck}
+              onClear={clearDeck}
+              onSave={saveDeck}
+              onLoad={loadDeck}
+              onDelete={removeDeck}
+              onShare={shareDeck}
+            />
+          } />
+          <Route path="/battle" element={<BattlePage db={db} savedDecks={savedDecks} cardMap={cardMap} />} />
+          <Route path="/help" element={<HelpPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/profile" element={
+            isAuthenticated ? <ProfilePage /> : <Navigate to="/login" replace />
+          } />
+        </Routes>
       </main>
     </div>
   );

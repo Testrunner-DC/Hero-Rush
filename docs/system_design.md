@@ -1,667 +1,665 @@
-# SD01/SD02 卡效系统架构设计
+# 斗界竞技场 — 用户系统架构设计 + 任务分解
 
-> 架构师：高见远（Bob） | 项目：超英击战 Marvel TCG | 日期：2026-06-21
+> **作者**: Bob (Architect)  
+> **日期**: 2026-06-16  
+> **版本**: v1.0（P0 MVP）
 
 ---
 
-## Part A: System Design
+## Part A: 系统设计
 
-### 1. Implementation Approach
+---
+
+### 1. 实现方案
 
 #### 1.1 核心技术挑战
 
-分析 SD01/SD02 全部 38 张角色卡的效果后，归纳出以下技术难点：
+| 挑战 | 分析 | 方案 |
+|------|------|------|
+| **Auth 集成** | 需要邮箱注册/登录/登出，无后端 | Supabase Auth（免费 5 万 MAU），客户端 SDK 搞定 |
+| **路由改造** | 当前无路由库，用 `tab` 状态模拟 | 引入 `react-router-dom v6`，同时保留 URL hash 分享卡组兼容 |
+| **状态提升** | App.tsx 是巨型单体组件（~320 行），所有状态在顶层 | 用 Context 拆 Auth 状态，用 custom hooks 拆数据逻辑，App.tsx 瘦身为路由壳 |
+| **旧数据迁移** | localStorage 卡组需导入到 Supabase | 登录后自动检测 localStorage 数据 → 弹窗确认 → 批量导入 |
+| **头像上传** | 需要存储头像图片 | Supabase Storage（免费 1GB） + 公开 bucket RLS 策略 |
 
-| 难点 | 涉及卡牌 | 描述 |
-|------|---------|------|
-| **结附系统** | SD01-002/009/010/016, SD02-006 | 卡牌"结附"于其他卡牌，被结附角色获得 buff；结附卡可被撤退/解除 |
-| **R 值系统** | SD01-002/010, SD02-002/008/018 | R 值可被临时修改，需追踪本回合有效修改 |
-| **临时战力修改** | SD01-003/004/007/014, SD02-001/003/009/014/017/018 | "本回合战力±X000"，回合结束清除 |
-| **常驻条件效果** | SD01-004/008/017, SD02-001/003/018 | 条件满足时持续生效的条件 buff |
-| **裁剪机制** | SD01-001/015 | 将场上角色直接移至撤退区（不经过战斗判定） |
-| **应对机制** | SD01-001/002/011/016, SD02-004 | 对手号召时可"应对"（反制） |
-| **特征判定** | SD01-010(人类), SD02-001/002/006/010/015(机械) | 从 `feature` 字段解析特征并判定 |
-| **盖伏/翻开** | SD01-009, SD02-002/005/008/009/011 | 基地盖卡的翻开、展示操作 |
-| **手牌起动** | SD01-006/009/010, SD02-007 | 从手牌发动的起动效果 |
-| **基地起动** | SD02-005/008/009 | 从基地发动的起动效果 |
+#### 1.2 框架与库选型
 
-#### 1.2 架构选型与设计思路
+| 类别 | 选型 | 版本 | 理由 |
+|------|------|------|------|
+| BaaS | **Supabase** | `@supabase/supabase-js@^2` | Auth + DB + Storage 一站式，免费额度充足，开源 |
+| 路由 | **react-router-dom** | `^6` | React 生态标准，支持 HashRouter 兼容现有 URL hash 机制 |
+| 状态管理 | **React Context** | 内置 | 当前项目无状态库，Context 对 Auth 场景足够，避免引入额外学习成本 |
+| 表单验证 | 手工实现 | — | MVP 阶段避免引入 formik/react-hook-form，保持轻量 |
+| 头像裁剪 | 无额外库 | — | 直接用 `<input type="file">` + `<img>` 预览，Supabase Storage 直接上传原图（后续 P1 加裁剪） |
 
-**函数式数据驱动 + 闭包注入**（延续现有引擎风格）：
+#### 1.3 架构模式
 
-- **不引入新框架**：现有引擎是纯函数 reducer + 柯里化注入 CardDatabase 的模式。卡效系统延续此模式，所有效果定义为纯函数，通过 `EffectContext` 传递状态。
-- **效果注册表模式**：每张卡的多个效果在模块加载时注册到全局 `EFFECT_REGISTRY`，引擎通过 `card_no` 查找。
-- **分层设计**：
-  - **类型层**（types）：定义所有接口
-  - **框架层**（registry/helpers/conditions）：通用效果执行框架
-  - **定义层**（sd01/sd02）：具体卡牌效果
-  - **集成层**（engine/events）：在引擎关键位置插入触发点
+采用 **Context + Custom Hooks** 模式（轻量版 MVVM）：
 
-**为什么不使用声明式 DSL**：
-- SD01/SD02 的效果差异极大（裁剪、结附、抽卡、特征判定、条件 buff…），声明式 DSL 需要覆盖所有变体，复杂度不低于直接写函数
-- 现有 `Ability` 接口已采用函数式 `condition/cost/effect`，保持一致性
-- 函数式定义更灵活，TypeScript 类型检查可提供编译时安全
+```
+┌─────────────────────────────────────────┐
+│  main.tsx  ──  包裹 Provider 壳          │
+│  ├─ AuthProvider                        │
+│  │   └─ BrowserRouter                   │
+│  │       └─ App (Routes)                │
+│  └─                                    │
+│  AuthContext: { user, session, ... }    │
+│  所有子组件通过 useAuth() hook 消费      │
+└─────────────────────────────────────────┘
+```
+
+- **不引入全局 store**（Redux/Zustand 都太重），Supabase client 自身就是"reactive cache"
+- **Service 层** 封装 Supabase 调用，与 UI 隔离，便于测试
 
 ---
 
-### 2. File List
+### 2. 文件列表
 
 ```
-src/game/
-  types.ts                    [修改] 引擎类型：新增 TriggerTiming/ActiveSource/EffectCategory 等类型
-  engine.ts                   [修改] 核心引擎：在 7 个关键位置插入事件触发
-  events.ts                   [修改] 事件系统：新增 onStatChange/onAllyDefeated 等事件类型
-  abilities.ts                [修改] 能力系统：新增 resolveCardEffect / getCardEffects
-  cardUtils.ts                [修改] 卡牌工具：新增 getEffectivePower/getEffectiveR
-  effects/
-    types.ts                  [新增] 效果系统类型：CardEffect/EffectContext/Modifier/Attachment
-    registry.ts               [新增] 效果注册表：EFFECT_REGISTRY + getEffectsByCardNo
-    helpers.ts                [新增] 效果辅助函数：drawCards/retreatCard/attachCard/trimCard 等
-    conditions.ts             [新增] 条件谓词：hasFeature/fieldCount/opponentFieldCount 等
-    sd01.ts                   [新增] SD01 全部 19 张卡的效果定义
-    sd02.ts                   [新增] SD02 全部 19 张卡的效果定义
-    index.ts                  [新增] 统一导出 + 注册初始化
-src/types/
-  game.ts                     [修改] 新增 attachments/modifiers/pendingCounter 字段
-  card.ts                     [修改] 新增 r 字段（基础 R 值）
+项目根目录: D:\WorkBuddyData\2026-06-12-03-21-19\marvel-tcg/
+
+── .env                                  [NEW]     环境变量（Supabase 连接）
+── .env.example                          [NEW]     环境变量模板
+── package.json                          [MODIFY]  新增依赖
+── src/
+│   ├── vite-env.d.ts                    [MODIFY]  添加 ImportMetaEnv 类型
+│   ├── main.tsx                         [MODIFY]  包裹 AuthProvider + BrowserRouter
+│   ├── App.tsx                          [MODIFY]  重构为路由壳 + 导航栏改造
+│   ├── index.css                        [MODIFY]  新增 Auth/User 相关样式
+│   │
+│   ├── lib/
+│   │   └── supabase.ts                  [NEW]     Supabase client 单例
+│   │
+│   ├── types/
+│   │   ├── card.ts                      [MODIFY]  Deck 类型扩展（id/user_id/description/is_published）
+│   │   ├── user.ts                      [NEW]     Auth 相关类型
+│   │   └── database.ts                  [NEW]     Supabase 表行类型
+│   │
+│   ├── contexts/
+│   │   └── AuthContext.tsx              [NEW]     Auth 状态 Provider
+│   │
+│   ├── hooks/
+│   │   ├── useAuth.ts                   [NEW]     封装 useContext(AuthContext)
+│   │   ├── useProfile.ts               [NEW]     个人资料 CRUD
+│   │   ├── useDecks.ts                  [NEW]     卡组云端 CRUD
+│   │   └── useFavorites.ts             [NEW]     收藏 CRUD
+│   │
+│   ├── services/
+│   │   ├── authService.ts              [NEW]     Supabase Auth 调用封装
+│   │   ├── userService.ts              [NEW]     users 表 CRUD
+│   │   ├── deckService.ts              [NEW]     decks 表 CRUD
+│   │   └── favoriteService.ts          [NEW]     favorites 表 CRUD
+│   │
+│   ├── components/
+│   │   ├── AuthModal.tsx                [NEW]     登录/注册模态框
+│   │   ├── UserMenu.tsx                [NEW]     右上角用户头像+下拉菜单
+│   │   ├── ProfileEditor.tsx           [NEW]     个人资料编辑表单
+│   │   ├── AvatarUpload.tsx            [NEW]     头像上传组件
+│   │   └── PublishDeckModal.tsx        [NEW]     发布卡组到广场弹窗
+│   │
+│   ├── pages/
+│   │   ├── AuthPage.tsx                [NEW]     登录/注册独立页面
+│   │   ├── ProfilePage.tsx             [NEW]     个人资料展示/编辑页
+│   │   ├── CardSearchPage.tsx          [DELETE]  移除卡牌查询页
+│   │   ├── AboutPage.tsx               [DELETE]  移除关于页
+│   │   ├── WelcomePage.tsx             [MODIFY]  加入登录CTA入口
+│   │   ├── DeckPlazaPage.tsx           [MODIFY]  集成远程已发布卡组+收藏
+│   │   ├── DeckBuilderPage.tsx         [MODIFY]  添加"发布到广场"按钮
+│   │   ├── BattlePage.tsx              [MODIFY]  适配新路由传参
+│   │   ├── ChatPage.tsx                [MODIFY]  适配新路由传参
+│   │   ├── HelpPage.tsx                [MODIFY]  适配新路由传参
+│   │   └── SettingsPage.tsx            [MODIFY]  适配新路由传参
+│   │
+│   └── utils/
+│       ├── deckCode.ts                  [EXISTING] 不变
+│       └── migration.ts                [NEW]     localStorage → Supabase 迁移
+│
+└── supabase/
+    └── migrations/
+        └── 001_initial_schema.sql       [NEW]     建表 + RLS 策略
 ```
+
+**文件统计**：
+- **NEW**: 20 个文件
+- **MODIFY**: 11 个文件
+- **DELETE**: 2 个文件
+- **总计**: 33 个文件变更
 
 ---
 
-### 3. Data Structures and Interfaces
+### 3. 数据结构和接口
 
-#### 3.1 类图
-
-```mermaid
-classDiagram
-    class BattleState {
-        +PlayerState[] players
-        +int activePlayerIndex
-        +int turnNumber
-        +Modifier[] modifiers
-        +Record~string,string[]~ attachments
-        +PendingCounter pendingCounter
-        +EventListener[] eventListeners
-        +CardEffect[] registeredAbilities
-    }
-
-    class PlayerState {
-        +string[] deck
-        +string[] rushDeck
-        +string[] hand
-        +string[] base
-        +FieldZones field
-        +string[] timeline
-        +string[] retreat
-        +string[] void
-    }
-
-    class Modifier {
-        +string id
-        +string targetCardId
-        +ModifierType type
-        +int value
-        +Duration duration
-        +string sourceCardId
-    }
-
-    class Attachment {
-        +string hostCardId
-        +string[] attachmentCardIds
-        +int ownerPlayerIdx
-    }
-
-    class CardEffect {
-        +string id
-        +string cardNo
-        +EffectCategory category
-        +TriggerTiming trigger
-        +ActiveSource activeSource
-        +CounterTarget counterTarget
-        +string label
-    }
-
-    class EffectContext {
-        +BattleState state
-        +string cardId
-        +int playerIdx
-        +Targets targets
-        +CardDatabase db
-        +TriggerInfo triggerInfo
-    }
-
-    class EffectRegistry {
-        -Map~string,CardEffect[]~ registry
-        +getEffectsByCardNo(cardNo) CardEffect[]
-        +register(effect) void
-    }
-
-    class EffectHelpers {
-        +drawCards(ctx, count) BattleState
-        +retreatCard(ctx, cardId, playerIdx) BattleState
-        +attachCard(ctx, attachmentId, hostId) BattleState
-        +trimCard(ctx, cardId, playerIdx) BattleState
-        +addModifier(ctx, targetId, type, value) BattleState
-        +moveToBase(ctx, cardId, playerIdx, faceDown) BattleState
-    }
-
-    class ConditionPredicates {
-        +hasFeature(card, featureId) boolean
-        +fieldCount(state, playerIdx) int
-        +opponentFieldCount(state, playerIdx) int
-        +retreatCount(state, playerIdx, filter) int
-        +baseFaceDownCount(state, playerIdx) int
-    }
-
-    class CardEngine {
-        +createGameReducer(db) Reducer
-        +handleSummonToField(state, idx, handIdx, zone) BattleState
-        +handleConfirmAttack(state, tgtIdx, tgtZone, tgtCardId) BattleState
-        +handleEndTurn(state) BattleState
-    }
-
-    BattleState --> PlayerState
-    BattleState --> Modifier
-    BattleState --> Attachment
-    BattleState --> CardEffect
-    CardEffect --> EffectContext
-    EffectRegistry --> CardEffect
-    CardEngine ..> EffectHelpers : uses
-    CardEngine ..> ConditionPredicates : uses
-    EffectHelpers ..> EffectContext : receives
-    ConditionPredicates ..> BattleState : reads
-```
-
-#### 3.2 关键数据结构变更
-
-**`src/types/game.ts` — BattleState 新增字段**：
+#### 3.1 TypeScript 类型定义
 
 ```typescript
-// BattleState 新增
-interface BattleState {
-  // ... 现有字段 ...
+// ═══════════════════════════════════════════════
+// src/types/user.ts (NEW)
+// ═══════════════════════════════════════════════
 
-  /** 临时修改器（本回合战力/R值修改，回合结束时清除 duration='turn' 的） */
-  modifiers: Modifier[];
-
-  /** 结附关系：key = 宿主卡ID, value = 结附卡ID数组 */
-  attachments: Record<string, string[]>;
-
-  /** 待处理的应对（对手号召时检查是否有应对可用） */
-  pendingCounter: {
-    summoningPlayerIdx: number;
-    summoningCardId: string;
-    summoningZone: Zone | "base";
-  } | null;
+/** AuthContext 暴露的认证状态 */
+export interface AuthState {
+  user: AuthUser | null;
+  session: Session | null;
+  isLoading: boolean;
+  isAuthenticated: boolean;
 }
 
-/** 临时修改器 */
-interface Modifier {
+/** 前端使用的用户对象 */
+export interface AuthUser {
+  id: string;           // Supabase auth.uid()
+  email: string;
+  nickname: string;     // 来自 users 表
+  avatar_url: string | null;
+  bio: string;
+  created_at: string;
+}
+
+/** 个人资料编辑表单 */
+export interface ProfileFormData {
+  nickname: string;
+  bio: string;
+  avatarFile: File | null;
+}
+
+// ═══════════════════════════════════════════════
+// src/types/database.ts (NEW) — Supabase 行类型
+// ═══════════════════════════════════════════════
+
+export interface UserRow {
   id: string;
-  /** 被修改的卡牌 ID */
-  targetCardId: string;
-  /** 修改类型 */
-  type: "power" | "r" | "cost";
-  /** 修改值（正数为增加，负数为减少） */
-  value: number;
-  /** 持续时间：turn=本回合结束清除, permanent=永久（结附提供） */
-  duration: "turn" | "permanent";
-  /** 来源卡牌 ID（用于解除） */
-  sourceCardId: string;
-}
-```
-
-**`src/types/card.ts` — Card 新增字段**：
-
-```typescript
-interface Card {
-  // ... 现有字段 ...
-  /** 基础 R 值（若数据中无此字段，默认为 1） */
-  r?: number;
-}
-```
-
-**`src/game/effects/types.ts` — 效果系统核心类型**：
-
-```typescript
-/** 效果分类 */
-type EffectCategory = "trigger" | "static" | "active" | "counter";
-
-/** 触发时机 */
-type TriggerTiming =
-  | "onSummon"         // 号召进场时
-  | "onRetreat"        // 撤退时
-  | "onAttack"         // 攻击时
-  | "onAttached"       // 被结附时
-  | "onStatChange"     // 我方角色R或战力增加时
-  | "onAllyDefeated"   // 我方角色战败进撤退区时
-  | "onTurnStart"      // 回合开始时
-  | "onTurnEnd";       // 回合结束时
-
-/** 起动效果来源区域 */
-type ActiveSource = "hand" | "base" | "field";
-
-/** 应对目标 */
-type CounterTarget = "summon" | "attack";
-
-/** 效果执行上下文 */
-interface EffectContext {
-  state: BattleState;
-  /** 效果来源卡牌 ID */
-  cardId: string;
-  /** 施放者玩家 index */
-  playerIdx: number;
-  /** 卡牌数据库（通过闭包注入） */
-  db: CardDatabase;
-  /** 选定的目标 */
-  targets?: {
-    cardId?: string;       // 目标卡牌
-    zone?: Zone;           // 目标区域
-    playerIdx?: number;    // 目标玩家
-    cardIds?: string[];    // 多目标（如撤退2张卡）
-  };
-  /** 触发信息（触发型效果时填充） */
-  triggerInfo?: {
-    event: TriggerTiming;
-    sourceCardId?: string;  // 触发源卡牌
-    sourcePlayerIdx?: number;
-  };
+  email: string;
+  nickname: string;
+  avatar_url: string | null;
+  bio: string;
+  created_at: string;
 }
 
-/** 卡牌效果定义 */
-interface CardEffect {
-  /** 唯一标识：`${cardNo}-${effectIndex}` */
+export interface DeckRow {
   id: string;
-  /** 关联卡牌 card_no */
-  cardNo: string;
-  /** 效果分类 */
-  category: EffectCategory;
-
-  // --- 触发型效果 ---
-  trigger?: TriggerTiming;
-  /** 触发条件（可选） */
-  triggerCondition?: (ctx: EffectContext) => boolean;
-
-  // --- 起动型效果 ---
-  activeSource?: ActiveSource;
-  /** 是否需要盖伏此卡作为执行后结果 */
-  faceDownAfterActive?: boolean;
-
-  // --- 应对型效果 ---
-  counterTarget?: CounterTarget;
-
-  // --- 通用 ---
-  /** 费用检查（返回 true 表示可支付，副作用在 execute 中扣费） */
-  cost?: (ctx: EffectContext) => boolean;
-  /** 执行条件（static: 何时生效; active/trigger: 是否可执行） */
-  condition?: (ctx: EffectContext) => boolean;
-  /** 效果执行 */
-  execute: (ctx: EffectContext) => BattleState;
-  /** 常驻修改器计算（仅 static 类型，返回当前应施加的修改值） */
-  staticModifier?: (ctx: EffectContext) => Modifier | null;
-  /** 目标选择规格（UI 层用于提示玩家选目标） */
-  targetSpec?: TargetSpec;
-  /** 是否一次性效果 */
-  once?: boolean;
-  /** 显示名称（主动能力用） */
-  label?: string;
+  user_id: string;
+  title: string;
+  description: string;
+  cards_json: string;     // JSON.stringify(DeckEntry[])
+  is_published: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
-/** 目标选择规格 */
-interface TargetSpec {
-  /** 目标数量 */
-  count: number;
-  /** 目标区域 */
-  zone: "myField" | "opponentField" | "myBase" | "myRetreat" | "myHand" | "opponentVanguard";
-  /** 过滤条件 */
-  filter?: {
-    maxLevel?: number;
-    minLevel?: number;
-    feature?: number;
-    attribute?: number;
-  };
-  /** 是否可选（false=必须选满, true=可选0~count） */
-  optional?: boolean;
+export interface FavoriteRow {
+  id: string;
+  user_id: string;
+  deck_id: string;
+  created_at: string;
+}
+
+// P1
+export interface BattleRecordRow {
+  id: string;
+  winner_id: string;
+  loser_id: string;
+  rounds: number;
+  battle_at: string;
+}
+
+export interface SeasonRankingRow {
+  id: string;
+  user_id: string;
+  season_id: string;
+  score: number;
+  wins: number;
+  losses: number;
+  draws: number;
+}
+
+export interface CommentRow {
+  id: string;
+  user_id: string;
+  deck_id: string;
+  content: string;
+  created_at: string;
+}
+
+// P2
+export interface FollowRow {
+  id: string;
+  follower_id: string;
+  followee_id: string;
+  created_at: string;
+}
+
+export interface NotificationRow {
+  id: string;
+  user_id: string;
+  type: string;
+  content: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+// ═══════════════════════════════════════════════
+// src/types/card.ts (MODIFY — 扩展 Deck)
+// ═══════════════════════════════════════════════
+
+export interface Deck {
+  id?: string;             // [NEW] Supabase deck id，localStorage 卡组无此字段
+  user_id?: string;        // [NEW] 所属用户 id
+  name: string;
+  main_deck: DeckEntry[];
+  rush_deck: DeckEntry[];
+  created_at: string;
+  description?: string;    // [NEW] 卡组描述
+  is_published?: boolean;  // [NEW] 是否已发布到广场
+  // 以下为联表查询的填充字段（不在数据库存储）
+  author_nickname?: string;   // 作者昵称（广场展示用）
+  author_avatar_url?: string; // 作者头像URL
+  favorite_count?: number;    // 收藏数
+  is_favorited?: boolean;     // 当前用户是否已收藏
 }
 ```
 
----
+#### 3.2 类图（Mermaid）
 
-### 4. Program Call Flow
+详见 `docs/class-diagram.mermaid`，核心关系：
 
-#### 4.1 号召进场触发流程
-
-```mermaid
-sequenceDiagram
-    participant UI as BattlePage
-    participant Engine as gameReducer
-    participant Summon as handleSummonToField
-    participant Events as triggerEvent
-    participant Registry as EFFECT_REGISTRY
-    participant Helpers as EffectHelpers
-
-    UI->>Engine: SUMMON_TO_FIELD {playerIdx, handIndex, zone}
-    Engine->>Summon: handleSummonToField(state, idx, handIdx, zone)
-    Summon->>Summon: 验证号召条件
-    Summon->>Summon: Lv4+? → 撤退场上角色
-    Summon->>Summon: 将卡牌放入 field/zone
-    Note over Summon: 卡牌已在场，但尚未触发效果
-
-    Summon->>Events: triggerEvent(state, "onCardSummoned", {cardId, playerIdx, zone})
-    Events->>Registry: getEffectsByCardNo(card.card_no)
-    Registry-->>Events: CardEffect[] (trigger="onSummon")
-
-    loop 每个匹配的触发效果
-        Events->>Events: 检查 triggerCondition(ctx)
-        alt 条件满足
-            Events->>Events: 检查 cost(ctx)
-            alt 费用可付
-                Events->>Helpers: execute(ctx) — 效果执行
-                Helpers->>Helpers: drawCards / addModifier / retreatCard...
-                Helpers-->>Events: 新 state
-            end
-        end
-    end
-
-    Events-->>Summon: 触发后的 state
-
-    Note over Summon: 检查对手是否有应对效果
-    Summon->>Events: triggerEvent(state, "onCardSummoned", {cardId, playerIdx, ...})
-    Note right of Events: 对手的 counter 类型效果也会被检查
-
-    Summon->>Engine: checkpoint(state)
-    Engine-->>UI: 新 BattleState
 ```
+AuthContext (Provider)
+  ├── useAuth() → AuthState { user, session, isLoading }
+  ├── authService: { signUp(), signIn(), signOut(), getSession() }
+  └── userService: { getProfile(), updateProfile(), uploadAvatar() }
 
-#### 4.2 结附系统流程（反浩克装甲）
-
-```mermaid
-sequenceDiagram
-    participant UI as BattlePage
-    participant Engine as gameReducer
-    participant Summon as handleSummonToField
-    participant Helpers as EffectHelpers
-    participant State as BattleState
-
-    UI->>Engine: SUMMON_TO_FIELD (SD01-002 反浩克装甲)
-    Engine->>Summon: handleSummonToField(state, idx, handIdx, zone)
-    Note over Summon: 反浩克装甲作为"应对/起动"效果结附<br/>不是直接号召上场
-
-    Note over UI: 玩家选择目标角色后
-    UI->>Engine: ACTIVATE_EFFECT {cardId: SD01-002, targets: {cardId: hostCardId}}
-    Engine->>Helpers: attachCard(ctx, attachmentId, hostId)
-
-    Helpers->>Helpers: 从手牌移除结附卡
-    Helpers->>State: attachments[hostId] = [..., attachmentId]
-    Helpers->>Helpers: 撤退宿主的其他结附卡（效果要求）
-    Helpers->>Helpers: 添加常驻 Modifier (power+2500, r+2)
-    Helpers->>State: modifiers.push({targetCardId: hostId, type: "power", value: 2500, duration: "permanent"})
-    Helpers->>State: modifiers.push({targetCardId: hostId, type: "r", value: 2, duration: "permanent"})
-
-    Helpers-->>Engine: 新 state
-    Engine->>Engine: triggerEvent("onAttached", {cardId: hostId})
-    Engine-->>UI: 新 BattleState
-```
-
-#### 4.3 战斗判定 + 临时战力修改流程
-
-```mermaid
-sequenceDiagram
-    participant UI as BattlePage
-    participant Engine as gameReducer
-    participant Attack as handleConfirmAttack
-    participant Utils as cardUtils
-    participant Events as triggerEvent
-
-    UI->>Engine: CONFIRM_ATTACK {targetPlayerIdx, targetZone, targetCardId}
-    Engine->>Attack: handleConfirmAttack(state, ...)
-
-    Attack->>Events: triggerEvent(state, "onAttack", {cardId: attackerId})
-    Note right of Events: SD02-014 攻击时若目标Lv4+ → 本回合战力+1500
-
-    Attack->>Utils: getEffectivePower(state, attackerCardId)
-    Utils->>Utils: basePower = getCardPower(card)
-    Utils->>Utils: permanentMods = modifiers.filter(duration="permanent")
-    Utils->>Utils: turnMods = modifiers.filter(duration="turn")
-    Utils-->>Attack: effectivePower = base + sum(mods)
-
-    Attack->>Utils: getEffectivePower(state, defenderCardId)
-    Utils-->>Attack: effectivePower
-
-    Attack->>Attack: 战力对比判定
-    alt 攻击者 > 防守者
-        Attack->>Events: triggerEvent("onCardRetreated", {cardId: defenderId})
-        Note right of Events: SD01-018 撤退时效果 / SD02-002 机械角色战败→基地
-    else 攻击者 < 防守者
-        Attack->>Events: triggerEvent("onCardRetreated", {cardId: attackerId})
-    else 平局
-        Attack->>Events: triggerEvent("onCardRetreated", {cardId: both})
-    end
-
-    Attack->>Engine: checkpoint(state)
-    Engine-->>UI: 新 BattleState
-```
-
-#### 4.4 回合结束清除临时效果流程
-
-```mermaid
-sequenceDiagram
-    participant UI as BattlePage
-    participant Engine as gameReducer
-    participant EndTurn as handleEndTurn
-    participant Cleanup as cleanupTurnModifiers
-    participant Events as triggerEvent
-
-    UI->>Engine: END_TURN
-    Engine->>EndTurn: handleEndTurn(state)
-
-    EndTurn->>Events: triggerEvent(state, "onTurnEnd", {playerIdx})
-    Note right of Events: 触发回合结束效果
-
-    EndTurn->>Cleanup: cleanupTurnModifiers(state)
-    Cleanup->>Cleanup: modifiers = modifiers.filter(m => m.duration !== "turn")
-    Cleanup-->>EndTurn: state (临时修改器已清除)
-
-    EndTurn->>EndTurn: 手牌弃至9张
-    EndTurn->>EndTurn: 切换玩家 / 回合数+1
-    EndTurn->>Events: triggerEvent(state, "onTurnStart", {playerIdx: nextIdx})
-    Note right of Events: 触发新回合开始效果
-
-    EndTurn->>Engine: checkpoint(state)
-    Engine-->>UI: 新 BattleState
+DeckPage (消费端)
+  ├── useDecks() → { publishedDecks, myDecks, publishDeck(), deleteDeck() }
+  ├── useFavorites() → { favorites, addFavorite(), removeFavorite() }
+  └── deckService: { fetchPublished(), create(), update(), remove() }
 ```
 
 ---
 
-### 5. Anything UNCLEAR
+### 4. 程序调用流程
 
-1. **R 值的来源**：当前 Card 接口无 `r` 字段。根据 SD02-018 检查"R=1"，假设所有角色基础 R=1。若实际卡牌数据中有 R 值字段，需调整 `getEffectiveR` 的基础值来源。
-
-2. **应对机制的交互流程**：当玩家A号召时，玩家B可"应对"。当前设计是在 `onCardSummoned` 事件中检查对手的 counter 类型效果，但实际 TCG 中应对通常有"响应窗口"（优先权切换）。当前简化为：在号召完成后立即检查对手是否有可用应对，若有则暂停号召效果直到应对解决。完整实现可能需要引入 `pendingCounter` 状态和优先权系统，但 SD01/SD02 的应对效果较为简单（反制号召/攻击），可暂用同步处理。
-
-3. **结附卡的区域归属**：结附卡从手牌发出后，物理上不在任何 zone（hand/field/base/deck/retreat）中，而是存在于 `attachments` 映射中。当宿主撤退时，结附卡一并进入撤退区。此设计假设结附卡不被单独 targeting（除 SD01-001 的"撤退结附卡"效果外）。
-
-4. **"本回合"的精确边界**：临时修改器 `duration: "turn"` 在回合结束时清除。但部分效果可能是"直到下次自己回合"，需确认。当前统一按"回合结束清除"处理。
-
-5. **基地盖卡的翻开状态追踪**：当前 `base: string[]` 只存卡ID。部分效果需要"展示基地盖卡"或"翻开盖卡"。需在 base 中追踪每张卡的翻开状态，或新增 `baseFaceUp: string[]` 辅助字段。当前设计假设基地卡默认盖放，翻开操作将卡移至一个新的追踪字段。
-
-6. **SD01-001 的复杂条件**："被结附时，若敌方战区有Lv5+角色，可撤退此卡所有结附卡，裁剪敌方1张LvX以下角色"涉及多步操作和多目标选择，可能需要 UI 层的多步选择流程支持。
-
----
-
-## Part B: Task Decomposition
-
-### 6. Required Packages
+#### 4.1 注册流程
 
 ```
-# 无新增第三方包 — 全部基于现有项目依赖实现
-# 现有依赖已足够：
-# - react@^18.2.0: UI 框架
-# - typescript: 类型系统
-# - vite: 构建工具
-# 卡效系统完全使用 TypeScript 原生实现，不引入额外库
+用户填写 email + password + nickname
+  → AuthPage.onSubmit()
+    → authService.signUp(email, password)
+      → supabase.auth.signUp({ email, password })
+        → Supabase Auth 创建用户，发送确认邮件（P0 跳过确认）
+        → Supabase Auth Trigger: INSERT INTO users (id, email, nickname)
+      ← 返回 { user, session }
+    → AuthContext.setSession(session)
+    → AuthContext 自动调用 userService.getProfile(user.id)
+      → supabase.from('users').select().eq('id', userId).single()
+    ← AuthContext.user = { id, email, nickname, ... }
+  → 页面重定向到 WelcomePage
+```
+
+#### 4.2 登录流程
+
+```
+用户填写 email + password
+  → AuthPage.onSubmit()
+    → authService.signIn(email, password)
+      → supabase.auth.signInWithPassword({ email, password })
+    ← 返回 { user, session }
+    → AuthContext.setSession(session)
+    → 检查 localStorage 是否有旧数据
+      → 如有 → 弹出迁移确认弹窗
+        → 用户确认 → migrationService.migrateLocalDecks(userId)
+          → 读取 localStorage → 批量 INSERT INTO decks
+        → 用户跳过 → 忽略
+    → 重定向到 WelcomePage
+```
+
+#### 4.3 卡组发布流程
+
+```
+用户点击"发布到广场"
+  → DeckBuilderPage 打开 PublishDeckModal
+    → 用户填写 title + description
+    → PublishDeckModal.onSubmit()
+      → deckService.publishDeck({ userId, title, description, cards_json })
+        → supabase.from('decks').insert({...})
+      ← 返回 deck id
+    → 关闭弹窗，提示"发布成功"
+    → DeckPlazaPage 下次加载时从 Supabase 获取已发布卡组
+```
+
+#### 4.4 收藏卡组流程
+
+```
+用户在卡组广场点击⭐收藏
+  → DeckPlazaPage.onToggleFavorite(deckId)
+    → 检查登录状态 → 未登录弹出 AuthModal
+    → 已登录 → favoriteService.addFavorite(userId, deckId)
+      → supabase.from('favorites').insert({...})
+    ← 返回成功
+    → 本地状态更新 is_favorited = true, favorite_count++
+```
+
+#### 4.5 时序图（完整 Mermaid）
+
+详见 `docs/sequence-diagram.mermaid`，包含：
+- 注册完整流程（AuthPage → Supabase Auth → DB Trigger → Profile Fetch）
+- 登录 + 迁移流程
+- 卡组发布流程
+- 收藏流程
+
+---
+
+### 5. 待明确事项
+
+1. **赛季周期配置**：PRD 说明"由用户后续在后台配置"。当前架构预留 `seasons` 表（P1），含 `start_date/end_date` 字段，前端无需感知具体周期逻辑。
+2. **匿名 URL hash 分享与登录发布的共存**：确认匿名分享的卡组不会出现在广场列表中，只有登录用户通过"发布"按钮发布的卡组才进入广场。匿名分享仅通过 URL hash 在组卡器预览。
+3. **Supabase 项目创建**：需运维/主理人在 Supabase 控制台创建项目，获取 URL 和 anon key 填入 `.env`。SQL 迁移脚本通过 Supabase SQL Editor 手动执行或 CLI 执行。
+4. **Google OAuth**（P1）：需要 Google Cloud Console 配置 OAuth 同意屏幕 + Supabase Auth Provider 配置。
+5. **邮箱验证跳过**：P0 阶段 Supabase Auth 设置中需关闭"邮件确认"选项，注册即登录。
+
+---
+
+## Part B: 任务分解
+
+---
+
+### 6. 所需依赖包
+
+```bash
+npm install @supabase/supabase-js@^2.49.0 react-router-dom@^6.28.0
+```
+
+| 包名 | 版本 | 用途 |
+|------|------|------|
+| `@supabase/supabase-js` | `^2.49.0` | Supabase 客户端 SDK（Auth + DB + Storage） |
+| `react-router-dom` | `^6.28.0` | SPA 路由（BrowserRouter + Routes） |
+| （现有）`react` | `^18.3.1` | 保持不变 |
+| （现有）`vite` | `^6.0.5` | 需配置环境变量 |
+| （现有）`typescript` | `^5.7.2` | 保持不变 |
+| （现有）`tailwindcss` | `^3.4.17` | 保持不变 |
+
+---
+
+### 7. 任务列表（按依赖排序）
+
+---
+
+#### **T01: 项目基础设施 + 类型定义 + Supabase 客户端 + SQL Schema**
+
+| 属性 | 值 |
+|------|-----|
+| **Task ID** | T01 |
+| **Task Name** | 项目基础设施（依赖、环境变量、类型、Supabase 客户端、数据库 Schema） |
+| **Priority** | P0 |
+| **Dependencies** | 无 |
+
+**源文件**：
+
+| 操作 | 文件路径 | 说明 |
+|------|----------|------|
+| MODIFY | `package.json` | 新增 `@supabase/supabase-js` 和 `react-router-dom` 依赖 |
+| NEW | `.env` | `VITE_SUPABASE_URL=` + `VITE_SUPABASE_ANON_KEY=` |
+| NEW | `.env.example` | 同上，值为占位符 `your-project-url` / `your-anon-key` |
+| MODIFY | `src/vite-env.d.ts` | 扩展 `ImportMetaEnv` 接口，声明环境变量类型 |
+| NEW | `src/lib/supabase.ts` | 创建 Supabase client 单例，读取环境变量 |
+| NEW | `src/types/user.ts` | `AuthState`, `AuthUser`, `ProfileFormData` 类型 |
+| NEW | `src/types/database.ts` | 所有 Supabase 表行类型（`UserRow`, `DeckRow`, `FavoriteRow` 等） |
+| MODIFY | `src/types/card.ts` | `Deck` 接口扩展：`id?`, `user_id?`, `description?`, `is_published?`, `author_nickname?`, `author_avatar_url?`, `favorite_count?`, `is_favorited?` |
+| NEW | `supabase/migrations/001_initial_schema.sql` | 建表 SQL + RLS 策略 + Auth Trigger（users 自动创建） |
+| MODIFY | `src/main.tsx` | 包裹 `AuthProvider` + `BrowserRouter` |
+
+**验收标准**：
+- `npm install` 成功，无报错
+- `.env` 配置后，`supabase` 客户端可正常初始化
+- TypeScript 编译通过，无类型错误
+- SQL 脚本可在 Supabase SQL Editor 成功执行
+
+---
+
+#### **T02: 认证系统（AuthContext + Service + AuthPage + UI 组件）**
+
+| 属性 | 值 |
+|------|-----|
+| **Task ID** | T02 |
+| **Task Name** | 认证系统（Context Provider、Service 层、登录注册页面、用户菜单） |
+| **Priority** | P0 |
+| **Dependencies** | T01（需要 supabase client 和类型定义） |
+
+**源文件**：
+
+| 操作 | 文件路径 | 说明 |
+|------|----------|------|
+| NEW | `src/contexts/AuthContext.tsx` | AuthProvider：管理 session/user 状态，提供 signUp/signIn/signOut 方法，监听 `onAuthStateChange` |
+| NEW | `src/hooks/useAuth.ts` | `useAuth()`：`useContext(AuthContext)` 的便捷封装，含非空断言 |
+| NEW | `src/services/authService.ts` | `signUp()`, `signIn()`, `signOut()`, `getSession()` — 封装 `supabase.auth.*` 调用 |
+| NEW | `src/services/userService.ts` | `getProfile()`, `updateProfile()`, `uploadAvatar()` — users 表 CRUD + Storage 上传 |
+| NEW | `src/pages/AuthPage.tsx` | 登录/注册双表单页（Tab 切换），含邮箱、密码、昵称（注册时）、表单验证、错误提示 |
+| NEW | `src/components/AuthModal.tsx` | 模态框版 AuthPage，供未登录时快捷唤起（如收藏操作触发） |
+| NEW | `src/components/UserMenu.tsx` | 右上角用户头像圆 + 下拉菜单（个人资料 / 我的卡组 / 登出） |
+| MODIFY | `src/index.css` | 新增 `.auth-input`, `.auth-btn`, `.user-menu-dropdown` 等样式 |
+
+**验收标准**：
+- 用户可通过邮箱+密码注册，注册后自动登录
+- 用户可通过邮箱+密码登录
+- 登录后右上角显示用户头像（或默认占位）+ 下拉菜单
+- 登出后恢复为"登录"按钮
+- 页面刷新后保持登录状态（session 持久化）
+
+---
+
+#### **T03: App.tsx 路由重构 + 导航栏改造 + 页面增删**
+
+| 属性 | 值 |
+|------|-----|
+| **Task ID** | T03 |
+| **Task Name** | App 路由壳重构、导航栏登录入口、移除废弃页面、各页面适配新路由 |
+| **Priority** | P0 |
+| **Dependencies** | T02（需要 AuthContext + UserMenu 组件） |
+
+**源文件**：
+
+| 操作 | 文件路径 | 说明 |
+|------|----------|------|
+| MODIFY | `src/App.tsx` | **重大重构**：<br>1. 移除 `tab` 状态机，改用 `react-router-dom` Routes<br>2. 导航栏：删除"卡牌查询"和"关于"标签，右侧卡牌计数替换为 `<UserMenu />`<br>3. URL hash `#deck=xxx` 兼容逻辑保留（读取 hash → 跳转组卡器）<br>4. AuthModal 集成（需要登录的操作触发弹窗）<br>5. 保留所有业务状态（deckState 等）迁移到 Context 或通过路由传参 |
+| DELETE | `src/pages/CardSearchPage.tsx` | 移除卡牌查询页面 |
+| DELETE | `src/pages/AboutPage.tsx` | 移除关于页面 |
+| MODIFY | `src/pages/WelcomePage.tsx` | 当用户未登录时，展示醒目的"注册/登录"CTA 按钮；已登录则展示个性化欢迎 |
+| MODIFY | `src/pages/DeckPlazaPage.tsx` | 适配路由传参（`useParams`/`useNavigate`），Props 接口调整 |
+| MODIFY | `src/pages/DeckBuilderPage.tsx` | 适配路由传参，Props 接口调整 |
+| MODIFY | `src/pages/BattlePage.tsx` | 适配路由传参，Props 接口调整 |
+| MODIFY | `src/pages/ChatPage.tsx` | 适配路由传参，Props 接口调整 |
+| MODIFY | `src/pages/HelpPage.tsx` | 适配路由传参（如无需 Props 则不变） |
+| MODIFY | `src/pages/SettingsPage.tsx` | 适配路由传参 |
+
+**验收标准**：
+- 导航栏只显示：聊天、卡组广场、组卡器、对战、帮助、设置（共 6 个标签）
+- 右上角显示用户头像/登录按钮（替代原卡牌计数）
+- 点击"卡组广场"→`/plaza`，"组卡器"→`/builder`，正常渲染
+- URL hash `#deck=xxx` 仍能解析并跳转组卡器
+- CardSearchPage 和 AboutPage 文件删除，无 import 引用报错
+
+---
+
+#### **T04: 用户数据层（Profile 页面 + Deck CRUD + 收藏 + 发布）**
+
+| 属性 | 值 |
+|------|-----|
+| **Task ID** | T04 |
+| **Task Name** | 个人资料页、卡组云端 CRUD、发布到广场、收藏功能、相关 Hooks |
+| **Priority** | P0 |
+| **Dependencies** | T03（需要路由系统和 ProfilePage 路由挂载点） |
+
+**源文件**：
+
+| 操作 | 文件路径 | 说明 |
+|------|----------|------|
+| NEW | `src/hooks/useProfile.ts` | `useProfile()`：`{ profile, isLoading, updateProfile, uploadAvatar }` |
+| NEW | `src/hooks/useDecks.ts` | `useDecks()`：`{ publishedDecks, myDecks, publishDeck, deleteDeck, isLoading }` |
+| NEW | `src/hooks/useFavorites.ts` | `useFavorites()`：`{ favorites, isFavorited, toggleFavorite, favoriteCount }` |
+| NEW | `src/services/deckService.ts` | `fetchPublishedDecks()`, `fetchMyDecks()`, `createDeck()`, `updateDeck()`, `deleteDeck()`, `publishDeck()` |
+| NEW | `src/services/favoriteService.ts` | `fetchFavorites()`, `addFavorite()`, `removeFavorite()`, `isFavorited()` |
+| NEW | `src/pages/ProfilePage.tsx` | 个人资料展示页：头像、昵称、简介、我的卡组列表、编辑按钮 |
+| NEW | `src/components/ProfileEditor.tsx` | 编辑昵称+简介的表单弹窗 |
+| NEW | `src/components/AvatarUpload.tsx` | 点击头像 → 选择文件 → 上传到 Supabase Storage → 更新 avatar_url |
+| NEW | `src/components/PublishDeckModal.tsx` | 发布卡组弹窗：标题、描述、确认/取消 |
+| MODIFY | `src/pages/DeckPlazaPage.tsx` | **重大增强**：<br>1. 新增"广场"Tab（Supabase 已发布卡组列表，含作者昵称/头像）<br>2. 每个卡组卡片加⭐收藏按钮（含收藏数显示）<br>3. 保留原有"我的卡组"（含本地+云端）<br>4. 保留"卡组码导入"功能 |
+| MODIFY | `src/pages/DeckBuilderPage.tsx` | 组卡器工具栏添加"发布到广场"按钮 → 打开 PublishDeckModal |
+| MODIFY | `src/contexts/AuthContext.tsx` | `user` 状态同步更新（profile 变更后刷新） |
+
+**验收标准**：
+- 登录用户可访问 `/profile`，查看和编辑个人资料
+- 头像可上传并正确显示
+- 组卡器中点击"发布到广场"→填写标题描述→卡组出现在广场
+- 广场中每个卡组显示收藏按钮和收藏数
+- 点击收藏→状态切换，再次点击→取消收藏
+- 未登录用户点击收藏→弹出 AuthModal
+
+---
+
+#### **T05: 旧数据迁移 + 集成收尾 + 最终调试**
+
+| 属性 | 值 |
+|------|-----|
+| **Task ID** | T05 |
+| **Task Name** | localStorage 迁移、集成联调、边缘 case 处理、部署就绪 |
+| **Priority** | P0 |
+| **Dependencies** | T02, T03, T04（需要所有功能就绪） |
+
+**源文件**：
+
+| 操作 | 文件路径 | 说明 |
+|------|----------|------|
+| NEW | `src/utils/migration.ts` | `detectLocalDecks()`, `migrateDecksToCloud(userId)`, `clearLocalDecks()` |
+| MODIFY | `src/contexts/AuthContext.tsx` | 登录成功后检查 `localStorage` → 如有旧卡组 → 弹窗确认 → 执行迁移 |
+| MODIFY | `src/pages/DeckPlazaPage.tsx` | "我的卡组"Tab 迁移后刷新列表，区分本地/云端卡组 |
+| MODIFY | `src/App.tsx` | 最终路由确认：`/`→Welcome, `/login`→AuthPage, `/plaza`→DeckPlaza, `/builder`→DeckBuilder, `/battle`→Battle, `/chat`→Chat, `/help`→Help, `/settings`→Settings, `/profile`→ProfilePage（需登录） |
+| MODIFY | `src/pages/WelcomePage.tsx` | 最终样式打磨、CTA 按钮逻辑完善 |
+
+**验收标准**：
+- 新用户注册→无迁移提示
+- 老用户（localStorage 有卡组）登录→弹出"检测到本地卡组，是否导入？"弹窗
+- 确认迁移→本地卡组出现在"我的卡组"→localStorage 清空
+- 跳过迁移→卡组保留在 localStorage，"我的卡组"可见本地卡组
+- 所有路由正常，无 404
+- 登出后访问 `/profile` 重定向到 `/login`
+
+---
+
+### 8. 共享知识（跨文件约定）
+
+#### 8.1 Supabase Client 单例
+
+```typescript
+// src/lib/supabase.ts — 全项目唯一导入点
+import { createClient } from '@supabase/supabase-js';
+
+export const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
+```
+
+所有 service 文件从此导入 `supabase`，**不得**在其他地方重复创建 client。
+
+#### 8.2 Auth 状态获取
+
+```typescript
+// 任何组件获取用户信息
+import { useAuth } from '../hooks/useAuth';
+
+function MyComponent() {
+  const { user, isAuthenticated, isLoading } = useAuth();
+  // user?.id, user?.email, user?.nickname, user?.avatar_url
+}
+```
+
+#### 8.3 Supabase 查询错误处理
+
+```typescript
+// 统一模式：所有 service 函数返回 { data, error }
+const { data, error } = await supabase.from('decks').select('*');
+if (error) {
+  console.error('Failed to fetch decks:', error.message);
+  return { data: null, error };
+}
+return { data, error: null };
+```
+
+#### 8.4 Deck JSON 序列化
+
+```typescript
+// 存储时：DeckEntry[] → JSON string
+const cards_json = JSON.stringify(deck.main_deck);
+
+// 读取时：JSON string → DeckEntry[]
+const main_deck: DeckEntry[] = JSON.parse(row.cards_json);
+```
+
+#### 8.5 路由约定
+
+| 路径 | 页面 | 需要登录 |
+|------|------|----------|
+| `/` | WelcomePage | 否 |
+| `/login` | AuthPage | 否 |
+| `/plaza` | DeckPlazaPage | 否（收藏功能需登录） |
+| `/builder` | DeckBuilderPage | 否 |
+| `/battle` | BattlePage | 否 |
+| `/chat` | ChatPage | 否 |
+| `/help` | HelpPage | 否 |
+| `/settings` | SettingsPage | 否 |
+| `/profile` | ProfilePage | **是** |
+| `/profile/:userId` | ProfilePage（查看他人） | 否（P2） |
+
+#### 8.6 Storage Bucket 约定
+
+- Bucket 名称：`avatars`
+- 文件路径：`{user_id}/avatar.{ext}`
+- 公开访问：是（RLS: SELECT 公开，INSERT 仅限本人）
+- 上传策略：覆盖旧文件（`upsert: true`）
+
+#### 8.7 环境变量
+
+```bash
+# .env（不提交到 Git）
+VITE_SUPABASE_URL=https://xxxxx.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+# .env.example（提交到 Git）
+VITE_SUPABASE_URL=your-project-url
+VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
 
 ---
 
-### 7. Task List (ordered by dependency)
-
-#### T01: 效果系统类型与数据结构扩展
-
-- **Task Name**: 效果系统类型与数据结构扩展
-- **Source Files**:
-  - `src/game/effects/types.ts` [新增] — 效果系统核心类型（CardEffect/EffectContext/Modifier/TargetSpec 等）
-  - `src/game/types.ts` [修改] — 新增 TriggerTiming/ActiveSource/EffectCategory 到 GameEventType，扩展 AbilityContext
-  - `src/types/game.ts` [修改] — BattleState 新增 modifiers/attachments/pendingCounter 字段；PlayerState 不变
-  - `src/types/card.ts` [修改] — Card 接口新增可选 `r?: number` 字段
-- **Dependencies**: 无
-- **Priority**: P0
-- **Description**: 定义卡效系统的全部类型基础。包括：Modifier（临时修改器）、EffectContext（效果执行上下文）、CardEffect（卡牌效果定义）、TargetSpec（目标选择规格）、TriggerTiming（触发时机枚举）。同时扩展 BattleState 增加 modifiers/attachments/pendingCounter 三个新字段，修改 GameEventType 增加 onStatChange/onAllyDefeated 事件。
-
----
-
-#### T02: 效果系统核心框架
-
-- **Task Name**: 效果系统核心框架（注册表 + 辅助函数 + 条件谓词 + 能力解析）
-- **Source Files**:
-  - `src/game/effects/registry.ts` [新增] — 全局效果注册表 EFFECT_REGISTRY，registerEffect/getEffectsByCardNo/triggerEffectsByTiming
-  - `src/game/effects/helpers.ts` [新增] — 通用效果辅助函数：drawCards/retreatCard/attachCard/detachCard/trimCard/addModifier/removeModifier/moveToBase/summonFromRetreat
-  - `src/game/effects/conditions.ts` [新增] — 条件谓词函数：hasFeature/fieldCount/opponentFieldCount/retreatCount/baseFaceDownCount/getCardLevel/hasAttachment
-  - `src/game/abilities.ts` [修改] — 新增 resolveCardEffect（按 card_no 查找并执行效果）、getCardEffects、registerCardEffects（批量注册）
-- **Dependencies**: T01
-- **Priority**: P0
-- **Description**: 实现效果系统的核心运行时框架。registry.ts 维护 card_no → CardEffect[] 的映射，提供按时机查询触发效果的能力。helpers.ts 封装所有原子操作（抽卡/撤退/结附/裁剪/修改器增删/基地操作），每个函数接收 EffectContext 返回新 BattleState。conditions.ts 提供复用的条件判定函数（特征判定从 feature 字段逗号分隔解析）。abilities.ts 扩展为支持按 card_no 解析卡牌效果。
-
----
-
-#### T03: SD01/SD02 卡牌效果定义
-
-- **Task Name**: SD01/SD02 全部 38 张卡牌效果定义
-- **Source Files**:
-  - `src/game/effects/sd01.ts` [新增] — SD01 全部 19 张卡的 CardEffect 定义（含结附/触发/常驻/应对/起动）
-  - `src/game/effects/sd02.ts` [新增] — SD02 全部 19 张卡的 CardEffect 定义（含机械特征/基地操作/盖伏）
-  - `src/game/effects/index.ts` [新增] — 统一导出 + registerAllEffects() 初始化函数（调用 sd01/sd02 注册）
-- **Dependencies**: T01, T02
-- **Priority**: P1
-- **Description**: 为 SD01 和 SD02 的每张卡牌定义具体效果。SD01 重点是反浩克装甲的结附系统（SD01-002/009/010/016）、钢铁侠的触发效果（SD01-001/007/014）、浩克的常驻条件效果（SD01-008/017）。SD02 重点是奥创/幻视的机械特征联动（SD02-001/002/006/010/015）、基地起动效果（SD02-005/008/009）、黑豹的应对和先锋/后卫效果（SD02-003/016）。无效果的卡牌（SD01-012/013, SD02-012/013）不注册效果。index.ts 提供统一注册入口。
-
----
-
-#### T04: 引擎集成与事件触发
-
-- **Task Name**: 引擎事件触发点 + 事件系统增强 + 战力/R值计算
-- **Source Files**:
-  - `src/game/engine.ts` [修改] — 在 7 个关键位置插入 triggerEvent 调用：handleSummonToField(onCardSummoned)、handleConfirmAttack(onCardAttacked+onCardRetreated)、handleEndTurn(onTurnEnd+onTurnEnd cleanup+onTurnStart)、handleDeployToBase(onCardDeployed)、handleAdvancePhase(onPhaseChange)
-  - `src/game/events.ts` [修改] — triggerEvent 增强：支持活跃玩家优先排序、支持嵌套触发防重入、新增 onStatChange/onAllyDefeated 事件分发
-  - `src/game/cardUtils.ts` [修改] — 新增 getEffectivePower（基础战力+permanent修改器+turn修改器）、getEffectiveR（基础R+修改器）、getAttachments（查询结附卡）、cleanupTurnModifiers（清除 turn 修改器）
-- **Dependencies**: T01, T02
-- **Priority**: P0
-- **Description**: 将事件系统接入引擎。在 engine.ts 的 handleSummonToField 中，卡牌上场后触发 onCardSummoned 事件；在 handleConfirmAttack 中，战斗判定前触发 onCardAttacked，撤退后触发 onCardRetreated；在 handleEndTurn 中触发 onTurnEnd → 清除临时修改器 → 切换玩家 → onTurnStart。cardUtils.ts 的 getEffectivePower 替换原有 getCardPower 在战斗判定中的调用，使临时战力修改生效。
-
----
-
-#### T05: 系统集成与联调
-
-- **Task Name**: 效果注册初始化 + 引擎接入效果系统 + 端到端联调
-- **Source Files**:
-  - `src/game/effects/index.ts` [补充] — 确保 registerAllEffects() 在游戏初始化时被调用
-  - `src/game/engine.ts` [补充] — createGameReducer 工厂函数中调用 registerAllEffects(db)，在 SETUP_COMPLETE 处理中初始化效果注册
-  - `src/game/abilities.ts` [补充] — resolveCardEffect 完整实现，处理多效果执行顺序、应对效果中断逻辑
-- **Dependencies**: T03, T04
-- **Priority**: P1
-- **Description**: 将所有组件整合。在 createGameReducer 中注入 CardDatabase 后调用 registerAllEffects(db) 完成全局效果注册。确保引擎的 triggerEvent 能正确查找到注册的卡牌效果并执行。验证关键流程：号召→触发进场效果→对手应对检查→战斗判定→临时战力修改→撤退触发→回合结束清除。处理边界情况：结附卡撤退时宿主修改器移除、多效果同时触发时的执行顺序。
-
----
-
-### 8. Shared Knowledge
-
-```
-=== 数据格式约定 ===
-- Card.feature 字段为逗号分隔的特征 ID 字符串（如 "1,2" = 人类/复仇者联盟）
-- 特征 ID 映射：1=人类, 2=复仇者联盟, 3=机械, 4=阿斯加德, 5=瓦坎达, 7=神盾局, 8=变种人, 9=九头蛇
-- Card.attribute 字段为属性数字（1=科技/红色, 2=正义/黄色, 3=自然, 4=敏捷, 7=通用）
-- Card.cost 即 Lv 值（1~6）
-- Card.power 为字符串形式数字（如 "3000"），需 parseInt
-
-=== 状态修改约定 ===
-- 所有状态修改必须返回新的 BattleState 对象（不可变更新）
-- Modifier.duration="turn" 的修改器在 handleEndTurn 中清除
-- Modifier.duration="permanent" 的修改器在来源卡牌撤退/解除时移除
-- 结附卡存在于 BattleState.attachments[hostCardId] 中，不在任何 zone 数组中
-- 宿主卡撤退时，其所有结附卡一并进入撤退区
-
-=== 效果执行约定 ===
-- 效果通过 card_no 关联到卡牌（同一 card_no 的不同 variant 共享效果定义）
-- 一张卡可注册多个 CardEffect（如 SD01-009 有起动+触发两种效果）
-- 触发顺序：活跃玩家的效果优先（参考 Netrunner trigger-event-simult 规则）
-- 应对效果（counter）在对手行动完成后同步检查，暂不实现优先权窗口
-- 效果的 cost 函数只检查是否可支付，实际扣费在 execute 中执行
-- static 效果不注册为 EventListener，而是在 getEffectivePower/getEffectiveR 中实时计算
-
-=== 引擎集成约定 ===
-- triggerEvent 调用必须在状态修改完成后（卡牌已上场/已撤退）进行
-- checkpoint 函数负责在 action 处理后触发待处理事件
-- 战斗判定中使用 getEffectivePower 而非 getCardPower（后者不计算修改器）
-- handleEndTurn 中清除 turn 修改器的步骤在 onTurnEnd 触发之后、切换玩家之前
-
-=== 文件组织约定 ===
-- src/game/effects/ 为新增目录，所有效果系统文件在此
-- 效果定义文件（sd01.ts/sd02.ts）只定义 CardEffect 对象，不包含执行逻辑
-- 执行逻辑全部在 helpers.ts 中，效果定义通过调用 helpers 函数实现
-- conditions.ts 中的函数可被效果定义的 condition/cost 字段复用
-```
-
----
-
-### 9. Task Dependency Graph
+### 9. 任务依赖图
 
 ```mermaid
 graph TD
-    T01[T01: 效果系统类型与数据结构扩展]
-    T02[T02: 效果系统核心框架]
-    T03[T03: SD01/SD02 卡牌效果定义]
-    T04[T04: 引擎集成与事件触发]
-    T05[T05: 系统集成与联调]
-
-    T01 --> T02
-    T02 --> T03
-    T02 --> T04
-    T03 --> T05
+    T01["T01: 基础设施<br/>依赖+类型+Supabase+SQL"] --> T02["T02: 认证系统<br/>AuthContext+Login/Register"]
+    T02 --> T03["T03: 路由重构<br/>App.tsx+导航栏+页面删改"]
+    T03 --> T04["T04: 用户数据层<br/>Profile+Deck CRUD+收藏+发布"]
+    T02 --> T05["T05: 迁移+集成收尾<br/>localStorage迁移+联调"]
     T04 --> T05
-
-    style T01 fill:#e1f5fe
-    style T02 fill:#fff3e0
-    style T03 fill:#e8f5e9
-    style T04 fill:#fce4ec
-    style T05 fill:#f3e5f5
 ```
 
 ---
 
-## Appendix: SD01/SD02 效果分类汇总
+## 附录
 
-### 效果类型统计
+### A. 文件变更汇总
 
-| 类型 | SD01 卡牌 | SD02 卡牌 | 合计 |
-|------|----------|----------|-----|
-| 触发(onSummon) | 005,007,014,015 | 006,010,015,016,017 | 9 |
-| 触发(onRetreat) | 009,018 | 002 | 3 |
-| 触发(onAttack) | — | 014 | 1 |
-| 触发(onStatChange) | 003 | — | 1 |
-| 触发(onAllyDefeated) | — | 011 | 1 |
-| 常驻(static) | 004,008,017 | 001,003,018 | 6 |
-| 起动(hand) | 006,009,010 | 007 | 4 |
-| 起动(base) | — | 005,008,009 | 3 |
-| 起动(field) | — | 006 | 1 |
-| 应对(counter) | 001,002,011,016 | 004 | 5 |
-| 无效果 | 012,013 | 012,013 | 4 |
+| 操作 | 数量 | 文件 |
+|------|------|------|
+| **NEW** | 20 | `.env`, `.env.example`, `src/lib/supabase.ts`, `src/types/user.ts`, `src/types/database.ts`, `src/contexts/AuthContext.tsx`, `src/hooks/useAuth.ts`, `src/hooks/useProfile.ts`, `src/hooks/useDecks.ts`, `src/hooks/useFavorites.ts`, `src/services/authService.ts`, `src/services/userService.ts`, `src/services/deckService.ts`, `src/services/favoriteService.ts`, `src/pages/AuthPage.tsx`, `src/pages/ProfilePage.tsx`, `src/components/AuthModal.tsx`, `src/components/UserMenu.tsx`, `src/components/ProfileEditor.tsx`, `src/components/AvatarUpload.tsx`, `src/components/PublishDeckModal.tsx`, `src/utils/migration.ts`, `supabase/migrations/001_initial_schema.sql` |
+| **MODIFY** | 11 | `package.json`, `src/vite-env.d.ts`, `src/main.tsx`, `src/App.tsx`, `src/index.css`, `src/types/card.ts`, `src/pages/WelcomePage.tsx`, `src/pages/DeckPlazaPage.tsx`, `src/pages/DeckBuilderPage.tsx`, `src/pages/BattlePage.tsx`, `src/pages/ChatPage.tsx`, `src/pages/HelpPage.tsx`, `src/pages/SettingsPage.tsx`, `src/contexts/AuthContext.tsx` |
+| **DELETE** | 2 | `src/pages/CardSearchPage.tsx`, `src/pages/AboutPage.tsx` |
 
-### 结附卡汇总
+### B. P1/P2 预留扩展点
 
-| 卡牌 | 结附目标 | Buff | 附加效果 |
-|------|---------|------|---------|
-| SD01-002 | 我方角色 | R+2, 战力+2500 | 撤退宿主1张其他结附卡 |
-| SD01-009 | 我方角色 | — | 撤退时：展示基地盖卡，2张同Lv角色→基地 |
-| SD01-010 | 我方【人类】角色 | R+1 | — |
-| SD01-016 | 我方角色 | 战力+1000 | 撤退宿主所有其他结附卡 |
-| SD02-006 | 自身 | — | 号召时从撤退区结附2张Lv1机械角色；起动解除1张至基地 |
+- **P1 对战记录**：`battle_records` 表已建 → 新增 `src/services/battleService.ts` + `src/pages/BattleHistoryPage.tsx`
+- **P1 赛季排名**：`season_rankings` 表已建 + `seasons` 表预留 → 排名计算在数据库层用 SQL 聚合
+- **P1 评论**：`comments` 表已建 → 卡组详情页新增评论区
+- **P1 Google OAuth**：Supabase Auth Provider 配置 → `authService.ts` 新增 `signInWithGoogle()`
+- **P2 关注/通知**：表已建 → 独立模块实现，不与现有功能耦合
+
+---
+
+*文档结束*

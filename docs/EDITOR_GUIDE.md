@@ -1,8 +1,9 @@
 # 超英击战 Marvel TCG — 项目编辑指南
 
 > **目标读者：** 完全不懂代码的项目经理  
-> **编写日期：** 2026-06-22  
-> **项目路径：** `D:/WorkBuddyData/2026-06-12-03-21-19/marvel-tcg/`
+> **编写日期：** 2026-06-22（最后更新：2026-07-02）  
+> **项目路径：** `D:/WorkBuddyData/2026-06-12-03-21-19/marvel-tcg/`  
+> **配套文档：** [项目经理手册](./PM_HANDBOOK.md) · [对战引擎编辑手册](./BATTLE_ENGINE_EDITOR_MANUAL.md) · [对战模块开发指南](./BATTLE_DEV_GUIDE.md)
 
 ---
 

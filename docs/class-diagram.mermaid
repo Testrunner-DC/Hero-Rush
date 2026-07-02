@@ -1,132 +1,297 @@
 classDiagram
-    class BattleState {
-        +boolean isSetup
-        +SetupPhase setupPhase
-        +TurnPhase turnPhase
-        +PlayerState[2] players
-        +number activePlayerIndex
-        +number turnNumber
-        +number remainingSummons
-        +boolean baseDeployedThisTurn
-        +Record~string,number~ baseMovesUsed
-        +Zone[] conflictZonesCompleted
-        +string[] conflictAttackedCards
-        +string conflictSubPhase
-        +number conflictMovesUsed
-        +Zone currentAttackZone
-        +AttackTarget pendingAttack
-        +PendingSummon pendingSummon
-        +PendingCounter pendingCounter
-        +PendingTargetSelection pendingTargetSelection
-        +EventListener[] eventListeners
-        +Ability[] registeredAbilities
-        +Modifier[] modifiers
-        +Record~string,string[]~ attachments
-        +string[] enteredThisTurn
-        +boolean[2] counterUsedThisTurn
-        +Record~string,number~ conflictAttackCount
-        +Record~string,string[]~ temporaryAbilities
-        +string[] effectUsedThisTurn
-        +string[] activatedEffectsThisTurn
-        +string[] mulliganSelected
-        +string[] log
-        +boolean isGameOver
-        +number winner
+    %% ═══════════════════════════════════════════════════
+    %% TypeScript 类型定义
+    %% ═══════════════════════════════════════════════════
+
+    class AuthUser {
+        +string id
+        +string email
+        +string nickname
+        +string? avatar_url
+        +string bio
+        +string created_at
     }
 
-    class PlayerState {
-        +number id
+    class AuthState {
+        +AuthUser? user
+        +Session? session
+        +boolean isLoading
+        +boolean isAuthenticated
+    }
+
+    class ProfileFormData {
+        +string nickname
+        +string bio
+        +File? avatarFile
+    }
+
+    class Deck {
+        +string? id
+        +string? user_id
         +string name
-        +string[] deck
-        +string[] rushDeck
-        +string[] hand
-        +string[] baseCards
-        +string[] baseCovered
-        +FieldLayout field
-        +string[] timeline
-        +string[] retreat
-        +string[] void
-        +boolean isFirstPlayer
+        +DeckEntry[] main_deck
+        +DeckEntry[] rush_deck
+        +string created_at
+        +string? description
+        +boolean? is_published
+        +string? author_nickname
+        +string? author_avatar_url
+        +number? favorite_count
+        +boolean? is_favorited
     }
 
-    class FieldLayout {
-        +string[] vanguard
-        +string[] flankLeft
-        +string[] flankRight
-        +string[] rear
-    }
-
-    class CardEffect {
-        +string id
-        +string cardNo
-        +EffectCategory category
-        +TriggerTiming trigger
-        +function triggerCondition
-        +ActiveSource activeSource
-        +boolean faceDownAfterActive
-        +CounterTarget counterTarget
-        +function cost
-        +function condition
-        +function execute
-        +function staticModifier
-        +TargetSpec targetSpec
-        +boolean once
-        +string label
-        +boolean isCounterActive
-        +boolean isUnique
-        +string[] keywords
-    }
-
-    class EffectContext {
-        +BattleState state
-        +string cardId
-        +number playerIdx
-        +CardDatabase db
-        +TargetInfo targets
-        +TriggerInfo triggerInfo
-    }
-
-    class GameAction {
-        <<union>>
-    }
-
-    class Card {
-        +string id
+    class DeckEntry {
         +string card_no
-        +string name
-        +number card_type
-        +number cost
-        +number attribute
-        +string power
-        +string feature
-        +string effect
-        +number r
+        +number count
     }
 
-    class CardDatabase {
-        +number total_cards
-        +number total_variants
-        +Card[] cards
-        +Record card_groups
-    }
-
-    class Modifier {
+    class UserRow {
         +string id
-        +string targetCardId
-        +string type
-        +number value
-        +string duration
-        +string sourceCardId
+        +string email
+        +string nickname
+        +string? avatar_url
+        +string bio
+        +string created_at
     }
 
-    BattleState "1" *-- "2" PlayerState
-    PlayerState "1" *-- "1" FieldLayout
-    BattleState "1" *-- "0..*" Modifier
-    BattleState --> CardEffect : 引擎通过 EFFECT_REGISTRY 查找
-    CardEffect ..> EffectContext : 接收
-    EffectContext --> BattleState : 包含当前 state
-    EffectContext --> CardDatabase : 包含 db
-    BattleState --> GameAction : 被 Action 修改
-    CardDatabase "1" *-- "0..*" Card
-    BattleState ..> Card : 通过 cardId 引用
-    PlayerState ..> Card : 存储 cardId 列表
+    class DeckRow {
+        +string id
+        +string user_id
+        +string title
+        +string description
+        +string cards_json
+        +boolean is_published
+        +string created_at
+        +string updated_at
+    }
+
+    class FavoriteRow {
+        +string id
+        +string user_id
+        +string deck_id
+        +string created_at
+    }
+
+    class BattleRecordRow {
+        +string id
+        +string winner_id
+        +string loser_id
+        +number rounds
+        +string battle_at
+    }
+
+    class SeasonRankingRow {
+        +string id
+        +string user_id
+        +string season_id
+        +number score
+        +number wins
+        +number losses
+        +number draws
+    }
+
+    class CommentRow {
+        +string id
+        +string user_id
+        +string deck_id
+        +string content
+        +string created_at
+    }
+
+    %% ═══════════════════════════════════════════════════
+    %% React Context
+    %% ═══════════════════════════════════════════════════
+
+    class AuthContext {
+        +AuthState state
+        +signUp(email, password, nickname) Promise~void~
+        +signIn(email, password) Promise~void~
+        +signOut() Promise~void~
+        +refreshProfile() Promise~void~
+    }
+
+    %% ═══════════════════════════════════════════════════
+    %% Service 层
+    %% ═══════════════════════════════════════════════════
+
+    class AuthService {
+        +signUp(email, password, nickname) Promise~AuthResult~
+        +signIn(email, password) Promise~AuthResult~
+        +signOut() Promise~void~
+        +getSession() Promise~Session?~
+    }
+
+    class UserService {
+        +getProfile(userId) Promise~UserRow?~
+        +updateProfile(userId, data) Promise~UserRow?~
+        +uploadAvatar(userId, file) Promise~string~
+    }
+
+    class DeckService {
+        +fetchPublishedDecks() Promise~DeckRow[]~
+        +fetchMyDecks(userId) Promise~DeckRow[]~
+        +createDeck(userId, data) Promise~DeckRow?~
+        +updateDeck(deckId, data) Promise~DeckRow?~
+        +deleteDeck(deckId) Promise~void~
+        +publishDeck(userId, data) Promise~DeckRow?~
+    }
+
+    class FavoriteService {
+        +fetchFavorites(userId) Promise~FavoriteRow[]~
+        +addFavorite(userId, deckId) Promise~FavoriteRow?~
+        +removeFavorite(userId, deckId) Promise~void~
+        +isFavorited(userId, deckId) Promise~boolean~
+        +getFavoriteCount(deckId) Promise~number~
+    }
+
+    class MigrationService {
+        +detectLocalDecks() Deck[]
+        +migrateDecksToCloud(userId) Promise~number~
+        +clearLocalDecks() void
+    }
+
+    %% ═══════════════════════════════════════════════════
+    %% Hooks
+    %% ═══════════════════════════════════════════════════
+
+    class useAuth {
+        +AuthUser? user
+        +boolean isAuthenticated
+        +boolean isLoading
+        +signUp(email, password, nickname) Promise~void~
+        +signIn(email, password) Promise~void~
+        +signOut() Promise~void~
+    }
+
+    class useProfile {
+        +UserRow? profile
+        +boolean isLoading
+        +updateProfile(data) Promise~void~
+        +uploadAvatar(file) Promise~void~
+    }
+
+    class useDecks {
+        +Deck[] publishedDecks
+        +Deck[] myDecks
+        +boolean isLoading
+        +publishDeck(data) Promise~void~
+        +deleteDeck(deckId) Promise~void~
+        +refresh() Promise~void~
+    }
+
+    class useFavorites {
+        +Set~string~ favoriteDeckIds
+        +toggleFavorite(deckId) Promise~void~
+        +isFavorited(deckId) boolean
+        +getFavoriteCount(deckId) number
+    }
+
+    %% ═══════════════════════════════════════════════════
+    %% 组件
+    %% ═══════════════════════════════════════════════════
+
+    class App {
+        +BrowserRouter
+        +Routes
+        +NavigationBar
+    }
+
+    class AuthPage {
+        +mode: "login" | "register"
+        +onSubmit()
+        +switchMode()
+    }
+
+    class AuthModal {
+        +open: boolean
+        +onClose()
+        +onSuccess()
+    }
+
+    class UserMenu {
+        +user: AuthUser
+        +onSignOut()
+        +navigateToProfile()
+    }
+
+    class ProfilePage {
+        +userId: string
+        +profile: UserRow
+        +isOwner: boolean
+    }
+
+    class ProfileEditor {
+        +profile: UserRow
+        +onSave(data)
+        +onCancel()
+    }
+
+    class AvatarUpload {
+        +currentUrl: string?
+        +onUploaded(url)
+        +isUploading: boolean
+    }
+
+    class PublishDeckModal {
+        +open: boolean
+        +deck: Deck
+        +onPublish(data)
+        +onClose()
+    }
+
+    class DeckPlazaPage {
+        +publishedDecks: Deck[]
+        +myDecks: Deck[]
+        +onToggleFavorite(deckId)
+        +onImportCode(code)
+    }
+
+    class DeckBuilderPage {
+        +deckState
+        +onPublishClick()
+        +onAddCard(card)
+        +onRemoveCard(cardNo)
+    }
+
+    %% ═══════════════════════════════════════════════════
+    %% 关系
+    %% ═══════════════════════════════════════════════════
+
+    AuthContext --> AuthState : manages
+    AuthContext --> AuthUser : contains
+    AuthContext --> AuthService : calls
+    AuthContext --> UserService : calls
+    AuthContext --> MigrationService : calls
+
+    useAuth --> AuthContext : consumes
+    useProfile --> UserService : calls
+    useDecks --> DeckService : calls
+    useFavorites --> FavoriteService : calls
+
+    App --> AuthContext : provides
+    App --> AuthPage : routes
+    App --> ProfilePage : routes
+    App --> DeckPlazaPage : routes
+    App --> DeckBuilderPage : routes
+    App --> UserMenu : renders in nav
+
+    AuthPage --> useAuth : uses
+    AuthModal --> useAuth : uses
+    UserMenu --> useAuth : uses
+
+    ProfilePage --> useProfile : uses
+    ProfilePage --> ProfileEditor : renders
+    ProfilePage --> AvatarUpload : renders
+
+    DeckPlazaPage --> useDecks : uses
+    DeckPlazaPage --> useFavorites : uses
+    DeckPlazaPage --> useAuth : uses
+    DeckPlazaPage --> AuthModal : renders
+
+    DeckBuilderPage --> useAuth : uses
+    DeckBuilderPage --> PublishDeckModal : renders
+
+    UserRow --|> AuthUser : maps to
+    DeckRow ..|> Deck : maps to
+
+    Deck "1" *-- "50" DeckEntry : contains

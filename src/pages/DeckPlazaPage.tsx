@@ -9,6 +9,10 @@ import {
   preconToDeck,
   type PreconDeckData,
 } from "../utils/deckCode";
+import { useAuth } from "../hooks/useAuth";
+import { useDecks } from "../hooks/useDecks";
+import { useFavorites } from "../hooks/useFavorites";
+import AuthModal from "../components/AuthModal";
 import CardDetailSidebar from "../components/CardDetailSidebar";
 
 interface DeckPlazaPageProps {
@@ -17,7 +21,7 @@ interface DeckPlazaPageProps {
   onLoadDeck: (deck: Deck) => void;
 }
 
-type DeckCategory = "precon" | "local" | "imported";
+type DeckCategory = "precon" | "cloud" | "local" | "imported";
 
 interface DeckDisplayItem {
   deck: Deck;
@@ -57,12 +61,68 @@ const SORT_LABELS: Record<DeckSortMode, string> = {
 export default function DeckPlazaPage({ db, cardMap, onLoadDeck }: DeckPlazaPageProps) {
   const [preconItems, setPreconItems] = useState<DeckDisplayItem[]>([]);
   const [localItems, setLocalItems] = useState<DeckDisplayItem[]>([]);
+  const [cloudItems, setCloudItems] = useState<DeckDisplayItem[]>([]);
   const [importedItem, setImportedItem] = useState<DeckDisplayItem | null>(null);
   const [codeInput, setCodeInput] = useState("");
   const [importError, setImportError] = useState<string | null>(null);
   const [selectedDeck, setSelectedDeck] = useState<Deck | null>(null);
   const [preconLoading, setPreconLoading] = useState(true);
 
+  // ── Auth, cloud decks & favorites ──
+  const { isAuthenticated } = useAuth();
+  const { publishedDecks, isLoading: cloudLoading } = useDecks();
+  const { isFavorited, toggleFavorite } = useFavorites();
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [pendingFavoriteDeckId, setPendingFavoriteDeckId] = useState<string | null>(null);
+
+  // Convert cloud DeckRow[] → DeckDisplayItem[]
+  useEffect(() => {
+    if (!publishedDecks || publishedDecks.length === 0) {
+      setCloudItems([]);
+      return;
+    }
+    const items: DeckDisplayItem[] = publishedDecks.map((row) => {
+      let entries: DeckEntry[] = [];
+      try {
+        entries = JSON.parse(row.cards_json) as DeckEntry[];
+      } catch {
+        entries = [];
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const users = (row as any).users as { nickname: string; avatar_url: string | null } | undefined;
+      const deck: Deck = {
+        id: row.id,
+        user_id: row.user_id,
+        name: row.title,
+        description: row.description,
+        main_deck: entries,
+        rush_deck: [],
+        created_at: row.created_at,
+        is_published: row.is_published,
+        author_nickname: users?.nickname || "未知玩家",
+        author_avatar_url: users?.avatar_url ?? undefined,
+      };
+      return {
+        deck,
+        category: "cloud" as const,
+        cardType: inferCardType(deck, cardMap),
+      };
+    });
+    setCloudItems(items);
+  }, [publishedDecks, cardMap]);
+
+  // ── Favorite handler ──
+  const handleFavoriteClick = useCallback((deckId: string | undefined) => {
+    if (!isAuthenticated) {
+      setPendingFavoriteDeckId(deckId || null);
+      setShowAuthModal(true);
+      return;
+    }
+    if (!deckId) return;
+    toggleFavorite(deckId);
+  }, [isAuthenticated, toggleFavorite]);
+
+  // ── Load precon decks from JSON ──
   useEffect(() => {
     let cancelled = false;
     Promise.all([
@@ -87,6 +147,7 @@ export default function DeckPlazaPage({ db, cardMap, onLoadDeck }: DeckPlazaPage
     return () => { cancelled = true; };
   }, [db]);
 
+  // ── Local decks from localStorage ──
   const refreshLocalDecks = useCallback(() => {
     const decks = getLocalDecks();
     const items: DeckDisplayItem[] = decks.map((deck) => ({
@@ -99,6 +160,7 @@ export default function DeckPlazaPage({ db, cardMap, onLoadDeck }: DeckPlazaPage
 
   useEffect(() => { refreshLocalDecks(); }, [refreshLocalDecks]);
 
+  // ── Deck code import ──
   const handleImport = useCallback(() => {
     const code = extractDeckCode(codeInput);
     if (!code) { setImportError("请输入卡组码或分享链接"); return; }
@@ -156,6 +218,7 @@ export default function DeckPlazaPage({ db, cardMap, onLoadDeck }: DeckPlazaPage
         />
       ) : (
         <div className="p-4 space-y-6">
+          {/* ── Section 1: 官方预组 ── */}
           <section>
             <SectionHeader icon="pack" title="官方预组" subtitle="开箱即用的官方预设卡组" />
             {preconLoading ? (
@@ -174,11 +237,40 @@ export default function DeckPlazaPage({ db, cardMap, onLoadDeck }: DeckPlazaPage
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                 {preconItems.map((item) => (
                   <DeckCard key={`precon-${item.deck.name}`} item={item} db={db} cardMap={cardMap}
-                    onClick={() => setSelectedDeck(item.deck)} onLoad={() => handleLoadDeck(item.deck)} />
+                    onClick={() => setSelectedDeck(item.deck)} onLoad={() => handleLoadDeck(item.deck)}
+                    onFavoriteClick={handleFavoriteClick} />
                 ))}
               </div>
             )}
           </section>
+
+          {/* ── Section 2: 云端广场 ── */}
+          <section>
+            <SectionHeader icon="globe" title="云端广场" subtitle="玩家发布的公开卡组" />
+            {cloudLoading ? (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                {[0, 1, 2, 3].map((i) => (
+                  <div key={i} className="bg-[var(--msa-surface)] rounded-xl border border-[var(--msa-border)] p-4 animate-pulse">
+                    <div className="h-2 bg-[var(--msa-border-strong)] rounded mb-3" />
+                    <div className="h-4 bg-[var(--msa-border-strong)] rounded w-2/3 mb-2" />
+                    <div className="h-3 bg-[var(--msa-border)] rounded w-1/2" />
+                  </div>
+                ))}
+              </div>
+            ) : cloudItems.length === 0 ? (
+              <EmptyState message="还没有玩家分享卡组，成为第一个吧！" />
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                {cloudItems.map((item) => (
+                  <DeckCard key={`cloud-${item.deck.id || item.deck.name}`} item={item} db={db} cardMap={cardMap}
+                    onClick={() => setSelectedDeck(item.deck)} onLoad={() => handleLoadDeck(item.deck)}
+                    onFavoriteClick={handleFavoriteClick} />
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* ── Section 3: 我的卡组 ── */}
           <section>
             <SectionHeader icon="bookmark" title="我的卡组" subtitle="从组卡器保存的卡组" />
             {localItems.length === 0 ? (
@@ -193,6 +285,8 @@ export default function DeckPlazaPage({ db, cardMap, onLoadDeck }: DeckPlazaPage
               </div>
             )}
           </section>
+
+          {/* ── Section 4: 卡组码导入 ── */}
           <section>
             <SectionHeader icon="link" title="卡组码导入" subtitle="粘贴分享码或链接，导入他人卡组" />
             <div className="bg-[var(--msa-surface)] rounded-xl border border-[var(--msa-border)] p-4 space-y-3">
@@ -220,6 +314,8 @@ export default function DeckPlazaPage({ db, cardMap, onLoadDeck }: DeckPlazaPage
           </section>
         </div>
       )}
+      {/* ── Auth modal ── */}
+      <AuthModal open={showAuthModal} onClose={() => setShowAuthModal(false)} />
     </div>
   );
 }
@@ -389,9 +485,10 @@ function computeDeckStats(deck: Deck, cardMap: Map<string, Card>, db: CardDataba
 // Sub-Components
 // ═══════════════════════════════════════════════
 
-function SectionHeader({ icon, title, subtitle }: { icon: "pack" | "bookmark" | "link"; title: string; subtitle: string }) {
+function SectionHeader({ icon, title, subtitle }: { icon: "pack" | "globe" | "bookmark" | "link"; title: string; subtitle: string }) {
   const icons: Record<string, string> = {
     pack: "M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3",
+    globe: "M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9",
     bookmark: "M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z",
     link: "M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1",
   };
@@ -412,9 +509,10 @@ function EmptyState({ message }: { message: string }) {
   return <div className="text-center py-10 text-[var(--msa-text-muted)] bg-[var(--msa-bg-alt)] rounded-xl border border-dashed border-[var(--msa-border)]"><p className="text-sm">{message}</p></div>;
 }
 
-function DeckCard({ item, db, cardMap, onClick, onLoad, onDelete }: {
+function DeckCard({ item, db, cardMap, onClick, onLoad, onDelete, onFavoriteClick }: {
   item: DeckDisplayItem; db: CardDatabase; cardMap: Map<string, Card>;
   onClick: () => void; onLoad: () => void; onDelete?: () => void;
+  onFavoriteClick?: (deckId: string | undefined) => void;
 }) {
   const { deck, category, cardType } = item;
   const mainCount = deck.main_deck.reduce((s, e) => s + e.count, 0);
@@ -422,9 +520,10 @@ function DeckCard({ item, db, cardMap, onClick, onLoad, onDelete }: {
   for (const e of deck.main_deck) { const card = cardMap.get(e.card_no); if (card) attrSet.add(card.attribute); }
   const attrColors: { color: string; name: string }[] = [];
   for (const attr of attrSet) { const d = db.attributes[String(attr)]; if (d) attrColors.push({ color: d.color, name: d.name }); }
-  const categoryLabel: Record<DeckCategory, string> = { precon: "预组", local: "我的", imported: "导入" };
-  const categoryColor: Record<DeckCategory, string> = { precon: "bg-red-50 text-red-600", local: "bg-blue-50 text-blue-600", imported: "bg-amber-50 text-amber-600" };
+  const categoryLabel: Record<DeckCategory, string> = { precon: "预组", cloud: "云端", local: "我的", imported: "导入" };
+  const categoryColor: Record<DeckCategory, string> = { precon: "bg-red-50 text-red-600", cloud: "bg-purple-50 text-purple-600", local: "bg-blue-50 text-blue-600", imported: "bg-amber-50 text-amber-600" };
   const typeLabel = cardType === 2 ? "冲击卡组" : "角色卡组";
+  const deckId = deck.id;
 
   return (
     <div onClick={onClick} className="group relative cursor-pointer bg-[var(--msa-surface)] rounded-xl border border-[var(--msa-border)] overflow-hidden hover:shadow-lg hover:border-[var(--msa-border-strong)] transition animate-fadeIn">
@@ -432,15 +531,29 @@ function DeckCard({ item, db, cardMap, onClick, onLoad, onDelete }: {
       <div className="p-3.5 space-y-2">
         <div className="flex items-start justify-between gap-1">
           <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium whitespace-nowrap ${categoryColor[category]}`}>{categoryLabel[category]}</span>
-          {onDelete && (
-            <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="text-gray-400 hover:text-[var(--msa-red)] transition opacity-0 group-hover:opacity-100" title="删除卡组">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3" />
-              </svg>
-            </button>
-          )}
+          <div className="flex items-center gap-0.5">
+            {/* Favorite star button — only on cloud decks */}
+            {category === "cloud" && onFavoriteClick && (
+              <button onClick={(e) => { e.stopPropagation(); onFavoriteClick(deckId); }} className="text-amber-400 hover:text-amber-500 transition" title="收藏">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                </svg>
+              </button>
+            )}
+            {onDelete && (
+              <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="text-gray-400 hover:text-[var(--msa-red)] transition opacity-0 group-hover:opacity-100" title="删除卡组">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3" />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
         <h3 className="text-sm font-bold text-[var(--msa-text-primary)] group-hover:text-[var(--msa-red)] transition truncate">{deck.name}</h3>
+        {/* Author for cloud decks */}
+        {category === "cloud" && deck.author_nickname && (
+          <p className="text-[10px] text-purple-500">{deck.author_nickname}</p>
+        )}
         <div className="flex items-center gap-1.5 text-xs text-[var(--msa-text-muted)]"><span>{mainCount}张</span><span className="text-gray-400">·</span><span>{typeLabel}</span></div>
         {attrColors.length > 0 && <div className="flex items-center gap-1">{attrColors.map((a, i) => <span key={i} className="w-3 h-3 rounded-full border border-[var(--msa-bg)] shadow-sm" style={{ backgroundColor: a.color }} title={a.name} />)}</div>}
         {category === "local" && deck.created_at && <p className="text-[10px] text-[var(--msa-text-muted)]">{new Date(deck.created_at).toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" })}</p>}
@@ -451,7 +564,7 @@ function DeckCard({ item, db, cardMap, onClick, onLoad, onDelete }: {
 }
 
 // ═══════════════════════════════════════════════
-// DeckDetailView — Piltover Archive style remake
+// DeckDetailView
 // ═══════════════════════════════════════════════
 
 function DeckDetailView({ deck, stats, cardMap, db, onBack, onLoad, onDelete, onCopyCode }: {
@@ -485,9 +598,7 @@ function DeckDetailView({ deck, stats, cardMap, db, onBack, onLoad, onDelete, on
     for (const entry of deck.main_deck) {
       const card = cardMap.get(entry.card_no);
       if (card) {
-        for (let i = 0; i < entry.count; i++) {
-          cards.push(card);
-        }
+        for (let i = 0; i < entry.count; i++) cards.push(card);
       }
     }
     return cards;
@@ -509,19 +620,13 @@ function DeckDetailView({ deck, stats, cardMap, db, onBack, onLoad, onDelete, on
     return arr;
   }, [expandedCards, sortMode, sortAsc]);
 
-  // Initialize selectedCardDetail to the first card on mount / when sortedCards changes
   const displayCard = selectedCardDetail ?? sortedCards[0] ?? null;
-
   const isValid = stats.mainCount === 50;
   const colorLabel = stats.attrDistribution.map((a) => a.name).join("丨");
-
-  // Determine author: try (deck as any).author, then fallback
-  const author: string = ((deck as unknown) as Record<string, unknown>).author as string || "本地卡组";
+  const author: string = deck.author_nickname || "本地卡组";
   const formattedDate = deck.created_at
     ? new Date(deck.created_at).toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" })
     : null;
-
-  // Stats for the 5 stat cards
   const maxAttrTotal = Math.max(1, ...stats.lvAttrDistribution.map((d) => d.total));
   const maxDistance = Math.max(1, ...stats.distanceDistribution.map((d) => d.total));
   const maxPower = Math.max(1, ...stats.powerDistribution.map((d) => d.total));
@@ -530,30 +635,17 @@ function DeckDetailView({ deck, stats, cardMap, db, onBack, onLoad, onDelete, on
 
   return (
     <div className="flex flex-col h-full animate-fadeIn">
-      {/* ═══ HEADER — Three-row layout ═══ */}
       <div className="sticky top-0 z-20 mx-4 mt-3 bg-white/95 backdrop-blur rounded-xl border border-stone-200 shadow-sm px-5 py-4 flex-shrink-0 space-y-2">
-        {/* Row 1: Deck name + back button */}
         <div className="flex items-center gap-2">
           <button onClick={onBack} className="flex items-center gap-1 text-sm text-stone-400 hover:text-red-500 transition flex-shrink-0">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-            </svg>
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
           </button>
           <h1 className="text-xl font-bold text-stone-800 truncate">{deck.name}</h1>
         </div>
-
-        {/* Row 2: Author · Date */}
         <div className="flex items-center gap-1.5 text-xs text-stone-400 pl-6">
           <span>{author}</span>
-          {formattedDate && (
-            <>
-              <span>·</span>
-              <span>{formattedDate}</span>
-            </>
-          )}
+          {formattedDate && (<><span>·</span><span>{formattedDate}</span></>)}
         </div>
-
-        {/* Row 3: Colors + valid tag + capacity + action buttons */}
         <div className="flex items-center gap-4 pl-6">
           {stats.attrDistribution.length > 0 && (
             <div className="flex items-center gap-1 flex-shrink-0">
@@ -563,14 +655,10 @@ function DeckDetailView({ deck, stats, cardMap, db, onBack, onLoad, onDelete, on
               <span className="text-xs text-stone-500 ml-1">{colorLabel}</span>
             </div>
           )}
-
           <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 inline-flex items-center gap-1 ${isValid ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
-            {isValid ? "合法" : "非法"}
-            <span className="font-bold">{stats.mainCount}/50</span>
+            {isValid ? "合法" : "非法"}<span className="font-bold">{stats.mainCount}/50</span>
           </span>
-
           <div className="flex-1" />
-
           <div className="flex items-center gap-1.5 flex-shrink-0">
             <button onClick={onLoad} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-600 text-white hover:bg-red-500 transition whitespace-nowrap">加入组卡器</button>
             <button onClick={handleShare} className="px-3 py-1.5 rounded-lg text-xs font-medium border border-stone-200 text-stone-500 hover:text-stone-700 hover:bg-stone-50 transition whitespace-nowrap">分享</button>
@@ -583,9 +671,7 @@ function DeckDetailView({ deck, stats, cardMap, db, onBack, onLoad, onDelete, on
         </div>
       </div>
 
-      {/* ═══ BODY — Sort controls + Three columns (left-aligned at top) ═══ */}
       <div className="flex-1 overflow-y-auto scrollbar-thin p-5">
-        {/* Sort controls — shared row above all columns */}
         <div className="flex items-center justify-end gap-2 mb-3">
           <span className="text-xs text-stone-400">排序:</span>
           <select value={sortMode} onChange={(e) => setSortMode(e.target.value as DeckSortMode)}
@@ -604,10 +690,7 @@ function DeckDetailView({ deck, stats, cardMap, db, onBack, onLoad, onDelete, on
           <span className="text-[10px] text-stone-400 ml-2">{stats.mainCount} 张</span>
         </div>
 
-        {/* Three columns — all start at same top (items-start) */}
         <div className="flex gap-4 items-start">
-
-          {/* ── Left: Card Detail Panel ── */}
           <div className="flex-[25] min-w-[240px] max-w-[300px]">
             <div className="bg-white rounded-xl border border-stone-200 shadow-sm overflow-hidden sticky top-20 flex flex-col" style={{ maxHeight: "calc(100vh - 220px)" }}>
               <div className="flex items-center justify-between px-3 py-2 border-b border-stone-200 bg-white flex-shrink-0">
@@ -623,9 +706,7 @@ function DeckDetailView({ deck, stats, cardMap, db, onBack, onLoad, onDelete, on
             </div>
           </div>
 
-          {/* ── Middle: Card Grid ── */}
           <div className="flex-1 min-w-0">
-            {/* Card grid — 10 columns */}
             {sortedCards.length === 0 ? (
               <div className="text-center py-20 text-stone-400"><p className="text-sm">暂无卡牌数据</p></div>
             ) : (
@@ -643,9 +724,7 @@ function DeckDetailView({ deck, stats, cardMap, db, onBack, onLoad, onDelete, on
                         )}
                       </div>
                     </div>
-                    <span className="text-[10px] text-stone-700 mt-1 text-center leading-tight truncate w-full group-hover:text-red-600 transition">
-                      {card.name}
-                    </span>
+                    <span className="text-[10px] text-stone-700 mt-1 text-center leading-tight truncate w-full group-hover:text-red-600 transition">{card.name}</span>
                     <span className="text-[9px] text-stone-400">Lv{card.cost}</span>
                   </div>
                 ))}
@@ -653,7 +732,6 @@ function DeckDetailView({ deck, stats, cardMap, db, onBack, onLoad, onDelete, on
             )}
           </div>
 
-          {/* ── Right: "卡组数据" Deck Stats (nested card) ── */}
           <div className="flex-[20] min-w-[220px] max-w-[280px]">
             <div className="sticky top-20 overflow-y-auto" style={{ maxHeight: "calc(100vh - 220px)" }}>
               <div className="bg-white rounded-xl border border-stone-200 shadow-sm overflow-hidden">
@@ -661,173 +739,144 @@ function DeckDetailView({ deck, stats, cardMap, db, onBack, onLoad, onDelete, on
                   <h2 className="text-xs font-bold text-stone-700 uppercase tracking-wide">卡组数据</h2>
                 </div>
                 <div className="p-3 space-y-3">
-
-                {/* Card 1: 费用曲线（按属性分色堆叠柱状图） */}
-                <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-3">
-                  <h3 className="text-xs text-stone-500 font-semibold uppercase tracking-wide mb-2">费用曲线</h3>
-                  {stats.lvAttrDistribution.every((d) => d.total === 0) ? (
-                    <p className="text-xs text-stone-400 py-3 text-center">暂无数据</p>
-                  ) : (
-                    <div className="flex items-end gap-1 h-28">
-                      {stats.lvAttrDistribution.map((item) => {
-                        const heightPct = item.total > 0 ? (item.total / maxAttrTotal) * 100 : 0;
-                        return (
-                          <div key={item.lv} className="flex-1 flex flex-col items-center h-full justify-end">
-                            <span className="text-[9px] font-medium text-stone-600">{item.total || ""}</span>
-                            <div
-                              style={{ height: `${Math.max(heightPct, item.total > 0 ? 4 : 0)}%`, minHeight: item.total > 0 ? "6px" : "0" }}
-                              className="w-full rounded-t flex flex-col justify-end overflow-hidden"
-                            >
-                              {item.attrs.map((attr) => {
-                                const attrPct = item.total > 0 ? (attr.count / item.total) * 100 : 0;
-                                return (
-                                  <div
-                                    key={attr.attribute}
-                                    style={{ height: `${attrPct}%`, backgroundColor: attr.color, minHeight: attr.count > 0 ? "2px" : "0" }}
-                                    title={`${attr.name}: ${attr.count}`}
-                                  />
-                                );
-                              })}
+                  {/* 费用曲线 */}
+                  <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-3">
+                    <h3 className="text-xs text-stone-500 font-semibold uppercase tracking-wide mb-2">费用曲线</h3>
+                    {stats.lvAttrDistribution.every((d) => d.total === 0) ? (
+                      <p className="text-xs text-stone-400 py-3 text-center">暂无数据</p>
+                    ) : (
+                      <div className="flex items-end gap-1 h-28">
+                        {stats.lvAttrDistribution.map((item) => {
+                          const h = item.total > 0 ? (item.total / maxAttrTotal) * 100 : 0;
+                          return (
+                            <div key={item.lv} className="flex-1 flex flex-col items-center h-full justify-end">
+                              <span className="text-[9px] font-medium text-stone-600">{item.total || ""}</span>
+                              <div style={{ height: `${Math.max(h, item.total > 0 ? 4 : 0)}%`, minHeight: item.total > 0 ? "6px" : "0" }}
+                                className="w-full rounded-t flex flex-col justify-end overflow-hidden">
+                                {item.attrs.map((attr) => (
+                                  <div key={attr.attribute}
+                                    style={{ height: `${item.total > 0 ? (attr.count / item.total) * 100 : 0}%`, backgroundColor: attr.color, minHeight: attr.count > 0 ? "2px" : "0" }}
+                                    title={`${attr.name}: ${attr.count}`} />
+                                ))}
+                              </div>
+                              <span className="text-[9px] text-stone-400 mt-0.5">{item.lv === 6 ? "Lv6+" : `Lv${item.lv}`}</span>
                             </div>
-                            <span className="text-[9px] text-stone-400 mt-0.5">{item.lv === 6 ? "Lv6+" : `Lv${item.lv}`}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
 
-                {/* Card 2: 距离曲线（按属性分色） */}
-                <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-3">
-                  <h3 className="text-xs text-stone-500 font-semibold uppercase tracking-wide mb-2">距离曲线</h3>
-                  {!hasDistanceData ? (
-                    <p className="text-xs text-stone-400 py-3 text-center">暂无距离数据</p>
-                  ) : (
-                    <div className="flex items-end gap-1 h-24">
-                      {stats.distanceDistribution.map((item) => {
-                        const heightPct = item.total > 0 ? (item.total / maxDistance) * 100 : 0;
-                        return (
-                          <div key={item.pp} className="flex-1 flex flex-col items-center h-full justify-end">
-                            <span className="text-[9px] font-medium text-stone-600">{item.total || ""}</span>
-                            <div
-                              style={{ height: `${Math.max(heightPct, item.total > 0 ? 4 : 0)}%`, minHeight: item.total > 0 ? "6px" : "0" }}
-                              className="w-full rounded-t flex flex-col justify-end overflow-hidden"
-                            >
-                              {item.attrs.map((attr) => {
-                                const attrPct = item.total > 0 ? (attr.count / item.total) * 100 : 0;
-                                return (
-                                  <div
-                                    key={attr.attribute}
-                                    style={{ height: `${attrPct}%`, backgroundColor: attr.color, minHeight: attr.count > 0 ? "2px" : "0" }}
-                                    title={`${attr.name}: ${attr.count}`}
-                                  />
-                                );
-                              })}
+                  {/* 距离曲线 */}
+                  <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-3">
+                    <h3 className="text-xs text-stone-500 font-semibold uppercase tracking-wide mb-2">距离曲线</h3>
+                    {!hasDistanceData ? (
+                      <p className="text-xs text-stone-400 py-3 text-center">暂无距离数据</p>
+                    ) : (
+                      <div className="flex items-end gap-1 h-24">
+                        {stats.distanceDistribution.map((item) => {
+                          const h = item.total > 0 ? (item.total / maxDistance) * 100 : 0;
+                          return (
+                            <div key={item.pp} className="flex-1 flex flex-col items-center h-full justify-end">
+                              <span className="text-[9px] font-medium text-stone-600">{item.total || ""}</span>
+                              <div style={{ height: `${Math.max(h, item.total > 0 ? 4 : 0)}%`, minHeight: item.total > 0 ? "6px" : "0" }}
+                                className="w-full rounded-t flex flex-col justify-end overflow-hidden">
+                                {item.attrs.map((attr) => (
+                                  <div key={attr.attribute}
+                                    style={{ height: `${item.total > 0 ? (attr.count / item.total) * 100 : 0}%`, backgroundColor: attr.color, minHeight: attr.count > 0 ? "2px" : "0" }}
+                                    title={`${attr.name}: ${attr.count}`} />
+                                ))}
+                              </div>
+                              <span className="text-[9px] text-stone-400 mt-0.5">{item.pp}</span>
                             </div>
-                            <span className="text-[9px] text-stone-400 mt-0.5">{item.pp}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
 
-                {/* Card 3: 战力曲线（按属性分色） */}
-                <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-3">
-                  <h3 className="text-xs text-stone-500 font-semibold uppercase tracking-wide mb-2">战力曲线</h3>
-                  {stats.powerDistribution.length === 0 ? (
-                    <p className="text-xs text-stone-400 py-3 text-center">暂无数据</p>
-                  ) : (
-                    <div className="flex flex-col gap-1">
-                      {stats.powerDistribution.map((item) => {
-                        const widthPct = maxPower > 0 ? (item.total / maxPower) * 100 : 0;
-                        return (
-                          <div key={item.pw} className="flex items-center gap-1.5">
-                            <span className="text-[9px] text-stone-500 w-7 text-right flex-shrink-0">{item.pw}</span>
-                            <div className="flex-1 h-3 bg-stone-100 rounded-full overflow-hidden flex">
-                              {item.attrs.map((attr) => {
-                                const attrW = item.total > 0 ? (attr.count / item.total) * widthPct : 0;
-                                return (
-                                  <div
-                                    key={attr.attribute}
-                                    style={{ width: `${attrW}%`, backgroundColor: attr.color, minWidth: attr.count > 0 ? "4px" : "0" }}
-                                    title={`${attr.name}: ${attr.count}`}
-                                  />
-                                );
-                              })}
+                  {/* 战力曲线 */}
+                  <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-3">
+                    <h3 className="text-xs text-stone-500 font-semibold uppercase tracking-wide mb-2">战力曲线</h3>
+                    {stats.powerDistribution.length === 0 ? (
+                      <p className="text-xs text-stone-400 py-3 text-center">暂无数据</p>
+                    ) : (
+                      <div className="flex flex-col gap-1">
+                        {stats.powerDistribution.map((item) => {
+                          const w = maxPower > 0 ? (item.total / maxPower) * 100 : 0;
+                          return (
+                            <div key={item.pw} className="flex items-center gap-1.5">
+                              <span className="text-[9px] text-stone-500 w-7 text-right flex-shrink-0">{item.pw}</span>
+                              <div className="flex-1 h-3 bg-stone-100 rounded-full overflow-hidden flex">
+                                {item.attrs.map((attr) => (
+                                  <div key={attr.attribute}
+                                    style={{ width: `${item.total > 0 ? (attr.count / item.total) * w : 0}%`, backgroundColor: attr.color, minWidth: attr.count > 0 ? "4px" : "0" }}
+                                    title={`${attr.name}: ${attr.count}`} />
+                                ))}
+                              </div>
+                              <span className="text-[9px] text-stone-600 w-5 text-right flex-shrink-0">{item.total}</span>
                             </div>
-                            <span className="text-[9px] text-stone-600 w-5 text-right flex-shrink-0">{item.total}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
 
-                {/* Card 4: 颜色分布 */}
-                <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-3">
-                  <h3 className="text-xs text-stone-500 font-semibold uppercase tracking-wide mb-2">颜色分布</h3>
-                  {stats.attrDistribution.length === 0 ? (
-                    <p className="text-xs text-stone-400 py-3 text-center">暂无数据</p>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {stats.attrDistribution.map((attr) => {
-                        const pct = stats.mainCount > 0 ? (attr.count / stats.mainCount) * 100 : 0;
-                        return (
-                          <div key={attr.attribute} className="flex items-center gap-1.5">
-                            <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: attr.color }} />
-                            <span className="text-[10px] text-stone-600 w-8 flex-shrink-0">{attr.name}</span>
-                            <span className="text-[10px] text-stone-500 w-4 text-right flex-shrink-0">{attr.count}</span>
-                            <div className="flex-1 h-1.5 bg-stone-100 rounded-full overflow-hidden">
-                              <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: attr.color }} />
+                  {/* 颜色分布 */}
+                  <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-3">
+                    <h3 className="text-xs text-stone-500 font-semibold uppercase tracking-wide mb-2">颜色分布</h3>
+                    {stats.attrDistribution.length === 0 ? (
+                      <p className="text-xs text-stone-400 py-3 text-center">暂无数据</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {stats.attrDistribution.map((attr) => {
+                          const pct = stats.mainCount > 0 ? (attr.count / stats.mainCount) * 100 : 0;
+                          return (
+                            <div key={attr.attribute} className="flex items-center gap-1.5">
+                              <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: attr.color }} />
+                              <span className="text-[10px] text-stone-600 w-8 flex-shrink-0">{attr.name}</span>
+                              <span className="text-[10px] text-stone-500 w-4 text-right flex-shrink-0">{attr.count}</span>
+                              <div className="flex-1 h-1.5 bg-stone-100 rounded-full overflow-hidden"><div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: attr.color }} /></div>
+                              <span className="text-[9px] text-stone-400 w-7 text-right flex-shrink-0">{pct.toFixed(0)}%</span>
                             </div>
-                            <span className="text-[9px] text-stone-400 w-7 text-right flex-shrink-0">{pct.toFixed(0)}%</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
 
-                {/* Card 5: 特性统计（按属性分色） */}
-                <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-3">
-                  <h3 className="text-xs text-stone-500 font-semibold uppercase tracking-wide mb-2">特性统计</h3>
-                  {stats.featureDistribution.length === 0 ? (
-                    <p className="text-xs text-stone-400 py-3 text-center">暂无特性数据</p>
-                  ) : (
-                    <div className="flex flex-col gap-1">
-                      {stats.featureDistribution.map((item) => {
-                        const widthPct = maxFeature > 0 ? (item.total / maxFeature) * 100 : 0;
-                        return (
-                          <div key={item.feature} className="flex items-center gap-1.5">
-                            <span className="text-[9px] text-stone-500 w-12 text-right flex-shrink-0 truncate" title={item.feature}>
-                              {item.feature.length > 4 ? item.feature.slice(0, 4) + "\u2026" : item.feature}
-                            </span>
-                            <div className="flex-1 h-3 bg-stone-100 rounded-full overflow-hidden flex">
-                              {item.attrs.map((attr) => {
-                                const attrW = item.total > 0 ? (attr.count / item.total) * widthPct : 0;
-                                return (
-                                  <div
-                                    key={attr.attribute}
-                                    style={{ width: `${attrW}%`, backgroundColor: attr.color, minWidth: attr.count > 0 ? "4px" : "0" }}
-                                    title={`${attr.name}: ${attr.count}`}
-                                  />
-                                );
-                              })}
+                  {/* 特性统计 */}
+                  <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-3">
+                    <h3 className="text-xs text-stone-500 font-semibold uppercase tracking-wide mb-2">特性统计</h3>
+                    {stats.featureDistribution.length === 0 ? (
+                      <p className="text-xs text-stone-400 py-3 text-center">暂无特性数据</p>
+                    ) : (
+                      <div className="flex flex-col gap-1">
+                        {stats.featureDistribution.map((item) => {
+                          const w = maxFeature > 0 ? (item.total / maxFeature) * 100 : 0;
+                          return (
+                            <div key={item.feature} className="flex items-center gap-1.5">
+                              <span className="text-[9px] text-stone-500 w-12 text-right flex-shrink-0 truncate" title={item.feature}>
+                                {item.feature.length > 4 ? item.feature.slice(0, 4) + "\u2026" : item.feature}
+                              </span>
+                              <div className="flex-1 h-3 bg-stone-100 rounded-full overflow-hidden flex">
+                                {item.attrs.map((attr) => (
+                                  <div key={attr.attribute}
+                                    style={{ width: `${item.total > 0 ? (attr.count / item.total) * w : 0}%`, backgroundColor: attr.color, minWidth: attr.count > 0 ? "4px" : "0" }}
+                                    title={`${attr.name}: ${attr.count}`} />
+                                ))}
+                              </div>
+                              <span className="text-[9px] text-stone-600 w-5 text-right flex-shrink-0">{item.total}</span>
                             </div>
-                            <span className="text-[9px] text-stone-600 w-5 text-right flex-shrink-0">{item.total}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-
         </div>
       </div>
     </div>

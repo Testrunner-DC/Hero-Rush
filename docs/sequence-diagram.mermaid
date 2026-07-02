@@ -1,25 +1,157 @@
 sequenceDiagram
-    participant User as 用户
-    participant UI as BattlePage (React)
-    participant Dispatch as dispatch(GameAction)
-    participant Reducer as gameReducer
-    participant Handler as Action Handler
-    participant Effects as 效果系统
-    participant CP as checkpoint()
-    participant Render as React 渲染
+    actor U as 用户
+    participant AP as AuthPage
+    participant AS as authService
+    participant SA as Supabase Auth
+    participant ST as Supabase Auth Trigger
+    participant DB as Supabase DB (users)
+    participant AC as AuthContext
+    participant US as userService
+    participant WP as WelcomePage
 
-    User->>UI: 点击手牌 / 场上角色 / 阶段按钮
-    UI->>UI: 本地预校验（行动阶段？有余裕？）
-    UI->>Dispatch: dispatch({ type: "SUMMON_TO_FIELD", ... })
-    Dispatch->>Reducer: (state, action)
-    Reducer->>Handler: handleSummonToField(state, ...)
-    Handler->>Handler: 验证 → 修改玩家状态 → 产生 log
-    Handler->>Effects: triggerEvent / triggerEffectsByTiming
-    Effects-->>Handler: 更新后的 state
-    Handler->>CP: checkpoint(newState)
-    CP->>CP: checkGameOver → 触发事件 → 清理状态
-    CP-->>Reducer: 最终 BattleState
-    Reducer-->>Dispatch: 新 state
-    Dispatch-->>UI: React setState
-    UI->>Render: 重渲染
-    Render-->>User: 更新后的战场画面
+    %% ═══════════════════════════════════════════════════
+    %% 注册流程
+    %% ═══════════════════════════════════════════════════
+
+    rect rgb(252, 240, 240)
+        Note over U,WP: === 注册流程 (P0) ===
+        U->>AP: 填写 email, password, nickname
+        AP->>AP: 前端校验（email格式、密码≥6位、昵称非空）
+        AP->>AS: signUp(email, password, nickname)
+        AS->>SA: supabase.auth.signUp({ email, password })
+        SA-->>AS: { user, session }
+        AS->>SA: supabase.auth.updateUser({ data: { nickname } })
+        SA-->>AS: updated user
+        Note over SA,ST: Supabase Auth 触发器自动执行
+        ST->>DB: INSERT INTO users (id, email, nickname)
+        DB-->>ST: OK
+        AS-->>AP: { user, session }
+        AP->>AC: setSession(session)
+        AC->>US: getProfile(user.id)
+        US->>DB: SELECT * FROM users WHERE id = userId
+        DB-->>US: { id, email, nickname, avatar_url, bio, ... }
+        US-->>AC: AuthUser profile
+        AC->>AC: state.user = profile<br/>state.isAuthenticated = true
+        AC-->>AP: 状态更新完成
+        AP->>WP: navigate('/')
+    end
+
+    %% ═══════════════════════════════════════════════════
+    %% 登录 + 迁移流程
+    %% ═══════════════════════════════════════════════════
+
+    rect rgb(240, 248, 240)
+        Note over U,WP: === 登录 + 迁移流程 (P0) ===
+        U->>AP: 填写 email, password（登录模式）
+        AP->>AS: signIn(email, password)
+        AS->>SA: supabase.auth.signInWithPassword({ email, password })
+        SA-->>AS: { user, session }
+        AS-->>AP: { user, session }
+        AP->>AC: setSession(session)
+        AC->>US: getProfile(user.id)
+        US->>DB: SELECT * FROM users WHERE id = userId
+        DB-->>US: profile data
+        US-->>AC: AuthUser
+        AC->>AC: 检查 localStorage
+        alt localStorage 有旧卡组
+            AC->>U: 弹窗："检测到 N 个本地卡组，是否导入？"
+            U->>AC: 确认导入
+            AC->>AC: migrationService.migrateDecksToCloud(userId)
+            loop 每个本地卡组
+                AC->>DB: INSERT INTO decks (user_id, title, cards_json, is_published=false)
+            end
+            AC->>AC: clearLocalDecks()
+            AC->>U: 提示："已成功导入 N 个卡组！"
+        else localStorage 无数据 或 用户跳过
+            AC->>AC: 无操作
+        end
+        AC-->>AP: 状态更新完成
+        AP->>WP: navigate('/')
+    end
+
+    %% ═══════════════════════════════════════════════════
+    %% 卡组发布流程
+    %% ═══════════════════════════════════════════════════
+
+    rect rgb(240, 240, 252)
+        Note over U,WP: === 卡组发布流程 (P0) ===
+        U->>AP: 组卡器中点击"发布到广场"
+        Note over U,AP: DeckBuilderPage 检测登录状态
+        alt 未登录
+            AP->>U: 弹出 AuthModal 要求登录
+            U->>AP: 登录成功
+        end
+        AP->>U: 打开 PublishDeckModal
+        U->>AP: 填写 title, description
+        U->>AP: 点击"确认发布"
+        AP->>AS: deckService.publishDeck({ userId, title, description, cards_json })
+        AS->>SA: supabase.from('decks').insert({<br/>  user_id, title, description,<br/>  cards_json: JSON.stringify(mainDeck),<br/>  is_published: true<br/>})
+        SA->>DB: INSERT INTO decks
+        DB-->>SA: { id, ... }
+        SA-->>AS: { data, error: null }
+        AS-->>AP: { deck: DeckRow }
+        AP->>U: 关闭弹窗 + 提示"发布成功！"
+        Note over U,WP: 下次访问 DeckPlazaPage 时自动拉取新卡组
+        U->>AP: navigate('/plaza')
+        AP->>AS: deckService.fetchPublishedDecks()
+        AS->>DB: SELECT d.*, u.nickname, u.avatar_url<br/>FROM decks d JOIN users u ON d.user_id = u.id<br/>WHERE d.is_published = TRUE<br/>ORDER BY d.created_at DESC
+        DB-->>AP: 已发布卡组列表（含作者信息）
+    end
+
+    %% ═══════════════════════════════════════════════════
+    %% 收藏流程
+    %% ═══════════════════════════════════════════════════
+
+    rect rgb(252, 248, 240)
+        Note over U,WP: === 收藏/取消收藏流程 (P0) ===
+        U->>AP: 在广场点击卡组的⭐收藏按钮
+        AP->>AP: 检查 isAuthenticated
+        alt 未登录
+            AP->>U: 弹出 AuthModal
+            U->>AP: 登录成功
+        end
+        AP->>AP: 检查当前收藏状态 isFavorited
+        alt 未收藏 → 收藏
+            AP->>AS: favoriteService.addFavorite(userId, deckId)
+            AS->>SA: supabase.from('favorites').insert({ user_id, deck_id })
+            SA->>DB: INSERT INTO favorites
+            DB-->>SA: OK
+            SA-->>AS: { data }
+            AS-->>AP: 成功
+            AP->>AP: local state: isFavorited = true, favoriteCount++
+            AP->>U: ⭐变为实心金色
+        else 已收藏 → 取消
+            AP->>AS: favoriteService.removeFavorite(userId, deckId)
+            AS->>SA: supabase.from('favorites').delete().eq('user_id', userId).eq('deck_id', deckId)
+            SA->>DB: DELETE FROM favorites
+            DB-->>SA: OK
+            SA-->>AS: { data }
+            AS-->>AP: 成功
+            AP->>AP: local state: isFavorited = false, favoriteCount--
+            AP->>U: ⭐变为空心灰色
+        end
+    end
+
+    %% ═══════════════════════════════════════════════════
+    %% 头像上传流程
+    %% ═══════════════════════════════════════════════════
+
+    rect rgb(245, 240, 252)
+        Note over U,WP: === 头像上传流程 (P0) ===
+        U->>AP: ProfilePage → 点击头像 → 选择文件
+        AP->>AP: AvatarUpload: 本地预览
+        U->>AP: 点击"保存"
+        AP->>AS: userService.uploadAvatar(userId, file)
+        AS->>SA: supabase.storage.from('avatars')<br/>.upload(`${userId}/avatar.${ext}`, file, { upsert: true })
+        SA-->>AS: { path }
+        AS->>SA: supabase.storage.from('avatars')<br/>.getPublicUrl(path)
+        SA-->>AS: publicUrl
+        AS->>SA: supabase.from('users')<br/>.update({ avatar_url: publicUrl })<br/>.eq('id', userId)
+        SA->>DB: UPDATE users SET avatar_url = ...
+        DB-->>SA: OK
+        AS-->>AP: publicUrl
+        AP->>AC: refreshProfile()
+        AC->>US: getProfile(userId)
+        US-->>AC: 更新后的 AuthUser
+        AP->>U: 头像更新成功
+    end

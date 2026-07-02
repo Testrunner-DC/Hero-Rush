@@ -22,6 +22,9 @@ import CardDetailModal from "../components/CardDetailModal";
 import DeckStatsView from "../components/DeckStatsView";
 import SampleHandView from "../components/SampleHandView";
 import ImportDeckModal from "../components/ImportDeckModal";
+import PublishDeckModal from "../components/PublishDeckModal";
+import { useAuth } from "../hooks/useAuth";
+import { useDecks } from "../hooks/useDecks";
 import { encodeDeck, decodeDeck, extractDeckCode } from "../utils/deckCode";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -104,6 +107,11 @@ export default function DeckBuilderPage(props: Props) {
   const [showImport, setShowImport] = useState(false);
   const [filterCollapsed, setFilterCollapsed] = useState(true);
 
+  // ── Auth & publish ──
+  const { isAuthenticated } = useAuth();
+  const { createDeck } = useDecks();
+  const [showPublish, setShowPublish] = useState(false);
+
   // ── Right panel state ──
   const [rightViewMode, setRightViewMode] = useState<RightViewMode>("gallery");
   const [mainSort, setMainSort] = useState<DeckSort>("energy");
@@ -142,6 +150,17 @@ export default function DeckBuilderPage(props: Props) {
       prompt("复制以下卡组码:", code);
     });
   }, [deckName, mainDeck]);
+
+  // ── Publish handler ────
+  const handlePublish = useCallback(
+    async (title: string, description: string) => {
+      const cardsJson = JSON.stringify(mainDeck);
+      await createDeck(title, description, cardsJson, true);
+      setShowPublish(false);
+      alert("卡组已发布到广场！");
+    },
+    [mainDeck, createDeck]
+  );
 
   // ── Import handler: decode → clear → add all cards ────
   const handleImport = useCallback(
@@ -404,6 +423,11 @@ export default function DeckBuilderPage(props: Props) {
           <button onClick={handleShare} className="px-3 py-1.5 text-xs bg-blue-600 text-white hover:bg-blue-500 rounded transition font-medium">
             分享
           </button>
+          {isAuthenticated && (
+            <button onClick={() => setShowPublish(true)} className="px-3 py-1.5 text-xs bg-green-600 text-white hover:bg-green-500 rounded transition font-medium">
+              发布到广场
+            </button>
+          )}
           <button onClick={onClear} className="px-3 py-1.5 text-xs bg-[var(--msa-surface)] text-[var(--msa-text-muted)] hover:text-[var(--msa-red)] rounded border border-[var(--msa-border-strong)] transition font-medium">
             清空
           </button>
@@ -696,6 +720,16 @@ export default function DeckBuilderPage(props: Props) {
       {/* ── Import modal ── */}
       {showImport && (
         <ImportDeckModal onImport={handleImport} onClose={() => setShowImport(false)} />
+      )}
+
+      {/* ── Publish modal ── */}
+      {showPublish && (
+        <PublishDeckModal
+          open={showPublish}
+          deckName={deckName}
+          onPublish={handlePublish}
+          onClose={() => setShowPublish(false)}
+        />
       )}
 
       {/* ── Click modal ── */}

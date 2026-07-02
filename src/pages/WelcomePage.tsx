@@ -2,15 +2,17 @@
  * WelcomePage — 欢迎页 / 首页 (MSA Light Theme)
  *
  * Hero 区域（含 illustration 占位）+ 数据统计 + 4 个 MSA 风格纵向卡片区域 + Footer
+ * Uses useAuth() for auth state and useNavigate() for navigation.
  */
 
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { CardDatabase } from "../types/card";
+import { useAuth } from "../hooks/useAuth";
 import { getLocalDecks } from "../utils/deckCode";
 
 interface WelcomePageProps {
   db: CardDatabase;
-  onNavigate: (tab: string) => void;
 }
 
 /** ── 伪数据：赛季排行榜 ──────────────────────────────────────── */
@@ -88,7 +90,10 @@ const NEWS_DATA: NewsEntry[] = [
 // Main Component
 // ═══════════════════════════════════════════════════════════════════════════
 
-export default function WelcomePage({ db, onNavigate }: WelcomePageProps) {
+export default function WelcomePage({ db }: WelcomePageProps) {
+  const navigate = useNavigate();
+  const { user, isAuthenticated } = useAuth();
+
   const stats = useMemo(() => {
     // Count completed battles from localStorage battleHistory
     let battlesCompleted: number = 0;
@@ -148,6 +153,22 @@ export default function WelcomePage({ db, onNavigate }: WelcomePageProps) {
           <p className="text-white/90 text-lg mb-8 drop-shadow-[0_1px_4px_rgba(0,0,0,0.5)]">
             漫威对战卡牌：超英击战 对战网页
           </p>
+
+          {/* Auth CTA */}
+          {isAuthenticated && user ? (
+            <p className="text-white/95 text-lg font-medium drop-shadow-[0_1px_4px_rgba(0,0,0,0.5)]">
+              欢迎回来，{user.nickname}！
+            </p>
+          ) : (
+            <div className="flex items-center justify-center gap-3">
+              <button
+                onClick={() => navigate("/login")}
+                className="px-6 py-2.5 rounded-lg bg-[#b71c1c] text-white text-sm font-bold hover:bg-[#8b0000] transition shadow-lg"
+              >
+                注册 / 登录
+              </button>
+            </div>
+          )}
         </div>
       </section>
 
@@ -169,17 +190,17 @@ export default function WelcomePage({ db, onNavigate }: WelcomePageProps) {
 
       {/* ── 区域 2：最新动态 ────────────────────────────────────── */}
       <section className="max-w-5xl mx-auto px-8 py-10">
-        <DevUpdatesCard data={NEWS_DATA} onNavigate={onNavigate} />
+        <DevUpdatesCard data={NEWS_DATA} navigate={navigate} />
       </section>
 
       {/* ── 区域 3：卡牌图鉴 ────────────────────────────────────── */}
       <section className="max-w-5xl mx-auto px-8 py-10">
-        <CardGallery db={db} onNavigate={onNavigate} />
+        <CardGallery db={db} navigate={navigate} />
       </section>
 
       {/* ── 区域 4：关于斗界竞技场 ──────────────────────────────── */}
       <section className="max-w-5xl mx-auto px-8 py-10">
-        <AboutArena onNavigate={onNavigate} />
+        <AboutArena navigate={navigate} />
       </section>
 
       {/* ── Footer ──────────────────────────────────────────────── */}
@@ -345,10 +366,10 @@ function SeasonRankingCard({ data }: { data: RankingEntry[] }) {
 
 function DevUpdatesCard({
   data,
-  onNavigate,
+  navigate,
 }: {
   data: NewsEntry[];
-  onNavigate: (tab: string) => void;
+  navigate: ReturnType<typeof useNavigate>;
 }) {
   /** Format ISO date string into a short Chinese-style label. */
   const formatDate = (iso: string): string => {
@@ -366,7 +387,7 @@ function DevUpdatesCard({
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-black text-stone-800">最新动态</h2>
         <button
-          onClick={() => onNavigate("plaza")}
+          onClick={() => navigate("/plaza")}
           className="text-xs text-msa-600 hover:text-msa-500 font-medium transition"
         >
           查看全部 →
@@ -384,7 +405,7 @@ function DevUpdatesCard({
 
             {/* Title — clickable MSA red link */}
             <button
-              onClick={() => onNavigate("plaza")}
+              onClick={() => navigate("/plaza")}
               className="text-sm font-bold text-msa-600 hover:text-msa-500 transition text-left"
             >
               {entry.title}
@@ -405,10 +426,10 @@ function DevUpdatesCard({
 
 function CardGallery({
   db,
-  onNavigate,
+  navigate,
 }: {
   db: CardDatabase;
-  onNavigate: (tab: string) => void;
+  navigate: ReturnType<typeof useNavigate>;
 }) {
   /** Pick up to 6 cards that have distinct card_no (unique game cards). */
   const displayCards = useMemo(() => {
@@ -448,7 +469,7 @@ function CardGallery({
       {/* ── Browse all button ── */}
       <div className="mt-6 pt-4 border-t border-stone-100 text-center">
         <button
-          onClick={() => onNavigate("search")}
+          onClick={() => navigate("/builder")}
           className="text-sm font-medium text-msa-600 hover:text-msa-500 transition"
         >
           浏览全部卡牌 →
@@ -461,9 +482,9 @@ function CardGallery({
 /** ── AboutArena — 区域 4：关于斗界竞技场 ───────────────────── */
 
 function AboutArena({
-  onNavigate,
+  navigate,
 }: {
-  onNavigate: (tab: string) => void;
+  navigate: ReturnType<typeof useNavigate>;
 }) {
   return (
     <div className="bg-white rounded-xl border border-stone-200 shadow-card p-5">
@@ -488,13 +509,13 @@ function AboutArena({
       {/* ── Quick links ── */}
       <div className="pt-4 border-t border-stone-100 flex gap-6">
         <button
-          onClick={() => onNavigate("search")}
+          onClick={() => navigate("/builder")}
           className="text-sm font-medium text-msa-600 hover:text-msa-500 transition"
         >
           卡牌数据库 →
         </button>
         <button
-          onClick={() => onNavigate("builder")}
+          onClick={() => navigate("/builder")}
           className="text-sm font-medium text-msa-600 hover:text-msa-500 transition"
         >
           组卡器 →
