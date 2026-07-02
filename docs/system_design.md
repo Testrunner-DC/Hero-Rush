@@ -56,7 +56,7 @@
 ### 2. 文件列表
 
 ```
-项目根目录: D:\WorkBuddyData\2026-06-12-03-21-19\marvel-tcg/
+项目根目录: C:\Users\neptu\WorkBuddy\HeroRush\marvel-tcg/
 
 ── .env                                  [NEW]     环境变量（Supabase 连接）
 ── .env.example                          [NEW]     环境变量模板

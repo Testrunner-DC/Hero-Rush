@@ -18,7 +18,7 @@ import urllib.parse
 # ── 数据源路径（可通过环境变量 ZHANSHUANG_DIR 覆盖）──
 _zhanshuang_dir = os.environ.get(
     "ZHANSHUANG_DIR",
-    os.path.join(os.path.expanduser("~"), "WorkBuddy", "zhanshuang")
+    os.path.join(os.path.expanduser("~"), "WorkBuddy", "HeroRush")
 )
 SRC = os.path.join(_zhanshuang_dir, "超英击战_卡牌数据.json")
 CARD_IMG_DIR = os.path.join(_zhanshuang_dir, "超英击战_卡图_处理后")

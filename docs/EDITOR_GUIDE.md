@@ -2,7 +2,7 @@
 
 > **目标读者：** 完全不懂代码的项目经理  
 > **编写日期：** 2026-06-22（最后更新：2026-07-02）  
-> **项目路径：** `D:/WorkBuddyData/2026-06-12-03-21-19/marvel-tcg/`  
+> **项目路径：** `C:/Users/neptu/WorkBuddy/HeroRush/marvel-tcg/`  
 > **配套文档：** [项目经理手册](./PM_HANDBOOK.md) · [对战引擎编辑手册](./BATTLE_ENGINE_EDITOR_MANUAL.md) · [对战模块开发指南](./BATTLE_DEV_GUIDE.md)
 
 ---

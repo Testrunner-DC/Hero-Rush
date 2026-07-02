@@ -2,7 +2,7 @@
 
 > 产品经理：许清楚 | 项目：超英击战 Marvel TCG 对战网站  
 > 日期：2026-06-22 | 文档版本：v1.0  
-> 项目路径：`D:/WorkBuddyData/2026-06-12-03-21-19/marvel-tcg/`
+> 项目路径：`C:/Users/neptu/WorkBuddy/HeroRush/marvel-tcg/`
 
 ---
 
