@@ -40,7 +40,13 @@ git push origin main
 if ($LASTEXITCODE -ne 0) { Die "git push 失败,已中止(未部署)。请重试。" }
 
 Write-Host "===== [4/4] 触发香港重建 + 验证 =====" -ForegroundColor Cyan
-ssh $SRV "cd /opt/hero-rush && git pull && npm install --no-audit --no-fund && npm run build"
+# 守卫: 代码里的 Supabase 客户端(src/lib/supabase.ts)在无凭据时会让整站白屏(2026-07-04/07-06 两次事故)。
+# 服务器必须先配好 /opt/hero-rush/.env(VITE_SUPABASE_URL/ANON_KEY)才允许部署含 Supabase 的版本。
+ssh $SRV "test -f /opt/hero-rush/.env"
+if ($LASTEXITCODE -ne 0) {
+  Die "服务器缺少 /opt/hero-rush/.env(Supabase 凭据),部署最新版会导致线上白屏,已中止。`n拿到协作者的凭据后,先在服务器创建 .env 再重新部署(参见 D:\Self\CYJZ\给协作者-Supabase凭据获取指南.md)。"
+}
+ssh $SRV "cd /opt/hero-rush && git checkout main 2>/dev/null; git pull && npm install --no-audit --no-fund && npm run build"
 if ($LASTEXITCODE -ne 0) { Die "香港构建报错,线上仍是旧版本。请查上方输出。" }
 
 # 用 curl.exe --noproxy 绕过本机代理(127.0.0.1:9098),否则代理会把直连香港的请求误判为失败
