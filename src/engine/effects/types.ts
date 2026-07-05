@@ -140,8 +140,8 @@ export interface CardEffect {
   condition?: (ctx: EffectContext) => boolean;
   /** 效果执行 */
   execute: (ctx: EffectContext) => BattleState;
-  /** 常驻修改器计算（仅 static 类型） */
-  staticModifier?: (ctx: EffectContext) => Modifier | null;
+  /** 常驻修改器计算（仅 static 类型）；返回数组表示同时作用于多个目标 */
+  staticModifier?: (ctx: EffectContext) => Modifier | Modifier[] | null;
   /** 目标选择规格 */
   targetSpec?: TargetSpec;
   /** 是否一次性效果 */

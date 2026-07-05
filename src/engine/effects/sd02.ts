@@ -67,20 +67,22 @@ const sd02_001_mech: CardEffect = {
     return C.retreatCount(ctx.state, ctx.playerIdx, ctx.db, { attribute: 2 }) >= 9;
   },
   execute: (ctx: EffectContext) => ctx.state,
-  staticModifier: (ctx: EffectContext): Modifier | null => {
+  staticModifier: (ctx: EffectContext): Modifier[] | null => {
     if (C.retreatCount(ctx.state, ctx.playerIdx, ctx.db, { attribute: 2 }) < 9) return null;
     const baseCount = C.baseFaceDownCount(ctx.state, ctx.playerIdx);
     if (baseCount === 0) return null;
-    // 此修改器作用于自身（简化：完整实现应作用于所有我方Lv1机械角色）
-    // TODO: 多目标 staticModifier 需引擎层支持
-    return {
-      id: staticModId("SD02-001", "1"),
-      targetCardId: ctx.cardId,
-      type: "power",
+    // 作用于所有我方 Lv1 机械(feature=3)角色
+    const targets = C.getMyFieldCardsWithFeature(ctx.state, ctx.playerIdx, ctx.db, 3)
+      .filter((t) => C.getCardLevel(ctx.db, t.id) === 1);
+    if (targets.length === 0) return null;
+    return targets.map((t) => ({
+      id: `${staticModId("SD02-001", "1")}-${t.id}`,
+      targetCardId: t.id,
+      type: "power" as const,
       value: baseCount * 1000,
-      duration: "turn",
+      duration: "turn" as const,
       sourceCardId: ctx.cardId,
-    };
+    }));
   },
 };
 

@@ -138,10 +138,14 @@ export function getEffectivePower(
           // 检查 condition
           if (effect.condition && !effect.condition(ctx)) continue;
 
-          // 获取修改器
-          const modifier = effect.staticModifier(ctx);
-          if (modifier && modifier.targetCardId === cardId && modifier.type === "power") {
-            basePower += modifier.value;
+          // 获取修改器（单个或多目标数组）
+          const result = effect.staticModifier(ctx);
+          if (!result) continue;
+          const mods = Array.isArray(result) ? result : [result];
+          for (const modifier of mods) {
+            if (modifier.targetCardId === cardId && modifier.type === "power") {
+              basePower += modifier.value;
+            }
           }
         }
       }
@@ -198,9 +202,13 @@ export function getEffectiveR(
 
           if (effect.condition && !effect.condition(ctx)) continue;
 
-          const modifier = effect.staticModifier(ctx);
-          if (modifier && modifier.targetCardId === cardId && modifier.type === "r") {
-            baseR += modifier.value;
+          const result = effect.staticModifier(ctx);
+          if (!result) continue;
+          const mods = Array.isArray(result) ? result : [result];
+          for (const modifier of mods) {
+            if (modifier.targetCardId === cardId && modifier.type === "r") {
+              baseR += modifier.value;
+            }
           }
         }
       }

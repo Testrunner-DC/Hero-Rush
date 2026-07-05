@@ -12,7 +12,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { createGameReducer } from "../engine";
-import { hasKeyword } from "../cardUtils";
+import { hasKeyword, getEffectivePower } from "../cardUtils";
 import {
   getEffectsByCardNo,
   getActiveEffects,
@@ -138,6 +138,32 @@ const sd02_016_card = makeCard({
   package_short: "SD02",
 });
 
+// 多目标 staticModifier 测试用卡（SD02-001 机械强化）
+const mech_lv1_a = makeCard({
+  id: "MECH-001",
+  card_no: "MECH-001",
+  name: "机械兵A",
+  cost: 1,
+  power: "1000",
+  feature: "3",
+});
+const mech_lv1_b = makeCard({
+  id: "MECH-002",
+  card_no: "MECH-002",
+  name: "机械兵B",
+  cost: 1,
+  power: "1000",
+  feature: "3",
+});
+const yellow_filler = makeCard({
+  id: "YEL-001",
+  card_no: "YEL-001",
+  name: "黄卡填充",
+  cost: 1,
+  power: "1000",
+  attribute: 2,
+});
+
 // 测试用通用卡牌
 const attacker_card = makeCard({
   id: "ATK-001",
@@ -176,6 +202,9 @@ const mockDb: CardDatabase = {
     sd02_001_card,
     sd02_004_card,
     sd02_016_card,
+    mech_lv1_a,
+    mech_lv1_b,
+    yellow_filler,
     attacker_card,
     defender_card,
   ],
@@ -1634,5 +1663,44 @@ describe("附加测试：辅助函数", () => {
     const result = moveHandCardsToDeckBottom(state, 0, ["A", "C"]);
     expect(result.players[0].hand).toEqual(["B"]);
     expect(result.players[0].deck).toEqual(["D", "E", "A", "C"]);
+  });
+});
+
+describe("8. 多目标 staticModifier（SD02-001 机械强化）", () => {
+  /** 撤退区 9 黄 + 基地盖 2 张 + 场上 SD02-001 与两只 Lv1 机械 */
+  function makeMechState(): BattleState {
+    return makeBattleState({
+      players: [
+        makePlayer({
+          id: 1,
+          name: "P1",
+          field: { vanguard: ["SD02-001-C"], flankLeft: ["MECH-001"], flankRight: ["MECH-002"], rear: [] },
+          baseCovered: ["GEN-001", "GEN-002"],
+          retreat: Array(9).fill("YEL-001"),
+        }),
+        makePlayer({ id: 2, name: "P2" }),
+      ],
+    });
+  }
+
+  it("满足条件时所有我方 Lv1 机械角色获得 基地数×1000 战力", () => {
+    const state = makeMechState();
+    // 基础 1000 + 2(基地盖卡)×1000 = 3000
+    expect(getEffectivePower(state, "MECH-001", mockDb)).toBe(3000);
+    expect(getEffectivePower(state, "MECH-002", mockDb)).toBe(3000);
+  });
+
+  it("撤退区黄色角色不足 9 张时机械角色不获得加成", () => {
+    const state = makeMechState();
+    const np = [...state.players] as typeof state.players;
+    np[0] = { ...np[0], retreat: Array(8).fill("YEL-001") };
+    const s2 = { ...state, players: np };
+    expect(getEffectivePower(s2, "MECH-001", mockDb)).toBe(1000);
+  });
+
+  it("非机械/非 Lv1 角色不受机械强化影响（SD02-001 自身仅吃单目标基地联动）", () => {
+    const state = makeMechState();
+    // SD02-001 基础 3000 + 基地联动(SD02-001-0) 2×1000 = 5000；机械强化不再作用于自身
+    expect(getEffectivePower(state, "SD02-001-C", mockDb)).toBe(5000);
   });
 });
