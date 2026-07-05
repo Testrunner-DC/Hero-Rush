@@ -1285,8 +1285,9 @@ describe("7. 战基移动（MOVE_CARD）测试", () => {
       toLoc: "vanguard",
     });
 
-    // 应返回原状态（不变）
-    expect(result).toBe(state);
+    // 拒绝：游戏字段不变，仅追加一条 ⚠️ 警告日志（驱动 UI Toast）
+    expect(result!.players).toBe(state.players);
+    expect(result!.log[result!.log.length - 1]).toMatch(/^⚠️/);
     expect(result!.players[0].field.vanguard).toContain("GEN-001");
   });
 
@@ -1313,7 +1314,9 @@ describe("7. 战基移动（MOVE_CARD）测试", () => {
       toLoc: "base",
     });
 
-    expect(result).toBe(state);
+    // 拒绝：游戏字段不变，仅追加一条 ⚠️ 警告日志（驱动 UI Toast）
+    expect(result!.players).toBe(state.players);
+    expect(result!.log[result!.log.length - 1]).toMatch(/^⚠️/);
   });
 
   it("基地满(6张)时拒绝移入", () => {
@@ -1368,8 +1371,9 @@ describe("7. 战基移动（MOVE_CARD）测试", () => {
       toLoc: "vanguard",
     });
 
-    // 应返回原状态（战区已有卡牌）
-    expect(result).toBe(state);
+    // 拒绝：游戏字段不变（战区已有卡牌），仅追加一条 ⚠️ 警告日志
+    expect(result!.players).toBe(state.players);
+    expect(result!.log[result!.log.length - 1]).toMatch(/^⚠️/);
     expect(result!.players[0].baseCovered).toContain("GEN-001");
     expect(result!.players[0].field.vanguard).toContain("SD01-017-C");
   });
@@ -1509,7 +1513,9 @@ describe("7. 战基移动（MOVE_CARD）测试", () => {
       toLoc: "base",
     });
 
-    expect(result).toBe(state);
+    // 拒绝：游戏字段不变，仅追加一条 ⚠️ 警告日志（驱动 UI Toast）
+    expect(result!.players).toBe(state.players);
+    expect(result!.log[result!.log.length - 1]).toMatch(/^⚠️/);
     expect(result!.conflictMovesUsed).toBe(4);
   });
 
@@ -1537,7 +1543,9 @@ describe("7. 战基移动（MOVE_CARD）测试", () => {
       toLoc: "base",
     });
 
-    expect(result).toBe(state);
+    // 拒绝：游戏字段不变，仅追加一条 ⚠️ 警告日志（驱动 UI Toast）
+    expect(result!.players).toBe(state.players);
+    expect(result!.log[result!.log.length - 1]).toMatch(/^⚠️/);
     expect(result!.players[0].field.vanguard).toContain("GEN-001");
   });
 
