@@ -1,9 +1,15 @@
-import { useState, useReducer, useEffect, useCallback } from "react";
-import type { CardDatabase, Card, Deck, DeckEntry } from "../types/card";
-import type { TurnPhase, Zone } from "../types/game";
-import { createGameReducer } from "../game/engine";
-import { canZoneAttack, getAllFieldCards, hasKeyword } from "../game/cardUtils";
-import { getActiveEffects } from "../game/effects";
+import { useState, useEffect, useCallback } from "react";
+import type { CardDatabase, Card, Deck } from "../types/card";
+import {
+  getAllFieldCards,
+  getActivatableEffects,
+  getKeywordCardNames,
+  getRushCardIds,
+  deckEntriesToCardIds,
+  type TurnPhase,
+  type Zone,
+} from "../engine";
+import { useBattle } from "../hooks/useBattle";
 import GameSetup, { type PreselectedDeck } from "../components/GameSetup";
 import SidebarSection from "../components/battle/SidebarSection";
 import StatRow from "../components/battle/StatRow";
@@ -28,40 +34,6 @@ type FirstPlayerChoice = "random" | "p1" | "p2";
 interface PreconData {
   name: string;
   cards: string[];
-}
-
-// ─────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────
-
-/** Find the best (highest rarity) rush card for a given package prefix. */
-function getRushCardIds(db: CardDatabase, prefix: string): string[] {
-  const rushCards = db.cards.filter(
-    (c) => c.card_no.startsWith(prefix) && c.card_type === 2
-  );
-  const best = rushCards.reduce<string | null>((best, c) => {
-    if (!best) return c.id;
-    const bestCard = db.cards.find((x) => x.id === best)!;
-    return c.rarity > bestCard.rarity ? c.id : best;
-  }, null);
-  return best ? Array(9).fill(best) : [];
-}
-
-/** Convert DeckEntry[] (card_no + count) to card ID string array. */
-function deckEntriesToCardIds(
-  entries: DeckEntry[],
-  cardMap: Map<string, Card>
-): string[] {
-  const ids: string[] = [];
-  for (const entry of entries) {
-    const card = cardMap.get(entry.card_no);
-    if (card) {
-      for (let i = 0; i < entry.count; i++) {
-        ids.push(card.id);
-      }
-    }
-  }
-  return ids;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -312,8 +284,8 @@ function BattleLobby({ db, savedDecks, cardMap, onStart }: BattleLobbyProps) {
 // ============================================================
 
 export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps) {
-  // ===== 游戏状态（reducer 管理） =====
-  const [state, dispatch] = useReducer(createGameReducer(db), null);
+  // ===== 游戏状态（useBattle 契约层管理） =====
+  const { state, dispatch, actions } = useBattle(db);
 
   // ===== UI 状态（useState 管理） =====
   const [actionMode, setActionMode] = useState<ActionMode>({ type: "none" });
@@ -386,175 +358,48 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
   console.log("[BattlePage] State is non-null, rendering battle UI. turnPhase:", state.turnPhase, "players:", state.players.length);
 
   // ============================================================
-  // 事件处理函数（dispatch 薄封装 + UI 层预校验）
+  // 事件处理（业务校验在 useBattle 契约层，这里只联动菜单 UI 状态）
   // ============================================================
 
-  const drawCards = () => {
-    dispatch({ type: "DRAW_CARDS" });
-  };
+  const drawCards = () => actions.drawCards();
 
   const advancePhase = (next: TurnPhase) => {
-    if (state.pendingSummon) {
-      alert("请先完成或取消当前号召！");
-      return;
-    }
-    dispatch({ type: "ADVANCE_PHASE", next });
-    setActionMode({ type: "none" });
+    if (actions.advancePhase(next)) setActionMode({ type: "none" });
   };
 
   const endTurn = () => {
-    if (state.pendingSummon) {
-      alert("请先完成或取消当前号召！");
-      return;
-    }
-    dispatch({ type: "END_TURN" });
-    setActionMode({ type: "none" });
+    if (actions.endTurn()) setActionMode({ type: "none" });
   };
 
   const endConflict = () => {
-    dispatch({ type: "ADVANCE_PHASE", next: "END_PHASE" });
+    actions.endConflict();
     setActionMode({ type: "none" });
   };
 
   const deployToBase = (playerIdx: number, handIndex: number) => {
-    if (state.activePlayerIndex !== playerIdx || state.turnPhase !== "ACTION") return;
-    if (state.baseDeployedThisTurn) {
-      alert("本回合已部署基地！每回合只能部署1次");
-      return;
-    }
-    if ((state.players[playerIdx].baseCards.length + state.players[playerIdx].baseCovered.length) >= 6) {
-      alert("基地区已满（上限6张）！");
-      return;
-    }
-    dispatch({ type: "DEPLOY_TO_BASE", playerIdx, handIndex });
-    setActionMode({ type: "none" });
+    if (actions.deployToBase(playerIdx, handIndex)) setActionMode({ type: "none" });
   };
 
   const summonToField = (playerIdx: number, handIndex: number, zone: Zone | "base") => {
-    if (state.activePlayerIndex !== playerIdx || state.turnPhase !== "ACTION") return;
-    if (state.remainingSummons <= 0) {
-      alert("号召次数已用完！");
-      return;
-    }
-    if (state.pendingSummon) return;
-    const p = state.players[playerIdx];
-    if (zone !== "base" && p.field[zone].length >= 1) {
-      alert("该区域已有角色！");
-      return;
-    }
-    if (zone === "base" && (p.baseCards.length + p.baseCovered.length) >= 6) {
-      alert("基地区已满（上限6张）！");
-      return;
-    }
-    // Lv4+ 号召需要撤退场上角色 — 检查总Lv是否足够
-    const cardId = p.hand[handIndex];
-    const card = db.cards.find((c) => c.id === cardId);
-    const lv = card?.cost ?? 0;
-    if (lv >= 4) {
-      const fieldChars: { id: string; lv: number }[] = [];
-      for (const z of ZONE_LIST) {
-        for (const fid of p.field[z]) {
-          const fc = db.cards.find((c) => c.id === fid);
-          fieldChars.push({ id: fid, lv: fc?.cost ?? 1 });
-        }
-      }
-      for (const bid of [...p.baseCards, ...p.baseCovered]) {
-        const bc = db.cards.find((c) => c.id === bid);
-        fieldChars.push({ id: bid, lv: bc?.cost ?? 1 });
-      }
-      const totalLv = fieldChars.reduce((s, c) => s + c.lv, 0);
-      if (totalLv < lv) {
-        alert(`Lv${lv}角色需要撤退场上总Lv≥${lv}的角色！当前场上总Lv: ${totalLv}`);
-        return;
-      }
-    }
-    dispatch({ type: "SUMMON_TO_FIELD", playerIdx, handIndex, zone });
-    setActionMode({ type: "none" });
+    if (actions.summonToField(playerIdx, handIndex, zone)) setActionMode({ type: "none" });
   };
 
   const moveCharacter = (playerIdx: number, fromZone: Zone, cardId: string, toZone: Zone) => {
-    if (fromZone === toZone) return;
-    const isInAction = state.turnPhase === "ACTION" && state.activePlayerIndex === playerIdx;
-    const isInConflictAdjust =
-      state.turnPhase === "CONFLICT" &&
-      state.conflictSubPhase === "adjust" &&
-      state.activePlayerIndex === playerIdx;
-    if (!isInAction && !isInConflictAdjust) return;
-
-    if (isInConflictAdjust && state.conflictMovesUsed >= 4) {
-      alert("冲突阶段最多调整4次位置！");
-      return;
-    }
-    if (state.players[playerIdx].field[toZone].length >= 1) {
-      alert("目标区域已有角色！");
-      return;
-    }
-    dispatch({ type: "MOVE_CHARACTER", playerIdx, fromZone, cardId, toZone });
-    setActionMode({ type: "none" });
+    if (actions.moveCharacter(playerIdx, fromZone, cardId, toZone)) setActionMode({ type: "none" });
   };
 
   /** 战基移动：角色在战区与基地之间移动 */
   const moveCard = (playerIdx: number, fromLoc: Zone | "base", cardId: string, toLoc: Zone | "base") => {
-    if (fromLoc === toLoc) return;
-    const isInAction = state.turnPhase === "ACTION" && state.activePlayerIndex === playerIdx;
-    const isInConflictAdjust =
-      state.turnPhase === "CONFLICT" &&
-      state.conflictSubPhase === "adjust" &&
-      state.activePlayerIndex === playerIdx;
-    if (!isInAction && !isInConflictAdjust) return;
-
-    if (isInConflictAdjust && state.conflictMovesUsed >= 4) {
-      alert("冲突阶段最多调整4次位置！");
-      return;
-    }
-    // 不能移动本回合进场的卡牌
-    if (state.enteredThisTurn.includes(cardId)) {
-      alert("本回合进场的卡牌不能进行移动！");
-      return;
-    }
-    // 不能移动正在被撤退选择的卡牌
-    if (state.pendingSummon?.selectedRetreatIds.includes(cardId)) {
-      alert("该卡牌正在被撤退选择中，不能移动！");
-      return;
-    }
-    // 目标位置有空位
-    if (toLoc === "base") {
-      if ((state.players[playerIdx].baseCards.length + state.players[playerIdx].baseCovered.length) >= 6) {
-        alert("基地区已满（上限6张）！");
-        return;
-      }
-    } else {
-      if (state.players[playerIdx].field[toLoc].length >= 1) {
-        alert("目标区域已有角色！");
-        return;
-      }
-    }
-    dispatch({ type: "MOVE_CARD", playerIdx, fromLoc, cardId, toLoc });
-    setActionMode({ type: "none" });
+    if (actions.moveCard(playerIdx, fromLoc, cardId, toLoc)) setActionMode({ type: "none" });
   };
 
-  const onZoneAttackClick = (zone: Zone) => {
-    dispatch({ type: "SET_ATTACK_ZONE", zone });
-  };
+  const onZoneAttackClick = (zone: Zone) => actions.setAttackZone(zone);
 
-  const startAttack = (playerIdx: number, zone: Zone, cardId: string) => {
-    dispatch({ type: "START_ATTACK", playerIdx, zone, cardId });
-  };
-
-  const confirmAttack = (targetPlayerIdx: number, targetZone: Zone, targetCardId?: string) => {
-    dispatch({ type: "CONFIRM_ATTACK", targetPlayerIdx, targetZone, targetCardId });
-  };
-
-  const skipZone = (zone: Zone) => {
-    dispatch({ type: "SKIP_ZONE", zone });
-  };
-
-  const startAttackSubPhase = () => {
-    dispatch({ type: "START_ATTACK_SUBPHASE" });
-  };
-
-  /** canZoneAttack 包装函数（cardUtils 需要 state 参数） */
-  const canZoneAttackFn = (zone: Zone): boolean => canZoneAttack(state, zone);
+  const startAttack = actions.startAttack;
+  const confirmAttack = actions.confirmAttack;
+  const skipZone = actions.skipZone;
+  const startAttackSubPhase = actions.startAttackSubPhase;
+  const canZoneAttackFn = actions.canAttackZone;
 
   // === 点击手牌：选中/取消选中 ===
   const onHandCardClick = (playerIdx: number, _cardId: string, handIndex: number) => {
@@ -599,13 +444,8 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
   };
 
   // === 撤退选择（pendingSummon） ===
-  const onSelectRetreat = (cardId: string, loc: Zone | "base") => {
-    dispatch({ type: "SELECT_RETREAT", cardId, loc });
-  };
-
-  const cancelSummon = () => {
-    dispatch({ type: "CANCEL_SUMMON" });
-  };
+  const onSelectRetreat = actions.selectRetreat;
+  const cancelSummon = actions.cancelSummon;
 
   // === 卡牌 hover ===
   const onCardHover = (card: Card | null) => {
@@ -614,7 +454,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
 
   const closeMenu = () => {
     setActionMode({ type: "none" });
-    if (state.pendingAttack) dispatch({ type: "CLEAR_ATTACK_TARGET" });
+    if (state.pendingAttack) actions.clearAttackTarget();
   };
 
   // ============================================================
@@ -794,7 +634,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                dispatch({ type: "PASS_COUNTER", playerIdx: 1 - pc.summoningPlayerIdx });
+                actions.passCounter(1 - pc.summoningPlayerIdx);
               }}
               className="px-3 py-1 rounded bg-stone-700 text-white/70 text-xs hover:bg-stone-600 transition"
             >
@@ -883,7 +723,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      dispatch({ type: "CANCEL_TARGET_SELECTION", playerIdx: state.activePlayerIndex });
+                      actions.cancelTargetSelection(state.activePlayerIndex);
                     }}
                     className="px-5 py-2 rounded-lg bg-stone-200 text-stone-600 text-sm font-medium hover:bg-stone-300 transition"
                   >
@@ -893,7 +733,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
                     onClick={(e) => {
                       e.stopPropagation();
                       if (canConfirm) {
-                        dispatch({ type: "SELECT_TARGETS", playerIdx: state.activePlayerIndex, targetCardIds: selectedTargetIds });
+                        actions.selectTargets(state.activePlayerIndex, selectedTargetIds);
                       }
                     }}
                     disabled={!canConfirm}
@@ -1024,67 +864,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
 
               {/* ===== 起动效果按钮 ===== */}
               {(() => {
-                const activeP = state.players[activeIdx];
-                const effectButtons: { cardId: string; cardName: string; effectId: string; effectLabel: string }[] = [];
-
-                // 检查手牌中的卡
-                for (const cardId of activeP.hand) {
-                  const card = db.cards.find((c) => c.id === cardId);
-                  if (!card) continue;
-                  const effects = getActiveEffects(card.card_no);
-                  for (const eff of effects) {
-                    // 检查是否本回合已使用
-                    const usedKey = `${card.card_no}-${eff.id}`;
-                    if (state.effectUsedThisTurn?.includes(usedKey)) continue;
-                    // 检查 activeSource 匹配
-                    if (eff.activeSource !== "hand") continue;
-                    effectButtons.push({
-                      cardId,
-                      cardName: card.name,
-                      effectId: eff.id,
-                      effectLabel: eff.label ?? eff.id,
-                    });
-                  }
-                }
-
-                // 检查场上的卡
-                for (const z of ZONE_LIST) {
-                  for (const cardId of activeP.field[z]) {
-                    const card = db.cards.find((c) => c.id === cardId);
-                    if (!card) continue;
-                    const effects = getActiveEffects(card.card_no);
-                    for (const eff of effects) {
-                      const usedKey = `${card.card_no}-${eff.id}`;
-                      if (state.effectUsedThisTurn?.includes(usedKey)) continue;
-                      if (eff.activeSource !== "field") continue;
-                      effectButtons.push({
-                        cardId,
-                        cardName: card.name,
-                        effectId: eff.id,
-                        effectLabel: eff.label ?? eff.id,
-                      });
-                    }
-                  }
-                }
-
-                // 检查基地的卡
-                for (const cardId of [...activeP.baseCards, ...activeP.baseCovered]) {
-                  const card = db.cards.find((c) => c.id === cardId);
-                  if (!card) continue;
-                  const effects = getActiveEffects(card.card_no);
-                  for (const eff of effects) {
-                    const usedKey = `${card.card_no}-${eff.id}`;
-                    if (state.effectUsedThisTurn?.includes(usedKey)) continue;
-                    if (eff.activeSource !== "base") continue;
-                    effectButtons.push({
-                      cardId,
-                      cardName: card.name,
-                      effectId: eff.id,
-                      effectLabel: eff.label ?? eff.id,
-                    });
-                  }
-                }
-
+                const effectButtons = getActivatableEffects(state, db, activeIdx);
                 if (effectButtons.length === 0) return null;
 
                 return (
@@ -1094,7 +874,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
                         key={`${btn.cardId}-${btn.effectId}`}
                         onClick={(e) => {
                           e.stopPropagation();
-                          dispatch({ type: "ACTIVATE_EFFECT", playerIdx: activeIdx, cardId: btn.cardId, effectId: btn.effectId });
+                          actions.activateEffect(activeIdx, btn.cardId, btn.effectId);
                         }}
                         className="px-2.5 py-1.5 rounded-lg bg-indigo-700/80 text-white text-xs font-medium hover:bg-indigo-600 transition border border-indigo-500/40"
                         title={`${btn.cardName} — ${btn.effectLabel}`}
@@ -1144,14 +924,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
 
                   {/* ===== 连击提示 ===== */}
                   {(() => {
-                    const comboCards: string[] = [];
-                    const myFieldCards = getAllFieldCards(state.players[activeIdx]);
-                    for (const { cardId } of myFieldCards) {
-                      if (hasKeyword(state, cardId, "combo", db)) {
-                        const card = db.cards.find((c) => c.id === cardId);
-                        comboCards.push(card?.name ?? cardId);
-                      }
-                    }
+                    const comboCards = getKeywordCardNames(state, db, activeIdx, "combo");
                     if (comboCards.length === 0) return null;
                     return (
                       <span className="text-xs text-yellow-400/80 mr-2 px-2 py-0.5 rounded bg-yellow-900/20 border border-yellow-700/30">
@@ -1162,14 +935,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
 
                   {/* ===== 强袭提示 ===== */}
                   {(() => {
-                    const assaultCards: string[] = [];
-                    const myFieldCards = getAllFieldCards(state.players[activeIdx]);
-                    for (const { cardId } of myFieldCards) {
-                      if (hasKeyword(state, cardId, "assault", db)) {
-                        const card = db.cards.find((c) => c.id === cardId);
-                        assaultCards.push(card?.name ?? cardId);
-                      }
-                    }
+                    const assaultCards = getKeywordCardNames(state, db, activeIdx, "assault");
                     if (assaultCards.length === 0) return null;
                     return (
                       <span className="text-xs text-red-400/80 mr-2 px-2 py-0.5 rounded bg-red-900/20 border border-red-700/30">
@@ -1179,7 +945,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
                   })()}
                   {attackTarget && (
                     <button
-                      onClick={() => dispatch({ type: "CLEAR_ATTACK_TARGET" })}
+                      onClick={() => actions.clearAttackTarget()}
                       className="px-3 py-2 rounded-lg bg-stone-700/80 text-white/70 text-xs hover:bg-stone-600 transition"
                     >
                       ✕ 取消攻击
@@ -1187,7 +953,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
                   )}
                   {currentAttackZone && !attackTarget && (
                     <button
-                      onClick={() => dispatch({ type: "START_ATTACK_SUBPHASE" })}
+                      onClick={() => actions.startAttackSubPhase()}
                       className="px-3 py-2 rounded-lg bg-stone-700/80 text-white/70 text-xs hover:bg-stone-600 transition"
                     >
                       ✕ 取消选区
@@ -1228,7 +994,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
                 </p>
                 <button
                   onClick={() => {
-                    dispatch({ type: "RESET_BATTLE" });
+                    actions.resetBattle();
                     setActionMode({ type: "none" });
                     setLobbyPhase("lobby");
                     setPreselectedDeck(null);

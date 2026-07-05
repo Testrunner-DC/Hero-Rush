@@ -5,7 +5,7 @@
  * 被 sd01.ts/sd02.ts 的效果定义调用，也可被引擎直接调用。
  */
 
-import type { BattleState, Zone, PlayerState } from "../../types/game";
+import type { BattleState, Zone, PlayerState } from "../state";
 import type { CardDatabase } from "../../types/card";
 import type { Modifier } from "./types";
 import { triggerEffectsByTiming } from "./registry";

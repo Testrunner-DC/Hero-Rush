@@ -5,7 +5,7 @@
  * 这些类型由 engine.ts / events.ts / abilities.ts 使用。
  */
 
-import type { BattleState, Zone, TurnPhase, PlayerState } from "../types/game";
+import type { BattleState, Zone, TurnPhase, PlayerState } from "./state";
 import type { CardDatabase, Card } from "../types/card";
 
 // ============================================================

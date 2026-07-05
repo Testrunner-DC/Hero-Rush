@@ -5,7 +5,7 @@
  * 被 registry.ts、helpers.ts、conditions.ts、sd01.ts、sd02.ts 使用。
  */
 
-import type { BattleState, Zone } from "../../types/game";
+import type { BattleState, Zone } from "../state";
 import type { CardDatabase } from "../../types/card";
 
 // ============================================================

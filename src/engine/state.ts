@@ -2,8 +2,8 @@
  * 对战引擎 — 游戏状态类型定义（基于超英击战综合规则书 1.00）
  */
 
-import type { EventListener, Ability } from "../game/types";
-import type { Modifier } from "../game/effects/types";
+import type { EventListener, Ability } from "./types";
+import type { Modifier } from "./effects/types";
 
 /** 战区类型 — 先锋 / 侧翼左 / 侧翼右 / 后卫 */
 export type Zone = "vanguard" | "flankLeft" | "flankRight" | "rear";

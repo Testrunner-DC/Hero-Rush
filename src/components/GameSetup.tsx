@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect, useRef, type Dispatch } from "react";
 import type { CardDatabase } from "../types/card";
-import type { SetupPhase, PlayerState, BattleState } from "../types/game";
-import type { GameAction } from "../game/types";
+import type { SetupPhase, PlayerState, BattleState, GameAction } from "../engine";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Types

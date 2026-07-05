@@ -5,7 +5,7 @@
  * 所有函数为纯函数，无副作用。
  */
 
-import type { BattleState, Zone } from "../../types/game";
+import type { BattleState, Zone } from "../state";
 import type { Card, CardDatabase } from "../../types/card";
 
 /** 战区列表 */

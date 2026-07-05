@@ -5,7 +5,7 @@
  * triggerEvent 查找匹配的监听器并执行，支持活跃玩家优先和防重入。
  */
 
-import type { BattleState } from "../types/game";
+import type { BattleState } from "./state";
 import type { EventListener, EventContext, GameEventType } from "./types";
 
 /** 防重入标志 */

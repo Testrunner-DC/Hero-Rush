@@ -7,34 +7,15 @@
  * CardDatabase 通过 createGameReducer(db) 柯里化注入。
  */
 
-import type { BattleState, Zone, TurnPhase, SetupPhase } from "../types/game";
+import type { BattleState, Zone, TurnPhase, SetupPhase } from "./state";
 import type { CardDatabase } from "../types/card";
 import type { GameAction } from "./types";
 import type { EffectContext } from "./effects";
 import { getCardPower, getEffectivePower, cleanupTurnModifiers, hasKeyword } from "./cardUtils";
 import { triggerEvent } from "./events";
 import { registerAllEffects, triggerEffectsByTiming, triggerAllFieldEffects, triggerAllyDefeatedEffects, getEffectsByCardNo, findCardOwner } from "./effects";
+import { ZONE_LIST, ZONE_LABELS, PHASE_LABELS } from "./labels";
 
-// ============================================================
-// 常量
-// ============================================================
-
-const ZONE_LIST: Zone[] = ["vanguard", "flankLeft", "flankRight", "rear"];
-
-const ZONE_LABELS: Record<Zone, string> = {
-  vanguard: "先锋",
-  flankLeft: "侧翼(左)",
-  flankRight: "侧翼(右)",
-  rear: "后卫",
-};
-
-const PHASE_LABELS: Record<TurnPhase, string> = {
-  TURN_START: "回合开始",
-  DRAW: "抽卡阶段",
-  ACTION: "行动阶段",
-  CONFLICT: "冲突阶段",
-  END_PHASE: "结束阶段",
-};
 // ============================================================
 // 胜负检查
 // ============================================================

@@ -6,7 +6,7 @@
  * 参考 Netrunner resolve-ability：condition → cost → effect → once 标记
  */
 
-import type { BattleState } from "../types/game";
+import type { BattleState } from "./state";
 import type { Ability, AbilityContext } from "./types";
 import type { CardEffect, EffectContext } from "./effects/types";
 import { getEffectsByCardNo, registerEffects } from "./effects/registry";

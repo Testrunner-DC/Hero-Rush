@@ -5,7 +5,7 @@
  * 引擎通过 triggerEffectsByTiming 查找并执行触发型效果。
  */
 
-import type { BattleState } from "../../types/game";
+import type { BattleState } from "../state";
 import type { CardDatabase } from "../../types/card";
 import type { CardEffect, EffectContext, TriggerTiming } from "./types";
 

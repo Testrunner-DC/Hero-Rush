@@ -11,8 +11,7 @@
 
 import { useState, useEffect } from "react";
 import type { CardDatabase, Card } from "../../types/card";
-import type { PlayerState, Zone } from "../../types/game";
-import type { AttackTarget } from "../../game/types";
+import type { PlayerState, Zone, AttackTarget } from "../../engine";
 import type { ActionMode } from "./constants";
 import { ZONE_LIST, ZONE_LABELS, ZONE_SHORT } from "./constants";
 import type { BoardProps } from "./types";

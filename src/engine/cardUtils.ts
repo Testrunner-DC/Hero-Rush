@@ -5,7 +5,7 @@
  * 所有函数均为无副作用纯函数。
  */
 
-import type { BattleState, Zone, PlayerState } from "../types/game";
+import type { BattleState, Zone, PlayerState } from "./state";
 import type { Card, CardDatabase } from "../types/card";
 import type { Modifier, EffectContext } from "./effects/types";
 import { getStaticEffects, getEffectsByCardNo, findCardOwner } from "./effects/registry";

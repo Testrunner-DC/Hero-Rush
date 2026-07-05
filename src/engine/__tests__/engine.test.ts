@@ -22,7 +22,7 @@ import {
 } from "../effects/registry";
 import { registerAllEffects } from "../effects";
 import { shuffleDeck, moveHandCardsToDeckBottom } from "../effects/helpers";
-import type { BattleState, PlayerState, Zone } from "../../types/game";
+import type { BattleState, PlayerState, Zone } from "../state";
 import type { Card, CardDatabase } from "../../types/card";
 import type { CardEffect } from "../effects/types";
 

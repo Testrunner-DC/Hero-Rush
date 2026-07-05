@@ -1,39 +1,14 @@
 /**
  * 战场组件共享常量与类型
  *
- * 从 BattlePage.tsx 提取的常量和 ActionMode UI 状态类型。
- * 供 BattlePage 及各子组件共用。
+ * 战区/阶段中文标签的唯一来源在 engine/labels.ts，此处仅转发。
+ * ActionMode 是纯 UI 状态类型，归本文件所有。
  */
 
-import type { Zone, TurnPhase } from "../../types/game";
+import type { Zone } from "../../engine";
 
-/** 战区列表（按冲突阶段攻击顺序） */
-export const ZONE_LIST: Zone[] = ["vanguard", "flankLeft", "flankRight", "rear"];
-
-/** 战区中文标签 */
-export const ZONE_LABELS: Record<Zone, string> = {
-  vanguard: "先锋",
-  flankLeft: "侧翼(左)",
-  flankRight: "侧翼(右)",
-  rear: "后卫",
-};
-
-/** 战区短标签（用于紧凑显示） */
-export const ZONE_SHORT: Record<Zone, string> = {
-  vanguard: "先锋",
-  flankLeft: "左翼",
-  flankRight: "右翼",
-  rear: "后卫",
-};
-
-/** 回合阶段中文标签 */
-export const PHASE_LABELS: Record<TurnPhase, string> = {
-  TURN_START: "回合开始",
-  DRAW: "抽卡阶段",
-  ACTION: "行动阶段",
-  CONFLICT: "冲突阶段",
-  END_PHASE: "结束阶段",
-};
+/** 战区列表与中文标签 —— 转发自引擎（唯一来源：engine/labels.ts） */
+export { ZONE_LIST, ZONE_LABELS, ZONE_SHORT, PHASE_LABELS } from "../../engine";
 
 /**
  * 行动菜单状态（UI 状态）

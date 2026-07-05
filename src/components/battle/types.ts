@@ -5,8 +5,7 @@
  */
 
 import type { CardDatabase, Card } from "../../types/card";
-import type { PlayerState, Zone, PendingSummon } from "../../types/game";
-import type { AttackTarget } from "../../game/types";
+import type { PlayerState, Zone, PendingSummon, AttackTarget } from "../../engine";
 import type { ActionMode } from "./constants";
 
 /** PlayerArea 组件的 Props */
