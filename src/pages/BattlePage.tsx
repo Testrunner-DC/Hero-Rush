@@ -644,11 +644,35 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
           );
         })()}
 
+        {/* ===== 选发确认提示条 ===== */}
+        {state.pendingEffectConfirmation && (() => {
+          const pec = state.pendingEffectConfirmation;
+          return (
+          <div className="absolute top-14 left-1/2 -translate-x-1/2 z-40 bg-black/90 border border-indigo-500/50 rounded-lg px-4 py-2.5 flex items-center gap-3 shadow-2xl backdrop-blur-sm">
+            <span className="text-sm text-indigo-300 font-medium">
+              ⚡ {pec.prompt}
+            </span>
+            <button
+              onClick={(e) => { e.stopPropagation(); actions.confirmEffect(pec.playerIdx); }}
+              className="px-3 py-1 rounded bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-500 transition"
+            >
+              ✅ 发动
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); actions.declineEffect(pec.playerIdx); }}
+              className="px-3 py-1 rounded bg-stone-700 text-white/70 text-xs hover:bg-stone-600 transition"
+            >
+              ⏭️ 放弃
+            </button>
+          </div>
+          );
+        })()}
+
         {/* ===== Q7: pendingTargetSelection 目标选择模态框 ===== */}
         {state.pendingTargetSelection && (() => {
           const pts = state.pendingTargetSelection;
-          const targetPlayer = state.players[pts.targetPlayerIdx];
           const targetLabel = pts.targetPlayerIdx === 0 ? "我方" : "敌方";
+          const isZoneSelection = pts.targetKind === "zone";
           const canConfirm = selectedTargetIds.length >= pts.minTargets && selectedTargetIds.length <= pts.maxTargets;
 
           /** 切换目标选中状态 */
@@ -670,7 +694,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
                   🎯 选择目标
                 </h3>
                 <p className="text-sm text-stone-500 text-center mb-4">
-                  请选择{targetLabel}场上 {pts.minTargets}-{pts.maxTargets} 张角色
+                  {pts.prompt ?? `请选择${targetLabel}场上 ${pts.minTargets}-${pts.maxTargets} 张角色`}
                   （已选 {selectedTargetIds.length}/{pts.maxTargets}）
                 </p>
 
@@ -678,6 +702,25 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
                 <div className="flex flex-wrap gap-2 justify-center mb-4 min-h-[100px]">
                   {pts.availableTargets.length === 0 ? (
                     <p className="text-sm text-stone-400">没有可选目标</p>
+                  ) : isZoneSelection ? (
+                    // 区域选择：渲染战区按钮
+                    pts.availableTargets.map((zoneId) => {
+                      const isSelected = selectedTargetIds.includes(zoneId);
+                      return (
+                        <button
+                          key={zoneId}
+                          onClick={() => toggleTarget(zoneId)}
+                          className={`px-5 py-3 rounded-lg border text-sm font-bold transition ${
+                            isSelected
+                              ? "bg-amber-100 border-amber-400 text-amber-700 ring-2 ring-amber-400"
+                              : "bg-white border-stone-200 text-stone-600 hover:border-amber-300"
+                          }`}
+                        >
+                          {ZONE_LABELS[zoneId as keyof typeof ZONE_LABELS] ?? zoneId}
+                          {isSelected && <span className="ml-1.5">✓</span>}
+                        </button>
+                      );
+                    })
                   ) : (
                     pts.availableTargets.map((cardId) => {
                       const card = db.cards.find((c) => c.id === cardId);

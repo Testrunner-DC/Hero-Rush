@@ -66,6 +66,10 @@ export interface BattleActions {
   selectTargets: (playerIdx: number, targetCardIds: string[]) => void;
   /** 目标选择：取消 */
   cancelTargetSelection: (playerIdx: number) => void;
+  /** 选发确认：发动挂起的可选效果 */
+  confirmEffect: (playerIdx: number) => void;
+  /** 选发确认：放弃发动 */
+  declineEffect: (playerIdx: number) => void;
   /** 重置对战（返回大厅前调用） */
   resetBattle: () => void;
 }
@@ -277,6 +281,14 @@ export function useBattle(db: CardDatabase): UseBattleResult {
 
     cancelTargetSelection: (playerIdx) => {
       dispatch({ type: "CANCEL_TARGET_SELECTION", playerIdx });
+    },
+
+    confirmEffect: (playerIdx) => {
+      dispatch({ type: "CONFIRM_EFFECT", playerIdx });
+    },
+
+    declineEffect: (playerIdx) => {
+      dispatch({ type: "DECLINE_EFFECT", playerIdx });
     },
 
     resetBattle: () => {
