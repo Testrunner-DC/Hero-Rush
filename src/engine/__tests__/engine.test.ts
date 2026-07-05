@@ -19,6 +19,7 @@ import {
   getCounterActiveEffects,
   registerEffect,
   EFFECT_REGISTRY,
+  triggerEffectsByTiming,
 } from "../effects/registry";
 import { registerAllEffects } from "../effects";
 import { shuffleDeck, moveHandCardsToDeckBottom } from "../effects/helpers";
@@ -138,6 +139,43 @@ const sd02_016_card = makeCard({
   package_short: "SD02",
 });
 
+// 目标选择挂起测试用卡
+const sd01_006_card = makeCard({
+  id: "SD01-006-C",
+  card_no: "SD01-006",
+  name: "全面撤退",
+  cost: 3,
+  power: null,
+});
+const sd02_007_card = makeCard({
+  id: "SD02-007-C",
+  card_no: "SD02-007",
+  name: "特殊进场者",
+  cost: 5,
+  power: "4000",
+  package: "SD02",
+  package_short: "SD02",
+  attribute: 2,
+});
+const sd02_009_card = makeCard({
+  id: "SD02-009-C",
+  card_no: "SD02-009",
+  name: "削弱装置",
+  cost: 1,
+  power: null,
+  package: "SD02",
+  package_short: "SD02",
+});
+const sd02_011_card = makeCard({
+  id: "SD02-011-C",
+  card_no: "SD02-011",
+  name: "基地翻卡者",
+  cost: 2,
+  power: "1500",
+  package: "SD02",
+  package_short: "SD02",
+});
+
 // 多目标 staticModifier 测试用卡（SD02-001 机械强化）
 const mech_lv1_a = makeCard({
   id: "MECH-001",
@@ -202,6 +240,10 @@ const mockDb: CardDatabase = {
     sd02_001_card,
     sd02_004_card,
     sd02_016_card,
+    sd01_006_card,
+    sd02_007_card,
+    sd02_009_card,
+    sd02_011_card,
     mech_lv1_a,
     mech_lv1_b,
     yellow_filler,
@@ -1663,6 +1705,190 @@ describe("附加测试：辅助函数", () => {
     const result = moveHandCardsToDeckBottom(state, 0, ["A", "C"]);
     expect(result.players[0].hand).toEqual(["B"]);
     expect(result.players[0].deck).toEqual(["D", "E", "A", "C"]);
+  });
+});
+
+describe("9. 目标选择挂起（pendingTargetSelection 接入）", () => {
+  const reducer = createGameReducer(mockDb);
+
+  it("SD02-009 起动时多候选 → 挂起，卡未盖伏、once 未标记", () => {
+    const state = makeBattleState({
+      players: [
+        makePlayer({ id: 1, name: "P1", deck: ["GEN-001"], baseCards: ["SD02-009-C"] }),
+        makePlayer({
+          id: 2,
+          name: "P2",
+          deck: ["GEN-001"],
+          field: { vanguard: ["GEN-001"], flankLeft: ["GEN-002"], flankRight: [], rear: [] },
+        }),
+      ],
+    });
+
+    const result = reducer(state, {
+      type: "ACTIVATE_EFFECT", playerIdx: 0, cardId: "SD02-009-C", effectId: "SD02-009-0",
+    });
+
+    expect(result!.pendingTargetSelection).not.toBeNull();
+    expect(result!.pendingTargetSelection!.availableTargets).toEqual(["GEN-001", "GEN-002"]);
+    // 挂起中：卡仍在基地正面，once 未标记
+    expect(result!.players[0].baseCards).toContain("SD02-009-C");
+    expect(result!.effectUsedThisTurn ?? []).not.toContain("SD02-009-SD02-009-0");
+  });
+
+  it("SD02-009 确认目标 → 修改器生效、卡盖伏、once 标记", () => {
+    const state = makeBattleState({
+      players: [
+        makePlayer({ id: 1, name: "P1", deck: ["GEN-001"], baseCards: ["SD02-009-C"] }),
+        makePlayer({
+          id: 2,
+          name: "P2",
+          deck: ["GEN-001"],
+          field: { vanguard: ["GEN-001"], flankLeft: ["GEN-002"], flankRight: [], rear: [] },
+        }),
+      ],
+    });
+
+    let s = reducer(state, {
+      type: "ACTIVATE_EFFECT", playerIdx: 0, cardId: "SD02-009-C", effectId: "SD02-009-0",
+    })!;
+    s = reducer(s, { type: "SELECT_TARGETS", playerIdx: 0, targetCardIds: ["GEN-002"] })!;
+
+    expect(s.pendingTargetSelection).toBeNull();
+    expect(s.modifiers.some((m) => m.targetCardId === "GEN-002" && m.value === -1000)).toBe(true);
+    // faceDownAfterActive：基地正面 → 盖伏
+    expect(s.players[0].baseCards).not.toContain("SD02-009-C");
+    expect(s.players[0].baseCovered).toContain("SD02-009-C");
+    expect(s.effectUsedThisTurn).toContain("SD02-009-SD02-009-0");
+  });
+
+  it("SD02-009 取消选择 → 效果未消耗，可重新起动", () => {
+    const state = makeBattleState({
+      players: [
+        makePlayer({ id: 1, name: "P1", deck: ["GEN-001"], baseCards: ["SD02-009-C"] }),
+        makePlayer({
+          id: 2,
+          name: "P2",
+          deck: ["GEN-001"],
+          field: { vanguard: ["GEN-001"], flankLeft: ["GEN-002"], flankRight: [], rear: [] },
+        }),
+      ],
+    });
+
+    let s = reducer(state, {
+      type: "ACTIVATE_EFFECT", playerIdx: 0, cardId: "SD02-009-C", effectId: "SD02-009-0",
+    })!;
+    s = reducer(s, { type: "CANCEL_TARGET_SELECTION", playerIdx: 0 })!;
+
+    expect(s.pendingTargetSelection).toBeNull();
+    expect(s.effectUsedThisTurn ?? []).not.toContain("SD02-009-SD02-009-0");
+    expect(s.players[0].baseCards).toContain("SD02-009-C");
+    // 再次起动仍可挂起
+    const again = reducer(s, {
+      type: "ACTIVATE_EFFECT", playerIdx: 0, cardId: "SD02-009-C", effectId: "SD02-009-0",
+    });
+    expect(again!.pendingTargetSelection).not.toBeNull();
+  });
+
+  it("SD01-006 三阶段链式选择 → collectedTargets 累积并最终结算", () => {
+    const state = makeBattleState({
+      players: [
+        makePlayer({
+          id: 1,
+          name: "P1",
+          hand: ["SD01-006-C"],
+          field: { vanguard: ["GEN-001"], flankLeft: ["GEN-002"], flankRight: [], rear: [] },
+          baseCards: ["ATK-001"],
+          baseCovered: ["DEF-001"],
+        }),
+        makePlayer({
+          id: 2,
+          name: "P2",
+          field: { vanguard: ["MECH-001"], flankLeft: ["MECH-002"], flankRight: [], rear: [] },
+        }),
+      ],
+    });
+
+    // 起动 → 阶段1（我方战区 2 候选）
+    let s = reducer(state, {
+      type: "ACTIVATE_EFFECT", playerIdx: 0, cardId: "SD01-006-C", effectId: "SD01-006-0",
+    })!;
+    expect(s.pendingTargetSelection!.availableTargets.sort()).toEqual(["GEN-001", "GEN-002"]);
+
+    // 阶段2（我方基地 2 候选），collected 带上阶段1
+    s = reducer(s, { type: "SELECT_TARGETS", playerIdx: 0, targetCardIds: ["GEN-002"] })!;
+    expect(s.pendingTargetSelection!.collectedTargets).toEqual(["GEN-002"]);
+    expect(s.pendingTargetSelection!.availableTargets.sort()).toEqual(["ATK-001", "DEF-001"]);
+
+    // 阶段3（敌方 2 候选）
+    s = reducer(s, { type: "SELECT_TARGETS", playerIdx: 0, targetCardIds: ["DEF-001"] })!;
+    expect(s.pendingTargetSelection!.collectedTargets).toEqual(["GEN-002", "DEF-001"]);
+
+    // 最终结算
+    s = reducer(s, { type: "SELECT_TARGETS", playerIdx: 0, targetCardIds: ["MECH-002"] })!;
+    expect(s.pendingTargetSelection).toBeNull();
+    expect(s.players[0].hand).not.toContain("SD01-006-C");
+    expect(s.players[0].retreat).toContain("SD01-006-C");
+    expect(s.players[0].retreat).toContain("GEN-002");
+    expect(s.players[0].retreat).toContain("DEF-001");
+    expect(s.players[1].retreat).toContain("MECH-002");
+    expect(s.players[1].field.flankLeft).not.toContain("MECH-002");
+  });
+
+  it("SD02-007 区域选择（targetKind=zone）→ 进场到所选战区", () => {
+    const state = makeBattleState({
+      players: [
+        makePlayer({
+          id: 1,
+          name: "P1",
+          hand: ["SD02-007-C"],
+          field: { vanguard: ["MECH-001"], flankLeft: [], flankRight: [], rear: [] },
+          retreat: Array(9).fill("YEL-001"),
+        }),
+        makePlayer({ id: 2, name: "P2" }),
+      ],
+    });
+
+    let s = reducer(state, {
+      type: "ACTIVATE_EFFECT", playerIdx: 0, cardId: "SD02-007-C", effectId: "SD02-007-0",
+    })!;
+    expect(s.pendingTargetSelection!.targetKind).toBe("zone");
+    expect(s.pendingTargetSelection!.availableTargets).toEqual(["flankLeft", "flankRight", "rear"]);
+
+    s = reducer(s, { type: "SELECT_TARGETS", playerIdx: 0, targetCardIds: ["rear"] })!;
+    expect(s.pendingTargetSelection).toBeNull();
+    expect(s.players[0].field.rear).toContain("SD02-007-C");
+    expect(s.players[0].hand).not.toContain("SD02-007-C");
+  });
+
+  it("SD02-011 触发挂起保留 triggerInfo → 同Lv基地卡两阶段翻开进场", () => {
+    const state = makeBattleState({
+      players: [
+        makePlayer({
+          id: 1,
+          name: "P1",
+          field: { vanguard: [], flankLeft: [], flankRight: [], rear: ["SD02-011-C"] },
+          baseCovered: ["GEN-001", "GEN-002"],
+        }),
+        makePlayer({ id: 2, name: "P2" }),
+      ],
+    });
+
+    // 我方 Lv1 角色（MECH-001, cost=1）战败触发
+    let s = triggerEffectsByTiming(state, "SD02-011-C", "onAllyDefeated", mockDb, "MECH-001", 0);
+    expect(s.pendingTargetSelection).not.toBeNull();
+    expect(s.pendingTargetSelection!.triggerInfo?.sourceCardId).toBe("MECH-001");
+
+    // 阶段1：选 GEN-001（cost=1，与战败者同Lv）→ 阶段2 区域选择
+    s = reducer(s, { type: "SELECT_TARGETS", playerIdx: 0, targetCardIds: ["GEN-001"] })!;
+    expect(s.pendingTargetSelection!.targetKind).toBe("zone");
+    expect(s.pendingTargetSelection!.collectedTargets).toEqual(["GEN-001"]);
+
+    // 阶段2：选 flankLeft → 翻开进场 + once 标记
+    s = reducer(s, { type: "SELECT_TARGETS", playerIdx: 0, targetCardIds: ["flankLeft"] })!;
+    expect(s.pendingTargetSelection).toBeNull();
+    expect(s.players[0].field.flankLeft).toContain("GEN-001");
+    expect(s.players[0].baseCovered).not.toContain("GEN-001");
+    expect(s.effectUsedThisTurn).toContain("SD02-011-SD02-011-0");
   });
 });
 

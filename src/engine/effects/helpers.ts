@@ -21,6 +21,65 @@ export function genModifierId(): string {
 }
 
 // ============================================================
+// 目标选择挂起（suspension）
+// ============================================================
+
+/** requestTargetSelection 的参数 */
+export interface TargetSelectionRequest {
+  /** 效果来源卡 ID */
+  effectCardId: string;
+  /** 效果 ID */
+  effectId: string;
+  /** 可选目标：cardId[] 或 targetKind="zone" 时的战区 ID 列表 */
+  availableTargets: string[];
+  minTargets: number;
+  maxTargets: number;
+  /** 目标所属玩家 idx */
+  targetPlayerIdx: number;
+  targetKind?: "card" | "zone";
+  /** 多阶段选择时，之前阶段已确认的目标 */
+  collectedTargets?: string[];
+  /** 给 UI 的提示文案 */
+  prompt?: string;
+  /** 触发型效果的触发信息（挂起后重入时恢复） */
+  triggerInfo?: {
+    event: string;
+    sourceCardId?: string;
+    sourcePlayerIdx?: number;
+  };
+}
+
+/**
+ * 挂起效果执行，等待玩家选择目标
+ *
+ * 卡效 execute 内调用：当 ctx.targets 缺少所需目标时，返回本函数的结果并直接 return。
+ * 玩家通过 SELECT_TARGETS 确认后，引擎会带上 targets 重新调用 execute。
+ * 多阶段选择：把已确认的目标放进 collectedTargets，重入时它们会出现在 ctx.targets.cardIds 前部。
+ */
+export function requestTargetSelection(
+  state: BattleState,
+  req: TargetSelectionRequest
+): BattleState {
+  return {
+    ...state,
+    pendingTargetSelection: {
+      effectCardId: req.effectCardId,
+      effectId: req.effectId,
+      availableTargets: req.availableTargets,
+      minTargets: req.minTargets,
+      maxTargets: req.maxTargets,
+      targetPlayerIdx: req.targetPlayerIdx,
+      selectionType: "effect_target",
+      selectedTargetIds: [],
+      targetKind: req.targetKind ?? "card",
+      collectedTargets: req.collectedTargets ?? [],
+      prompt: req.prompt,
+      triggerInfo: req.triggerInfo,
+    },
+  };
+}
+
+// ============================================================
 // 抽卡
 // ============================================================
 

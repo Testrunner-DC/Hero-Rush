@@ -15,6 +15,7 @@
  * - 选发效果标注 `// TODO: 选发确认`
  */
 
+import type { BattleState } from "../state";
 import type { CardEffect, EffectContext, Modifier } from "./types";
 import { registerEffects, triggerEffectsByTiming } from "./registry";
 import * as H from "./helpers";
@@ -93,14 +94,35 @@ const sd01_002_attach: CardEffect = {
   },
   execute: (ctx: EffectContext) => {
     let state = ctx.state;
-    // TODO: 完整实现需要玩家选择宿主目标
-    // 简化版：结附到第一个我方场上角色
     const p = state.players[ctx.playerIdx];
-    let hostId: string | null = null;
-    for (const z of ["vanguard", "flankLeft", "flankRight", "rear"] as const) {
-      if (p.field[z].length > 0) {
-        hostId = p.field[z][0];
-        break;
+
+    // 确定宿主：玩家选择（应对窗口中无选择 UI，回退为自动选第一个）
+    let hostId: string | null = ctx.targets?.cardId ?? null;
+    if (!hostId && !state.pendingCounter) {
+      const candidates = C.getMyFieldCards(state, ctx.playerIdx).map((t) => t.id);
+      if (candidates.length === 0) return state;
+      if (candidates.length === 1) {
+        hostId = candidates[0];
+      } else {
+        // 挂起等待玩家选择宿主
+        return H.requestTargetSelection(state, {
+          effectCardId: ctx.cardId,
+          effectId: "SD01-002-0",
+          availableTargets: candidates,
+          minTargets: 1,
+          maxTargets: 1,
+          targetPlayerIdx: ctx.playerIdx,
+          prompt: "选择要结附「反浩克装甲」的我方角色",
+        });
+      }
+    }
+    if (!hostId) {
+      // 应对窗口中：自动选第一个我方场上角色
+      for (const z of ["vanguard", "flankLeft", "flankRight", "rear"] as const) {
+        if (p.field[z].length > 0) {
+          hostId = p.field[z][0];
+          break;
+        }
       }
     }
     if (!hostId) return state;
@@ -162,18 +184,34 @@ const sd01_003: CardEffect = {
   label: "战力削弱",
   execute: (ctx: EffectContext) => {
     let state = ctx.state;
-    // TODO: 完整实现需要玩家选择目标
-    // 简化版：降低敌方第一个场上角色本回合战力 -1000
-    const targets = C.getOpponentFieldCardsWithMaxLv(state, ctx.playerIdx, ctx.db, 99);
-    if (targets.length > 0) {
-      state = H.createModifier(state, targets[0].id, "power", -1000, "turn", ctx.cardId, ctx.db);
-      const card = ctx.db.cards.find((c) => c.id === targets[0].id);
-      state = {
-        ...state,
-        log: [...state.log, `⬇️ 「${card?.name ?? targets[0].id}」本回合战力-1000`],
-      };
+    const candidates = C.getOpponentFieldCardsWithMaxLv(state, ctx.playerIdx, ctx.db, 99).map((t) => t.id);
+    if (candidates.length === 0) return state;
+
+    // 确定目标：玩家选择（唯一候选时自动选定）
+    let targetId = ctx.targets?.cardId ?? null;
+    if (!targetId) {
+      if (candidates.length === 1) {
+        targetId = candidates[0];
+      } else {
+        return H.requestTargetSelection(state, {
+          effectCardId: ctx.cardId,
+          effectId: "SD01-003-0",
+          availableTargets: candidates,
+          minTargets: 1,
+          maxTargets: 1,
+          targetPlayerIdx: 1 - ctx.playerIdx,
+          prompt: "选择要削弱战力的敌方角色（本回合 -1000）",
+          triggerInfo: ctx.triggerInfo,
+        });
+      }
     }
-    return state;
+
+    state = H.createModifier(state, targetId, "power", -1000, "turn", ctx.cardId, ctx.db);
+    const card = ctx.db.cards.find((c) => c.id === targetId);
+    return {
+      ...state,
+      log: [...state.log, `⬇️ 「${card?.name ?? targetId}」本回合战力-1000`],
+    };
   },
 };
 
@@ -223,12 +261,28 @@ const sd01_005: CardEffect = {
   },
   execute: (ctx: EffectContext) => {
     // TODO: 选发确认 — 玩家可选择是否执行此效果
-    // TODO: 完整实现需要玩家选择 2 张基地卡
-    // 简化版：撤退前2张基地卡
     let state = ctx.state;
     const p = state.players[ctx.playerIdx];
     const allBase = [...p.baseCards, ...p.baseCovered];
-    const retreated = allBase.splice(0, 2);
+
+    // 确定要撤退的 2 张基地卡：玩家选择（恰好 2 张时自动选定）
+    let retreated = ctx.targets?.cardIds ?? null;
+    if (!retreated || retreated.length < 2) {
+      if (allBase.length === 2) {
+        retreated = allBase;
+      } else {
+        return H.requestTargetSelection(state, {
+          effectCardId: ctx.cardId,
+          effectId: "SD01-005-0",
+          availableTargets: allBase,
+          minTargets: 2,
+          maxTargets: 2,
+          targetPlayerIdx: ctx.playerIdx,
+          prompt: "选择要撤退的 2 张我方基地卡（若均为红色则抽 2 张）",
+          triggerInfo: ctx.triggerInfo,
+        });
+      }
+    }
 
     let allRed = true;
     for (const id of retreated) {
@@ -249,6 +303,82 @@ const sd01_005: CardEffect = {
 // ============================================================
 // SD01-006: 舍弃手牌的此卡：撤退我方战区1角色+我方基地1卡+敌方战区1张Lv5以下角色
 // ============================================================
+/**
+ * SD01-006 execute — 三阶段目标选择链
+ *
+ * chosen[0]=我方战区角色，chosen[1]=我方基地卡，chosen[2]=敌方Lv5以下角色（无候选则跳过）。
+ * 每阶段候选唯一时自动选定；全部确定后才舍弃此卡并结算撤退。
+ */
+function sd01_006_execute(ctx: EffectContext): BattleState {
+  let state = ctx.state;
+  const chosen = ctx.targets?.cardIds ?? [];
+  const p = state.players[ctx.playerIdx];
+
+  const advance = (next: string[]): BattleState =>
+    sd01_006_execute({ ...ctx, targets: { cardId: next[0], cardIds: next } });
+
+  // 阶段1：选我方战区角色
+  if (chosen.length < 1) {
+    const myField = C.getMyFieldCards(state, ctx.playerIdx).map((t) => t.id);
+    if (myField.length === 0) return state;
+    if (myField.length === 1) return advance([myField[0]]);
+    return H.requestTargetSelection(state, {
+      effectCardId: ctx.cardId,
+      effectId: "SD01-006-0",
+      availableTargets: myField,
+      minTargets: 1,
+      maxTargets: 1,
+      targetPlayerIdx: ctx.playerIdx,
+      prompt: "全面撤退（1/3）：选择要撤退的我方战区角色",
+    });
+  }
+
+  // 阶段2：选我方基地卡
+  if (chosen.length < 2) {
+    const allBase = [...p.baseCards, ...p.baseCovered];
+    if (allBase.length === 0) return state;
+    if (allBase.length === 1) return advance([...chosen, allBase[0]]);
+    return H.requestTargetSelection(state, {
+      effectCardId: ctx.cardId,
+      effectId: "SD01-006-0",
+      availableTargets: allBase,
+      minTargets: 1,
+      maxTargets: 1,
+      targetPlayerIdx: ctx.playerIdx,
+      collectedTargets: chosen,
+      prompt: "全面撤退（2/3）：选择要撤退的我方基地卡",
+    });
+  }
+
+  // 阶段3：选敌方Lv5以下角色（无候选则跳过此目标）
+  if (chosen.length < 3) {
+    const enemies = C.getOpponentFieldCardsWithMaxLv(state, ctx.playerIdx, ctx.db, 5).map((t) => t.id);
+    if (enemies.length === 1) return advance([...chosen, enemies[0]]);
+    if (enemies.length > 1) {
+      return H.requestTargetSelection(state, {
+        effectCardId: ctx.cardId,
+        effectId: "SD01-006-0",
+        availableTargets: enemies,
+        minTargets: 1,
+        maxTargets: 1,
+        targetPlayerIdx: 1 - ctx.playerIdx,
+        collectedTargets: chosen,
+        prompt: "全面撤退（3/3）：选择要撤退的敌方 Lv5 以下角色",
+      });
+    }
+    // enemies.length === 0 → 继续结算，仅撤退前两个目标
+  }
+
+  // 结算：舍弃此卡 + 依次撤退
+  state = H.discardFromHandToRetreat(state, ctx.cardId, ctx.playerIdx);
+  state = H.retreatCard(state, chosen[0], ctx.playerIdx, ctx.db);
+  state = H.retreatCard(state, chosen[1], ctx.playerIdx, ctx.db);
+  if (chosen[2]) {
+    state = H.retreatCard(state, chosen[2], 1 - ctx.playerIdx, ctx.db);
+  }
+  return state;
+}
+
 const sd01_006: CardEffect = {
   id: "SD01-006-0",
   cardNo: "SD01-006",
@@ -261,40 +391,7 @@ const sd01_006: CardEffect = {
     const hasMyBase = (p.baseCards.length + p.baseCovered.length) > 0;
     return hasMyField && hasMyBase;
   },
-  execute: (ctx: EffectContext) => {
-    let state = ctx.state;
-    // 舍弃此卡（从手牌移至撤退区）
-    state = H.discardFromHandToRetreat(state, ctx.cardId, ctx.playerIdx);
-
-    // TODO: 完整实现需要玩家选择目标
-    // 简化版：自动选择
-    // 1. 撤退我方战区第一个角色
-    const p = state.players[ctx.playerIdx];
-    let myFieldCard: string | null = null;
-    for (const z of ["vanguard", "flankLeft", "flankRight", "rear"] as const) {
-      if (p.field[z].length > 0) {
-        myFieldCard = p.field[z][0];
-        break;
-      }
-    }
-    if (myFieldCard) {
-      state = H.retreatCard(state, myFieldCard, ctx.playerIdx, ctx.db);
-    }
-
-    // 2. 撤退我方基地第一张
-    const allBaseP = [...state.players[ctx.playerIdx].baseCards, ...state.players[ctx.playerIdx].baseCovered];
-    if (allBaseP.length > 0) {
-      state = H.retreatCard(state, allBaseP[0], ctx.playerIdx, ctx.db);
-    }
-
-    // 3. 撤退敌方战区1张Lv5以下角色
-    const targets = C.getOpponentFieldCardsWithMaxLv(state, ctx.playerIdx, ctx.db, 5);
-    if (targets.length > 0) {
-      state = H.retreatCard(state, targets[0].id, 1 - ctx.playerIdx, ctx.db);
-    }
-
-    return state;
-  },
+  execute: sd01_006_execute,
 };
 
 // ============================================================
@@ -313,21 +410,51 @@ const sd01_007: CardEffect = {
   },
   execute: (ctx: EffectContext) => {
     // TODO: 选发确认 — 玩家可选择是否执行此效果
-    // TODO: 完整实现需要玩家选择手牌和目标
-    // 简化版：舍弃手牌中第一张非此卡的牌
     let state = ctx.state;
     const p = state.players[ctx.playerIdx];
-    const discardTarget = p.hand.find((id) => id !== ctx.cardId);
-    if (!discardTarget) return state;
+    const chosen = ctx.targets?.cardIds ?? [];
 
-    state = H.discardFromHandToRetreat(state, discardTarget, ctx.playerIdx);
+    const advance = (next: string[]): BattleState =>
+      sd01_007.execute({ ...ctx, targets: { cardId: next[0], cardIds: next } });
 
-    // 降低敌方 Lv5 以下第一张角色战力 -2000
-    const targets = C.getOpponentFieldCardsWithMaxLv(state, ctx.playerIdx, ctx.db, 5);
-    if (targets.length > 0) {
-      state = H.createModifier(state, targets[0].id, "power", -2000, "turn", ctx.cardId, ctx.db);
+    // 阶段1：选要舍弃的手牌
+    if (chosen.length < 1) {
+      const handCandidates = p.hand.filter((id) => id !== ctx.cardId);
+      if (handCandidates.length === 0) return state;
+      if (handCandidates.length === 1) return advance([handCandidates[0]]);
+      return H.requestTargetSelection(state, {
+        effectCardId: ctx.cardId,
+        effectId: "SD01-007-0",
+        availableTargets: handCandidates,
+        minTargets: 1,
+        maxTargets: 1,
+        targetPlayerIdx: ctx.playerIdx,
+        prompt: "选择要舍弃的 1 张手牌（1/2）",
+        triggerInfo: ctx.triggerInfo,
+      });
     }
 
+    // 阶段2：选敌方 Lv5 以下角色
+    if (chosen.length < 2) {
+      const enemies = C.getOpponentFieldCardsWithMaxLv(state, ctx.playerIdx, ctx.db, 5).map((t) => t.id);
+      if (enemies.length === 0) return state;
+      if (enemies.length === 1) return advance([...chosen, enemies[0]]);
+      return H.requestTargetSelection(state, {
+        effectCardId: ctx.cardId,
+        effectId: "SD01-007-0",
+        availableTargets: enemies,
+        minTargets: 1,
+        maxTargets: 1,
+        targetPlayerIdx: 1 - ctx.playerIdx,
+        collectedTargets: chosen,
+        prompt: "选择要削弱的敌方 Lv5 以下角色（2/2，本回合战力 -2000）",
+        triggerInfo: ctx.triggerInfo,
+      });
+    }
+
+    // 结算：舍弃手牌 + 目标 -2000
+    state = H.discardFromHandToRetreat(state, chosen[0], ctx.playerIdx);
+    state = H.createModifier(state, chosen[1], "power", -2000, "turn", ctx.cardId, ctx.db);
     return state;
   },
 };
@@ -529,10 +656,28 @@ const sd01_014: CardEffect = {
   execute: (ctx: EffectContext) => {
     // TODO: 选发确认 — 玩家可选择是否执行此效果
     let state = ctx.state;
-    const targets = C.getOpponentFieldCardsWithMaxLv(state, ctx.playerIdx, ctx.db, 3);
-    if (targets.length > 0) {
-      state = H.createModifier(state, targets[0].id, "power", -2000, "turn", ctx.cardId, ctx.db);
+    const candidates = C.getOpponentFieldCardsWithMaxLv(state, ctx.playerIdx, ctx.db, 3).map((t) => t.id);
+    if (candidates.length === 0) return state;
+
+    let targetId = ctx.targets?.cardId ?? null;
+    if (!targetId) {
+      if (candidates.length === 1) {
+        targetId = candidates[0];
+      } else {
+        return H.requestTargetSelection(state, {
+          effectCardId: ctx.cardId,
+          effectId: "SD01-014-0",
+          availableTargets: candidates,
+          minTargets: 1,
+          maxTargets: 1,
+          targetPlayerIdx: 1 - ctx.playerIdx,
+          prompt: "选择要削弱的敌方 Lv3 以下角色（本回合战力 -2000）",
+          triggerInfo: ctx.triggerInfo,
+        });
+      }
     }
+
+    state = H.createModifier(state, targetId, "power", -2000, "turn", ctx.cardId, ctx.db);
     return state;
   },
 };

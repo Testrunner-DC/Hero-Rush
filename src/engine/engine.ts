@@ -1546,25 +1546,17 @@ export function createGameReducer(db: CardDatabase) {
       if (effect.cost && !effect.cost(ctx)) continue;
 
       // 执行效果
+      const hadPending = !!newState.pendingTargetSelection;
       newState = effect.execute({ ...ctx, state: newState });
 
-      // faceDownAfterActive：将卡牌从场上盖伏至基地
+      // 效果挂起等待玩家选目标：faceDown/once 推迟到 SELECT_TARGETS 完成时处理
+      if (!hadPending && newState.pendingTargetSelection) {
+        break;
+      }
+
+      // faceDownAfterActive：将卡牌盖伏至基地
       if (effect.faceDownAfterActive) {
-        const np = [...newState.players] as typeof newState.players;
-        const npP = { ...np[playerIdx] };
-        const newField = { ...npP.field };
-        for (const z of ZONE_LIST) newField[z] = [...npP.field[z]];
-        let movedToBase = false;
-        for (const z of ZONE_LIST) {
-          if (newField[z].includes(cardId)) {
-            newField[z] = newField[z].filter((id) => id !== cardId);
-            np[playerIdx] = { ...npP, field: newField, baseCovered: [...npP.baseCovered, cardId] };
-            newState = { ...newState, players: np };
-            movedToBase = true;
-            break;
-          }
-        }
-        void movedToBase;
+        newState = applyFaceDownAfterActive(newState, playerIdx, cardId);
       }
 
       // 标记"回合1次"
@@ -1586,10 +1578,50 @@ export function createGameReducer(db: CardDatabase) {
   }
 
   /**
+   * faceDownAfterActive — 起动效果执行后将来源卡盖伏至基地
+   *
+   * - 卡在战区：移出战区 → baseCovered
+   * - 卡在基地正面（baseCards）：翻面 → baseCovered
+   */
+  function applyFaceDownAfterActive(
+    state: BattleState,
+    playerIdx: number,
+    cardId: string
+  ): BattleState {
+    const np = [...state.players] as typeof state.players;
+    const npP = { ...np[playerIdx] };
+
+    // 战区 → 盖伏至基地
+    for (const z of ZONE_LIST) {
+      if (npP.field[z].includes(cardId)) {
+        const newField = { ...npP.field };
+        for (const zz of ZONE_LIST) newField[zz] = [...npP.field[zz]];
+        newField[z] = newField[z].filter((id) => id !== cardId);
+        np[playerIdx] = { ...npP, field: newField, baseCovered: [...npP.baseCovered, cardId] };
+        return { ...state, players: np };
+      }
+    }
+
+    // 基地正面 → 翻面盖伏
+    if (npP.baseCards.includes(cardId)) {
+      np[playerIdx] = {
+        ...npP,
+        baseCards: npP.baseCards.filter((id) => id !== cardId),
+        baseCovered: [...npP.baseCovered, cardId],
+      };
+      return { ...state, players: np };
+    }
+
+    return state;
+  }
+
+  /**
    * SELECT_TARGETS — 玩家确认目标选择后，重新调用效果 execute
    *
-   * 从 pendingTargetSelection 中获取效果信息，将选中的目标通过 ctx.targets 传入，
-   * 重新调用 execute 执行效果主体。
+   * 从 pendingTargetSelection 中获取效果信息，将「之前阶段已收集目标 + 本次选择」
+   * 通过 ctx.targets 传入，重新调用 execute：
+   * - 效果完成（未再挂起）：标记 once、处理 faceDownAfterActive
+   * - 效果再次挂起（多阶段选择的下一阶段）：不做任何标记，等待下一次 SELECT_TARGETS
    */
   function handleSelectTargets(
     state: BattleState,
@@ -1607,29 +1639,47 @@ export function createGameReducer(db: CardDatabase) {
     const effect = cardEffects.find((e) => e.id === pts.effectId);
     if (!effect) return state;
 
-    // 查找卡牌所属玩家
+    // 查找卡牌所属玩家（挂起的效果卡可能已不在场上，如手牌起动，回退用 targetPlayerIdx 的对家逻辑不适用；
+    // 手牌/基地卡 findCardOwner 均可找到）
     const ownerIdx = findCardOwner(state, pts.effectCardId);
     if (ownerIdx < 0) return state;
 
+    // 合并多阶段已收集目标 + 本次选择
+    const allTargets = [...(pts.collectedTargets ?? []), ...targetCardIds];
+
+    // 先清除当前挂起，effect 若需要下一阶段会重新设置
+    const baseState: BattleState = { ...state, pendingTargetSelection: null };
+
     const ctx: EffectContext = {
-      state,
+      state: baseState,
       cardId: pts.effectCardId,
       playerIdx: ownerIdx,
       db,
       targets: {
-        cardId: targetCardIds[0],
-        cardIds: targetCardIds,
+        cardId: allTargets[0],
+        cardIds: allTargets,
       },
+      triggerInfo: pts.triggerInfo
+        ? {
+            event: pts.triggerInfo.event as NonNullable<EffectContext["triggerInfo"]>["event"],
+            sourceCardId: pts.triggerInfo.sourceCardId,
+            sourcePlayerIdx: pts.triggerInfo.sourcePlayerIdx,
+          }
+        : undefined,
     };
 
     // 执行效果
     let newState = effect.execute(ctx);
 
-    // 清除 pendingTargetSelection
-    newState = {
-      ...newState,
-      pendingTargetSelection: null,
-    };
+    // 效果再次挂起（多阶段选择）：等待下一次 SELECT_TARGETS，不做标记
+    if (newState.pendingTargetSelection) {
+      return checkpoint(newState);
+    }
+
+    // faceDownAfterActive：起动效果完成后盖伏来源卡
+    if (effect.faceDownAfterActive) {
+      newState = applyFaceDownAfterActive(newState, ownerIdx, pts.effectCardId);
+    }
 
     // 标记"回合1次"
     if (effect.once) {

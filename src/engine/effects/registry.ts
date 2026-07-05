@@ -196,10 +196,17 @@ export function triggerEffectsByTiming(
     }
 
     // 执行效果
+    const hadPending = !!currentState.pendingTargetSelection;
     currentState = effect.execute({
       ...ctx,
       state: currentState,
     });
+
+    // 效果挂起等待玩家选目标：once 标记推迟到 SELECT_TARGETS 完成时执行，
+    // 并停止后续效果（避免覆盖 pendingTargetSelection）
+    if (!hadPending && currentState.pendingTargetSelection) {
+      break;
+    }
 
     // 标记"回合1次"（与引擎层 handleActivateEffect 使用相同的 key 格式）
     if (effect.once) {

@@ -183,7 +183,7 @@ export interface BattleState {
     /** 需要选目标的卡效信息 */
     effectCardId: string;
     effectId: string;
-    /** 可选目标列表 cardId[] */
+    /** 可选目标列表：cardId[]，或 targetKind="zone" 时为战区 ID（Zone）列表 */
     availableTargets: string[];
     /** 已选目标数量 / 需选数量 */
     minTargets: number;
@@ -194,5 +194,17 @@ export interface BattleState {
     selectionType: "effect_target" | "retreat_target" | "base_reveal";
     /** 已选中的目标 cardId[]（UI 层维护） */
     selectedTargetIds: string[];
+    /** 目标类型：卡牌（默认）或战区 */
+    targetKind?: "card" | "zone";
+    /** 多阶段选择：之前阶段已确认的目标（引擎在重入 execute 时与本次选择合并） */
+    collectedTargets?: string[];
+    /** 给 UI 的选择提示文案 */
+    prompt?: string;
+    /** 触发型效果挂起时保存的触发信息（重入 execute 时恢复） */
+    triggerInfo?: {
+      event: string;
+      sourceCardId?: string;
+      sourcePlayerIdx?: number;
+    };
   } | null;
 }

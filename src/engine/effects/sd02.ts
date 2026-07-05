@@ -348,17 +348,29 @@ const sd02_007: CardEffect = {
   },
   execute: (ctx: EffectContext) => {
     let state = ctx.state;
-    // TODO: 完整实现需要玩家选择目标区域
-    // 简化版：放置到第一个空战区
     const p = state.players[ctx.playerIdx];
-    let targetZone: "vanguard" | "flankLeft" | "flankRight" | "rear" | null = null;
-    for (const z of ["vanguard", "flankLeft", "flankRight", "rear"] as const) {
-      if (p.field[z].length === 0) {
-        targetZone = z;
-        break;
+    const emptyZones = (["vanguard", "flankLeft", "flankRight", "rear"] as const)
+      .filter((z) => p.field[z].length === 0);
+    if (emptyZones.length === 0) return state;
+
+    // 确定放置区域：玩家选择（唯一空位时自动选定）
+    let targetZone = (ctx.targets?.cardId ?? null) as (typeof emptyZones)[number] | null;
+    if (!targetZone || !emptyZones.includes(targetZone)) {
+      if (emptyZones.length === 1) {
+        targetZone = emptyZones[0];
+      } else {
+        return H.requestTargetSelection(state, {
+          effectCardId: ctx.cardId,
+          effectId: "SD02-007-0",
+          availableTargets: [...emptyZones],
+          minTargets: 1,
+          maxTargets: 1,
+          targetPlayerIdx: ctx.playerIdx,
+          targetKind: "zone",
+          prompt: "选择「特殊进场」的放置战区",
+        });
       }
     }
-    if (!targetZone) return state;
 
     const np = [...state.players] as typeof state.players;
     np[ctx.playerIdx] = {
@@ -391,17 +403,25 @@ const sd02_008: CardEffect = {
   },
   execute: (ctx: EffectContext) => {
     let state = ctx.state;
-    // TODO: 完整实现需要玩家选择目标
-    // 简化版：提升我方第一个场上角色 R+1
-    const p = state.players[ctx.playerIdx];
-    let targetId: string | null = null;
-    for (const z of ["vanguard", "flankLeft", "flankRight", "rear"] as const) {
-      if (p.field[z].length > 0) {
-        targetId = p.field[z][0];
-        break;
+    const candidates = C.getMyFieldCards(state, ctx.playerIdx).map((t) => t.id);
+    if (candidates.length === 0) return state;
+
+    let targetId = ctx.targets?.cardId ?? null;
+    if (!targetId) {
+      if (candidates.length === 1) {
+        targetId = candidates[0];
+      } else {
+        return H.requestTargetSelection(state, {
+          effectCardId: ctx.cardId,
+          effectId: "SD02-008-0",
+          availableTargets: candidates,
+          minTargets: 1,
+          maxTargets: 1,
+          targetPlayerIdx: ctx.playerIdx,
+          prompt: "选择 R+1 的我方角色（本回合）",
+        });
       }
     }
-    if (!targetId) return state;
 
     state = H.createModifier(state, targetId, "r", 1, "turn", ctx.cardId, ctx.db);
     return {
@@ -428,16 +448,25 @@ const sd02_009: CardEffect = {
   },
   execute: (ctx: EffectContext) => {
     let state = ctx.state;
-    // 简化版：降低敌方第一个场上角色战力 -1000
-    const opp = state.players[1 - ctx.playerIdx];
-    let targetId: string | null = null;
-    for (const z of ["vanguard", "flankLeft", "flankRight", "rear"] as const) {
-      if (opp.field[z].length > 0) {
-        targetId = opp.field[z][0];
-        break;
+    const candidates = C.getMyFieldCards(state, 1 - ctx.playerIdx).map((t) => t.id);
+    if (candidates.length === 0) return state;
+
+    let targetId = ctx.targets?.cardId ?? null;
+    if (!targetId) {
+      if (candidates.length === 1) {
+        targetId = candidates[0];
+      } else {
+        return H.requestTargetSelection(state, {
+          effectCardId: ctx.cardId,
+          effectId: "SD02-009-0",
+          availableTargets: candidates,
+          minTargets: 1,
+          maxTargets: 1,
+          targetPlayerIdx: 1 - ctx.playerIdx,
+          prompt: "选择要削弱的敌方角色（本回合战力 -1000）",
+        });
       }
     }
-    if (!targetId) return state;
 
     state = H.createModifier(state, targetId, "power", -1000, "turn", ctx.cardId, ctx.db);
     return {
@@ -507,40 +536,78 @@ const sd02_011: CardEffect = {
     if (!defeatedCardId) return state;
     const defeatedLv = C.getCardLevel(ctx.db, defeatedCardId);
 
-    // 展示基地第一张盖卡
-    // TODO: 完整实现需要玩家选择展示哪张基地卡
-    const baseCardId = p.baseCovered[0];
-    const baseCard = ctx.db.cards.find((c) => c.id === baseCardId);
-    const baseLv = baseCard?.cost ?? 0;
+    const chosen = ctx.targets?.cardIds ?? [];
 
-    state = {
-      ...state,
-      log: [...state.log, `🔍 展示基地盖卡「${baseCard?.name ?? "?"}」(Lv${baseLv})`],
-    };
-
-    // 若同Lv则翻开（从基地移至场上）
-    // TODO: 完整实现需要玩家选择放置区域
-    // 简化版：翻开到第一个空战区
-    if (baseLv === defeatedLv) {
-      let targetZone: "vanguard" | "flankLeft" | "flankRight" | "rear" | null = null;
-      for (const z of ["vanguard", "flankLeft", "flankRight", "rear"] as const) {
-        if (p.field[z].length === 0) {
-          targetZone = z;
-          break;
-        }
-      }
-      if (targetZone) {
-        const np = [...state.players] as typeof state.players;
-        np[ctx.playerIdx] = {
-          ...p,
-          baseCovered: p.baseCovered.filter((id) => id !== baseCardId),
-          field: { ...p.field, [targetZone]: [...p.field[targetZone], baseCardId] },
-        };
-        state = { ...state, players: np };
+    // 阶段1：选择展示哪张基地盖卡（唯一时自动选定）
+    let baseCardId = chosen[0] ?? null;
+    if (!baseCardId) {
+      if (p.baseCovered.length === 1) {
+        baseCardId = p.baseCovered[0];
+      } else {
+        return H.requestTargetSelection(state, {
+          effectCardId: ctx.cardId,
+          effectId: "SD02-011-0",
+          availableTargets: [...p.baseCovered],
+          minTargets: 1,
+          maxTargets: 1,
+          targetPlayerIdx: ctx.playerIdx,
+          prompt: "选择要展示的基地盖卡（与战败角色同 Lv 则翻开进场）",
+          triggerInfo: ctx.triggerInfo,
+        });
       }
     }
 
-    return state;
+    const baseCard = ctx.db.cards.find((c) => c.id === baseCardId);
+    const baseLv = baseCard?.cost ?? 0;
+
+    // 若不同 Lv：仅展示
+    if (baseLv !== defeatedLv) {
+      return {
+        ...state,
+        log: [...state.log, `🔍 展示基地盖卡「${baseCard?.name ?? "?"}」(Lv${baseLv})，与战败角色不同Lv`],
+      };
+    }
+
+    // 同 Lv：阶段2 选择放置区域（唯一空位时自动选定；无空位则仅展示）
+    const emptyZones = (["vanguard", "flankLeft", "flankRight", "rear"] as const)
+      .filter((z) => p.field[z].length === 0);
+    let targetZone = (chosen[1] ?? null) as (typeof emptyZones)[number] | null;
+    if (!targetZone || !emptyZones.includes(targetZone)) {
+      if (emptyZones.length === 0) {
+        return {
+          ...state,
+          log: [...state.log, `🔍 展示基地盖卡「${baseCard?.name ?? "?"}」(Lv${baseLv})，但战区已满无法进场`],
+        };
+      }
+      if (emptyZones.length === 1) {
+        targetZone = emptyZones[0];
+      } else {
+        return H.requestTargetSelection(state, {
+          effectCardId: ctx.cardId,
+          effectId: "SD02-011-0",
+          availableTargets: [...emptyZones],
+          minTargets: 1,
+          maxTargets: 1,
+          targetPlayerIdx: ctx.playerIdx,
+          targetKind: "zone",
+          collectedTargets: [baseCardId],
+          prompt: `「${baseCard?.name ?? "?"}」同 Lv！选择翻开进场的战区`,
+          triggerInfo: ctx.triggerInfo,
+        });
+      }
+    }
+
+    const np = [...state.players] as typeof state.players;
+    np[ctx.playerIdx] = {
+      ...p,
+      baseCovered: p.baseCovered.filter((id) => id !== baseCardId),
+      field: { ...p.field, [targetZone]: [...p.field[targetZone], baseCardId] },
+    };
+    state = { ...state, players: np };
+    return {
+      ...state,
+      log: [...state.log, `🔍 展示基地盖卡「${baseCard?.name ?? "?"}」(Lv${baseLv})，同Lv翻开进场！`],
+    };
   },
 };
 
