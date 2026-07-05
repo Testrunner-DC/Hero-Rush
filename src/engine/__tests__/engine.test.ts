@@ -139,6 +139,24 @@ const sd02_016_card = makeCard({
   package_short: "SD02",
 });
 
+// 选发确认测试用卡
+const sd01_007_card = makeCard({
+  id: "SD01-007-C",
+  card_no: "SD01-007",
+  name: "削弱者",
+  cost: 2,
+  power: "1800",
+});
+const sd02_017_card = makeCard({
+  id: "SD02-017-C",
+  card_no: "SD02-017",
+  name: "先锋削弱者",
+  cost: 1,
+  power: "1200",
+  package: "SD02",
+  package_short: "SD02",
+});
+
 // 目标选择挂起测试用卡
 const sd01_006_card = makeCard({
   id: "SD01-006-C",
@@ -241,6 +259,8 @@ const mockDb: CardDatabase = {
     sd02_004_card,
     sd02_016_card,
     sd01_006_card,
+    sd01_007_card,
+    sd02_017_card,
     sd02_007_card,
     sd02_009_card,
     sd02_011_card,
@@ -1705,6 +1725,102 @@ describe("附加测试：辅助函数", () => {
     const result = moveHandCardsToDeckBottom(state, 0, ["A", "C"]);
     expect(result.players[0].hand).toEqual(["B"]);
     expect(result.players[0].deck).toEqual(["D", "E", "A", "C"]);
+  });
+});
+
+describe("10. 选发确认（pendingEffectConfirmation）", () => {
+  const reducer = createGameReducer(mockDb);
+
+  /** SD02-017 在场，敌方先锋有角色 → onSummon 触发选发 */
+  function makeOptionalState(): BattleState {
+    return makeBattleState({
+      players: [
+        makePlayer({
+          id: 1,
+          name: "P1",
+          deck: ["GEN-001"],
+          field: { vanguard: ["SD02-017-C"], flankLeft: [], flankRight: [], rear: [] },
+        }),
+        makePlayer({
+          id: 2,
+          name: "P2",
+          deck: ["GEN-001"],
+          field: { vanguard: ["GEN-002"], flankLeft: [], flankRight: [], rear: [] },
+        }),
+      ],
+    });
+  }
+
+  it("optional 触发效果 → 挂起确认，效果未执行", () => {
+    const s = triggerEffectsByTiming(makeOptionalState(), "SD02-017-C", "onSummon", mockDb);
+    expect(s.pendingEffectConfirmation).not.toBeNull();
+    expect(s.pendingEffectConfirmation!.effectId).toBe("SD02-017-0");
+    expect(s.pendingEffectConfirmation!.playerIdx).toBe(0);
+    // 效果未执行：无修改器
+    expect(s.modifiers.length).toBe(0);
+  });
+
+  it("CONFIRM_EFFECT → 效果执行", () => {
+    let s = triggerEffectsByTiming(makeOptionalState(), "SD02-017-C", "onSummon", mockDb);
+    s = reducer(s, { type: "CONFIRM_EFFECT", playerIdx: 0 })!;
+    expect(s.pendingEffectConfirmation).toBeNull();
+    expect(s.modifiers.some((m) => m.targetCardId === "GEN-002" && m.value === -1000)).toBe(true);
+  });
+
+  it("DECLINE_EFFECT → 不执行且不消耗", () => {
+    let s = triggerEffectsByTiming(makeOptionalState(), "SD02-017-C", "onSummon", mockDb);
+    s = reducer(s, { type: "DECLINE_EFFECT", playerIdx: 0 })!;
+    expect(s.pendingEffectConfirmation).toBeNull();
+    expect(s.modifiers.length).toBe(0);
+    expect(s.effectUsedThisTurn ?? []).not.toContain("SD02-017-SD02-017-0");
+  });
+
+  it("非决定者玩家无法确认/放弃", () => {
+    const s = triggerEffectsByTiming(makeOptionalState(), "SD02-017-C", "onSummon", mockDb);
+    const r1 = reducer(s, { type: "CONFIRM_EFFECT", playerIdx: 1 })!;
+    expect(r1.pendingEffectConfirmation).not.toBeNull();
+    const r2 = reducer(s, { type: "DECLINE_EFFECT", playerIdx: 1 })!;
+    expect(r2.pendingEffectConfirmation).not.toBeNull();
+  });
+
+  it("确认后转入目标选择的完整链（SD01-007：确认→选手牌→选敌方目标→结算）", () => {
+    const state = makeBattleState({
+      players: [
+        makePlayer({
+          id: 1,
+          name: "P1",
+          deck: ["GEN-001"],
+          hand: ["ATK-001", "DEF-001"],
+          field: { vanguard: ["SD01-007-C"], flankLeft: [], flankRight: [], rear: [] },
+        }),
+        makePlayer({
+          id: 2,
+          name: "P2",
+          deck: ["GEN-001"],
+          field: { vanguard: ["MECH-001"], flankLeft: ["MECH-002"], flankRight: [], rear: [] },
+        }),
+      ],
+    });
+
+    // onSummon 触发 → 选发确认
+    let s = triggerEffectsByTiming(state, "SD01-007-C", "onSummon", mockDb);
+    expect(s.pendingEffectConfirmation!.effectId).toBe("SD01-007-0");
+
+    // 确认 → 阶段1 选手牌
+    s = reducer(s, { type: "CONFIRM_EFFECT", playerIdx: 0 })!;
+    expect(s.pendingEffectConfirmation).toBeNull();
+    expect(s.pendingTargetSelection!.availableTargets.sort()).toEqual(["ATK-001", "DEF-001"]);
+
+    // 阶段2 选敌方目标
+    s = reducer(s, { type: "SELECT_TARGETS", playerIdx: 0, targetCardIds: ["ATK-001"] })!;
+    expect(s.pendingTargetSelection!.availableTargets.sort()).toEqual(["MECH-001", "MECH-002"]);
+
+    // 结算：舍弃 ATK-001，MECH-001 -2000
+    s = reducer(s, { type: "SELECT_TARGETS", playerIdx: 0, targetCardIds: ["MECH-001"] })!;
+    expect(s.pendingTargetSelection).toBeNull();
+    expect(s.players[0].hand).toEqual(["DEF-001"]);
+    expect(s.players[0].retreat).toContain("ATK-001");
+    expect(s.modifiers.some((m) => m.targetCardId === "MECH-001" && m.value === -2000)).toBe(true);
   });
 });
 

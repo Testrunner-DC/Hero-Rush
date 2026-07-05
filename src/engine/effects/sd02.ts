@@ -11,15 +11,54 @@
  * - 盖伏后起动：新增 `faceDownAfterActive: true`（SD02-005/008/009）
  * - antiMutualKill 关键词：新增 `keywords: ["antiMutualKill"]`（SD02-003_vanguard）
  * - 强袭能力：SD02-016 设置 `temporaryAbilities[cardId] = ["assault"]`
- * - 选发效果标注 `// TODO: 选发确认`（SD02-006_summon/010/015/017）
+ * - 选发效果已接入 `optional: true` 确认机制（SD02-006_summon/010/015/017）
+ * - 需选目标的效果已接入 pendingTargetSelection 挂起机制
  * - SD02-006_active 增加 Lv1 过滤
  */
 
+import type { BattleState } from "../state";
 import type { CardEffect, EffectContext, Modifier } from "./types";
 import { registerEffects, triggerEffectsByTiming } from "./registry";
 import * as H from "./helpers";
 import * as C from "./conditions";
 import { getEffectiveR } from "../cardUtils";
+
+/**
+ * SD02-010/015 共用：从撤退区选 1 张 Lv1 机械角色盖放进基地
+ *
+ * 多候选（去重后）时挂起目标选择；唯一候选自动选定。
+ */
+function mechRetreatToBase(ctx: EffectContext, effectId: string): BattleState {
+  const state = ctx.state;
+  const p = state.players[ctx.playerIdx];
+  if (p.baseCards.length + p.baseCovered.length >= 6) return state;
+
+  const mechCards = p.retreat.filter((id) => {
+    const card = ctx.db.cards.find((c) => c.id === id);
+    return card && card.cost === 1 && C.hasFeature(card, 3);
+  });
+  const unique = [...new Set(mechCards)];
+  if (unique.length === 0) return state;
+
+  let target = ctx.targets?.cardId ?? null;
+  if (!target) {
+    if (unique.length === 1) {
+      target = unique[0];
+    } else {
+      return H.requestTargetSelection(state, {
+        effectCardId: ctx.cardId,
+        effectId,
+        availableTargets: unique,
+        minTargets: 1,
+        maxTargets: 1,
+        targetPlayerIdx: ctx.playerIdx,
+        prompt: "选择要从撤退区盖放进基地的 Lv1 机械角色",
+        triggerInfo: ctx.triggerInfo,
+      });
+    }
+  }
+  return H.moveToBase(state, target, ctx.playerIdx, true);
+}
 
 // ============================================================
 // 辅助函数
@@ -253,23 +292,40 @@ const sd02_006_summon: CardEffect = {
   cardNo: "SD02-006",
   category: "trigger",
   trigger: "onSummon",
+  optional: true,
   label: "机械结附",
   triggerCondition: (ctx: EffectContext): boolean => {
     // 撤退区有 >=2 张 Lv1 机械角色
     return C.retreatCount(ctx.state, ctx.playerIdx, ctx.db, { maxLevel: 1, feature: 3 }) >= 2;
   },
   execute: (ctx: EffectContext) => {
-    // TODO: 选发确认 — 玩家可选择是否执行此效果
     let state = ctx.state;
     const p = state.players[ctx.playerIdx];
 
-    // 从撤退区找2张Lv1机械角色
+    // 从撤退区找Lv1机械角色（同名重复卡去重后供选择）
     const mechCards = p.retreat.filter((id) => {
       const card = ctx.db.cards.find((c) => c.id === id);
       return card && card.cost === 1 && C.hasFeature(card, 3);
     });
+    const uniqueMechs = [...new Set(mechCards)];
 
-    const toAttach = mechCards.slice(0, Math.min(2, mechCards.length));
+    // 确定结附目标：玩家选择 2 张（候选恰好可全选时自动选定）
+    let toAttach = ctx.targets?.cardIds ?? null;
+    if (!toAttach || toAttach.length < 2) {
+      if (uniqueMechs.length > 2) {
+        return H.requestTargetSelection(state, {
+          effectCardId: ctx.cardId,
+          effectId: "SD02-006-0",
+          availableTargets: uniqueMechs,
+          minTargets: 2,
+          maxTargets: 2,
+          targetPlayerIdx: ctx.playerIdx,
+          prompt: "选择要从撤退区结附的 2 张 Lv1 机械角色",
+          triggerInfo: ctx.triggerInfo,
+        });
+      }
+      toAttach = mechCards.slice(0, Math.min(2, mechCards.length));
+    }
     for (const id of toAttach) {
       // 从撤退区移除
       const np = [...state.players] as typeof state.players;
@@ -485,27 +541,13 @@ const sd02_010: CardEffect = {
   cardNo: "SD02-010",
   category: "trigger",
   trigger: "onSummon",
+  optional: true,
   label: "机械回收",
   triggerCondition: (ctx: EffectContext): boolean => {
     return C.retreatCount(ctx.state, ctx.playerIdx, ctx.db, { maxLevel: 1, feature: 3 }) > 0;
   },
-  execute: (ctx: EffectContext) => {
-    // TODO: 选发确认 — 玩家可选择是否执行此效果
-    let state = ctx.state;
-    const p = state.players[ctx.playerIdx];
-
-    // 从撤退区找1张Lv1机械角色
-    const target = p.retreat.find((id) => {
-      const card = ctx.db.cards.find((c) => c.id === id);
-      return card && card.cost === 1 && C.hasFeature(card, 3);
-    });
-
-    if (target && (p.baseCards.length + p.baseCovered.length) < 6) {
-      state = H.moveToBase(state, target, ctx.playerIdx, true);
-    }
-
-    return state;
-  },
+  execute: (ctx: EffectContext) =>
+    mechRetreatToBase(ctx, "SD02-010-0"),
 };
 
 // ============================================================
@@ -648,26 +690,13 @@ const sd02_015: CardEffect = {
   cardNo: "SD02-015",
   category: "trigger",
   trigger: "onSummon",
+  optional: true,
   label: "机械回收",
   triggerCondition: (ctx: EffectContext): boolean => {
     return C.retreatCount(ctx.state, ctx.playerIdx, ctx.db, { maxLevel: 1, feature: 3 }) > 0;
   },
-  execute: (ctx: EffectContext) => {
-    // TODO: 选发确认 — 玩家可选择是否执行此效果
-    let state = ctx.state;
-    const p = state.players[ctx.playerIdx];
-
-    const target = p.retreat.find((id) => {
-      const card = ctx.db.cards.find((c) => c.id === id);
-      return card && card.cost === 1 && C.hasFeature(card, 3);
-    });
-
-    if (target && (p.baseCards.length + p.baseCovered.length) < 6) {
-      state = H.moveToBase(state, target, ctx.playerIdx, true);
-    }
-
-    return state;
-  },
+  execute: (ctx: EffectContext) =>
+    mechRetreatToBase(ctx, "SD02-015-0"),
 };
 
 // ============================================================
@@ -706,13 +735,13 @@ const sd02_017: CardEffect = {
   cardNo: "SD02-017",
   category: "trigger",
   trigger: "onSummon",
+  optional: true,
   label: "先锋削弱",
   triggerCondition: (ctx: EffectContext): boolean => {
     // 敌方先锋区有角色
     return ctx.state.players[1 - ctx.playerIdx].field.vanguard.length > 0;
   },
   execute: (ctx: EffectContext) => {
-    // TODO: 选发确认 — 玩家可选择是否执行此效果
     let state = ctx.state;
     const oppVanguard = state.players[1 - ctx.playerIdx].field.vanguard;
     if (oppVanguard.length > 0) {

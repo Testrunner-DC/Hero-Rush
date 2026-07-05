@@ -12,7 +12,8 @@
  * - 条件修正：SD01-004 增加敌方回合检查，SD01-008 修正双方 Lv4+ 检查逻辑
  * - 撤退逻辑修正：SD01-002 改为撤退1张其他结附卡
  * - SD01-016 activeSource 从 "hand" 改为 "field"，更新 execute 为转移结附逻辑
- * - 选发效果标注 `// TODO: 选发确认`
+ * - 选发效果已接入 `optional: true` 确认机制（SD01-001/005/007/014/018）
+ * - 需选目标的效果已接入 pendingTargetSelection 挂起机制
  */
 
 import type { BattleState } from "../state";
@@ -45,6 +46,7 @@ const sd01_001: CardEffect = {
   category: "trigger",
   trigger: "onAttached",
   once: true,
+  optional: true,
   label: "反浩克装甲·裁剪",
   triggerCondition: (ctx: EffectContext): boolean => {
     // 被结附时且敌方有 Lv5+ 角色
@@ -53,25 +55,40 @@ const sd01_001: CardEffect = {
     return C.getOpponentFieldCardsWithMinLv(ctx.state, ctx.playerIdx, ctx.db, 5).length > 0;
   },
   execute: (ctx: EffectContext) => {
-    // TODO: 选发确认 — 玩家可选择是否执行此效果
-    // 简化版：自动执行
     let state = ctx.state;
     const attachments = state.attachments[ctx.cardId] ?? [];
     const totalAttachLv = attachments.reduce((s, id) => s + C.getCardLevel(ctx.db, id), 0);
+
+    // 确定裁剪目标：玩家选择（唯一候选时自动选定）
+    const candidates = [...new Set(
+      C.getOpponentFieldCardsWithMaxLv(state, ctx.playerIdx, ctx.db, totalAttachLv).map((t) => t.id)
+    )];
+    if (candidates.length === 0) return state;
+    let targetId = ctx.targets?.cardId ?? null;
+    if (!targetId) {
+      if (candidates.length === 1) {
+        targetId = candidates[0];
+      } else {
+        return H.requestTargetSelection(state, {
+          effectCardId: ctx.cardId,
+          effectId: "SD01-001-0",
+          availableTargets: candidates,
+          minTargets: 1,
+          maxTargets: 1,
+          targetPlayerIdx: 1 - ctx.playerIdx,
+          prompt: `选择要裁剪的敌方角色（Lv≤${totalAttachLv}）`,
+          triggerInfo: ctx.triggerInfo,
+        });
+      }
+    }
 
     // 撤退所有结附卡
     for (const aid of attachments) {
       state = H.retreatCard(state, aid, ctx.playerIdx, ctx.db);
     }
 
-    // 裁剪敌方 1 张 Lv <= totalAttachLv 的角色（选择最低Lv的）
-    const targets = C.getOpponentFieldCardsWithMaxLv(state, ctx.playerIdx, ctx.db, totalAttachLv);
-    if (targets.length > 0) {
-      // 按 Lv 升序排列，选择最低Lv的
-      const sorted = targets.sort((a, b) => C.getCardLevel(ctx.db, a.id) - C.getCardLevel(ctx.db, b.id));
-      state = H.trimCard(state, sorted[0].id, 1 - ctx.playerIdx, ctx.db);
-    }
-
+    // 裁剪所选目标
+    state = H.trimCard(state, targetId, 1 - ctx.playerIdx, ctx.db);
     return state;
   },
 };
@@ -255,12 +272,12 @@ const sd01_005: CardEffect = {
   cardNo: "SD01-005",
   category: "trigger",
   trigger: "onSummon",
+  optional: true,
   label: "基地撤退+抽卡",
   triggerCondition: (ctx: EffectContext): boolean => {
     return (ctx.state.players[ctx.playerIdx].baseCards.length + ctx.state.players[ctx.playerIdx].baseCovered.length) >= 2;
   },
   execute: (ctx: EffectContext) => {
-    // TODO: 选发确认 — 玩家可选择是否执行此效果
     let state = ctx.state;
     const p = state.players[ctx.playerIdx];
     const allBase = [...p.baseCards, ...p.baseCovered];
@@ -403,13 +420,13 @@ const sd01_007: CardEffect = {
   cardNo: "SD01-007",
   category: "trigger",
   trigger: "onSummon",
+  optional: true,
   label: "战力削弱",
   triggerCondition: (ctx: EffectContext): boolean => {
     return ctx.state.players[ctx.playerIdx].hand.length > 1 &&
       C.getOpponentFieldCardsWithMaxLv(ctx.state, ctx.playerIdx, ctx.db, 5).length > 0;
   },
   execute: (ctx: EffectContext) => {
-    // TODO: 选发确认 — 玩家可选择是否执行此效果
     let state = ctx.state;
     const p = state.players[ctx.playerIdx];
     const chosen = ctx.targets?.cardIds ?? [];
@@ -649,12 +666,12 @@ const sd01_014: CardEffect = {
   cardNo: "SD01-014",
   category: "trigger",
   trigger: "onSummon",
+  optional: true,
   label: "战力削弱",
   triggerCondition: (ctx: EffectContext): boolean => {
     return C.fieldCount(ctx.state, ctx.playerIdx) <= C.opponentFieldCount(ctx.state, ctx.playerIdx);
   },
   execute: (ctx: EffectContext) => {
-    // TODO: 选发确认 — 玩家可选择是否执行此效果
     let state = ctx.state;
     const candidates = C.getOpponentFieldCardsWithMaxLv(state, ctx.playerIdx, ctx.db, 3).map((t) => t.id);
     if (candidates.length === 0) return state;
@@ -843,9 +860,9 @@ const sd01_018: CardEffect = {
   cardNo: "SD01-018",
   category: "trigger",
   trigger: "onRetreat",
+  optional: true,
   label: "撤退回收",
   execute: (ctx: EffectContext) => {
-    // TODO: 选发确认 — 玩家可选择是否执行此效果
     let state = ctx.state;
     const p = state.players[ctx.playerIdx];
 

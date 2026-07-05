@@ -178,6 +178,23 @@ export interface BattleState {
 
   // ===== Q7 新增字段：目标选择 =====
 
+  /** 待处理的选发确认（optional 触发效果满足条件时设置，等待玩家决定是否发动） */
+  pendingEffectConfirmation?: {
+    /** 效果来源卡 ID */
+    effectCardId: string;
+    effectId: string;
+    /** 决定者（效果所有者）玩家 idx */
+    playerIdx: number;
+    /** 给 UI 的提示文案 */
+    prompt: string;
+    /** 触发信息（确认后重入 execute 时恢复） */
+    triggerInfo?: {
+      event: string;
+      sourceCardId?: string;
+      sourcePlayerIdx?: number;
+    };
+  } | null;
+
   /** 待处理的目标选择（当卡效需要玩家手动选择目标时设置） */
   pendingTargetSelection?: {
     /** 需要选目标的卡效信息 */

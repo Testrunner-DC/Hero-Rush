@@ -146,6 +146,8 @@ export interface CardEffect {
   targetSpec?: TargetSpec;
   /** 是否一次性效果 */
   once?: boolean;
+  /** 选发效果（规则文本"可以…"）：触发条件满足时先弹确认窗口，玩家同意才执行 */
+  optional?: boolean;
   /** 显示名称 */
   label?: string;
 

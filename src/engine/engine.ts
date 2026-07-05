@@ -199,6 +199,10 @@ export function createGameReducer(db: CardDatabase) {
         return handleSelectTargets(state, action.playerIdx, action.targetCardIds);
       case "CANCEL_TARGET_SELECTION":
         return handleCancelTargetSelection(state, action.playerIdx);
+      case "CONFIRM_EFFECT":
+        return handleConfirmEffect(state, action.playerIdx);
+      case "DECLINE_EFFECT":
+        return handleDeclineEffect(state, action.playerIdx);
       default:
         return state;
     }
@@ -1708,6 +1712,71 @@ export function createGameReducer(db: CardDatabase) {
       ...state,
       pendingTargetSelection: null,
       log: [...state.log, "❌ 取消目标选择"],
+    });
+  }
+
+  /**
+   * CONFIRM_EFFECT — 玩家确认发动挂起的选发效果
+   *
+   * 清除 pendingEffectConfirmation 后执行效果本体：
+   * - 效果完成：标记 once
+   * - 效果挂起目标选择：等待 SELECT_TARGETS，once 推迟
+   */
+  function handleConfirmEffect(state: BattleState, playerIdx: number): BattleState {
+    const pec = state.pendingEffectConfirmation;
+    if (!pec || pec.playerIdx !== playerIdx) return state;
+
+    const card = db.cards.find((c) => c.id === pec.effectCardId);
+    if (!card) return state;
+    const effect = getEffectsByCardNo(card.card_no).find((e) => e.id === pec.effectId);
+    if (!effect) return state;
+
+    const baseState: BattleState = { ...state, pendingEffectConfirmation: null };
+    const ctx: EffectContext = {
+      state: baseState,
+      cardId: pec.effectCardId,
+      playerIdx: pec.playerIdx,
+      db,
+      triggerInfo: pec.triggerInfo
+        ? {
+            event: pec.triggerInfo.event as NonNullable<EffectContext["triggerInfo"]>["event"],
+            sourceCardId: pec.triggerInfo.sourceCardId,
+            sourcePlayerIdx: pec.triggerInfo.sourcePlayerIdx,
+          }
+        : undefined,
+    };
+
+    let newState = effect.execute(ctx);
+
+    // 效果转入目标选择挂起：once 标记推迟到 SELECT_TARGETS 完成时
+    if (newState.pendingTargetSelection) {
+      return checkpoint(newState);
+    }
+
+    if (effect.once) {
+      const usedKey = `${card.card_no}-${effect.id}`;
+      newState = {
+        ...newState,
+        effectUsedThisTurn: [...(newState.effectUsedThisTurn ?? []), usedKey],
+      };
+    }
+
+    return checkpoint(newState);
+  }
+
+  /**
+   * DECLINE_EFFECT — 玩家放弃发动挂起的选发效果
+   *
+   * 清除 pendingEffectConfirmation，不执行、不消耗"回合1次"。
+   */
+  function handleDeclineEffect(state: BattleState, playerIdx: number): BattleState {
+    const pec = state.pendingEffectConfirmation;
+    if (!pec || pec.playerIdx !== playerIdx) return state;
+    const card = db.cards.find((c) => c.id === pec.effectCardId);
+    return checkpoint({
+      ...state,
+      pendingEffectConfirmation: null,
+      log: [...state.log, `⏭️ 放弃发动「${card?.name ?? "?"}」的效果`],
     });
   }
 }

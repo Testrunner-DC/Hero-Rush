@@ -195,6 +195,24 @@ export function triggerEffectsByTiming(
       continue;
     }
 
+    // 选发效果：先挂起等待玩家确认（CONFIRM_EFFECT 后由引擎执行）
+    if (effect.optional) {
+      return {
+        ...currentState,
+        pendingEffectConfirmation: {
+          effectCardId: cardId,
+          effectId: effect.id,
+          playerIdx: ownerIdx,
+          prompt: `是否发动「${card.name}」的效果【${effect.label ?? effect.id}】？`,
+          triggerInfo: {
+            event: timing,
+            sourceCardId: sourceCardId ?? cardId,
+            sourcePlayerIdx: sourcePlayerIdx ?? ownerIdx,
+          },
+        },
+      };
+    }
+
     // 执行效果
     const hadPending = !!currentState.pendingTargetSelection;
     currentState = effect.execute({
@@ -242,6 +260,10 @@ export function triggerAllFieldEffects(
 
   for (const z of ZONE_LIST) {
     for (const cardId of p.field[z]) {
+      // 已有效果挂起（选发确认/目标选择）时停止触发后续卡，避免覆盖挂起状态
+      if (currentState.pendingEffectConfirmation || currentState.pendingTargetSelection) {
+        return currentState;
+      }
       currentState = triggerEffectsByTiming(currentState, cardId, timing, db);
     }
   }
@@ -272,6 +294,10 @@ export function triggerAllyDefeatedEffects(
   for (const z of ZONE_LIST) {
     for (const cardId of p.field[z]) {
       if (cardId === defeatedCardId) continue;
+      // 已有效果挂起（选发确认/目标选择）时停止触发后续卡，避免覆盖挂起状态
+      if (currentState.pendingEffectConfirmation || currentState.pendingTargetSelection) {
+        return currentState;
+      }
       currentState = triggerEffectsByTiming(
         currentState,
         cardId,

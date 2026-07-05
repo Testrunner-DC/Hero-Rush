@@ -77,7 +77,12 @@ export type GameAction =
   /** 玩家选择目标后确认 */
   | { type: "SELECT_TARGETS"; playerIdx: number; targetCardIds: string[] }
   /** 取消目标选择 */
-  | { type: "CANCEL_TARGET_SELECTION"; playerIdx: number };
+  | { type: "CANCEL_TARGET_SELECTION"; playerIdx: number }
+  // ===== 选发确认（optional 触发效果） =====
+  /** 确认发动挂起的选发效果 */
+  | { type: "CONFIRM_EFFECT"; playerIdx: number }
+  /** 放弃发动挂起的选发效果 */
+  | { type: "DECLINE_EFFECT"; playerIdx: number };
 
 // ============================================================
 // 事件系统类型
