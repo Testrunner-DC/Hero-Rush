@@ -13,11 +13,9 @@ import { triggerEffectsByTiming } from "./registry";
 /** 战区列表 */
 const ZONE_LIST: Zone[] = ["vanguard", "flankLeft", "flankRight", "rear"];
 
-/** 生成唯一 ID */
-let modIdCounter = 0;
-export function genModifierId(): string {
-  modIdCounter++;
-  return `mod-${Date.now()}-${modIdCounter}`;
+/** 生成确定性修改器 ID —— 基于已有修改器数量，联机双端一致 */
+export function genModifierId(state: { modifiers: { id: string }[] }): string {
+  return `mod-${state.modifiers.length}`;
 }
 
 // ============================================================
@@ -415,7 +413,7 @@ export function createModifier(
   db?: CardDatabase
 ): BattleState {
   const modifier: Modifier = {
-    id: genModifierId(),
+    id: genModifierId(state),
     targetCardId,
     type,
     value,
