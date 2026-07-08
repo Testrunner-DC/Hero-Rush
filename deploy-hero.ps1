@@ -40,14 +40,23 @@ git push origin main
 if ($LASTEXITCODE -ne 0) { Die "git push 失败,已中止(未部署)。请重试。" }
 
 Write-Host "===== [4/4] 触发香港重建 + 验证 =====" -ForegroundColor Cyan
-# 守卫: 代码里的 Supabase 客户端(src/lib/supabase.ts)在无凭据时会让整站白屏(2026-07-04/07-06 两次事故)。
-# 服务器必须先配好 /opt/hero-rush/.env(VITE_SUPABASE_URL/ANON_KEY)才允许部署含 Supabase 的版本。
+# 守卫: Supabase 凭据
 ssh $SRV "test -f /opt/hero-rush/.env"
 if ($LASTEXITCODE -ne 0) {
-  Die "服务器缺少 /opt/hero-rush/.env(Supabase 凭据),部署最新版会导致线上白屏,已中止。`n拿到协作者的凭据后,先在服务器创建 .env 再重新部署(参见 D:\Self\CYJZ\给协作者-Supabase凭据获取指南.md)。"
+  Die "服务器缺少 /opt/hero-rush/.env(Supabase 凭据),部署最新版会导致线上白屏,已中止。"
 }
+# 前端部署
 ssh $SRV "cd /opt/hero-rush && git checkout main 2>/dev/null; git pull && npm install --no-audit --no-fund && npm run build"
-if ($LASTEXITCODE -ne 0) { Die "香港构建报错,线上仍是旧版本。请查上方输出。" }
+if ($LASTEXITCODE -ne 0) { Die "前端构建报错。" }
+
+# 服务端(联机中继)部署
+Write-Host "  --> 构建联机服务端..." -ForegroundColor Yellow
+ssh $SRV "cd /opt/hero-rush/server && npm install --no-audit --no-fund && npx tsc" 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) { Die "服务端构建报错。" }
+
+# 确保 systemd 服务和 Caddy 代理已配置（只首次执行）
+Write-Host "  --> 检查联机服务..." -ForegroundColor Yellow
+ssh $SRV "bash /opt/hero-rush/server/deploy-server.sh" 2>&1 | Out-Null
 
 # 用 curl.exe --noproxy 绕过本机代理(127.0.0.1:9098),否则代理会把直连香港的请求误判为失败
 $code = & curl.exe -s --noproxy '*' -o NUL -w "%{http_code}" -L "https://hero.grand-umi.com/"
