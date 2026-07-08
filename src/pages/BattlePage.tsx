@@ -16,6 +16,7 @@ import StatRow from "../components/battle/StatRow";
 import CardDetailPanel from "../components/battle/CardDetailPanel";
 import PlayerArea from "../components/battle/PlayerArea";
 import { ZONE_LIST, ZONE_LABELS, PHASE_LABELS, type ActionMode } from "../components/battle/constants";
+import OnlineBattleLobby from "../components/OnlineBattleLobby";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Types
@@ -28,6 +29,7 @@ interface BattlePageProps {
 }
 
 type LobbyPhase = "lobby" | "setup";
+type GameMode = "local" | "online";
 type FirstPlayerChoice = "random" | "p1" | "p2";
 
 /** Precon JSON format (minimal) */
@@ -45,9 +47,10 @@ interface BattleLobbyProps {
   savedDecks: Deck[];
   cardMap: Map<string, Card>;
   onStart: (deck: PreselectedDeck, firstPlayer: FirstPlayerChoice) => void;
+  onSwitchMode: () => void;
 }
 
-function BattleLobby({ db, savedDecks, cardMap, onStart }: BattleLobbyProps) {
+function BattleLobby({ db, savedDecks, cardMap, onStart, onSwitchMode }: BattleLobbyProps) {
   const [selectedDeck, setSelectedDeck] = useState<string | null>(null);
   const [firstPlayer, setFirstPlayer] = useState<FirstPlayerChoice>("random");
   const [preconData, setPreconData] = useState<PreconData[]>([]);
@@ -130,6 +133,18 @@ function BattleLobby({ db, savedDecks, cardMap, onStart }: BattleLobbyProps) {
             <span className="text-msa-600">⚔</span>
             对战大厅
           </h1>
+          {/* 模式切换 */}
+          <div className="flex justify-center gap-2 mt-2">
+            <span className="px-3 py-1 rounded bg-msa-600 text-white text-xs font-bold">
+              🏠 本地
+            </span>
+            <button
+              onClick={onSwitchMode}
+              className="px-3 py-1 rounded bg-stone-100 text-stone-500 text-xs font-medium hover:bg-stone-200 transition"
+            >
+              🌐 联机对战
+            </button>
+          </div>
           <p className="text-sm text-stone-400 mt-1.5">
             选择卡组和先后手，开始一场对战
           </p>
@@ -298,6 +313,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
 
   // ===== 大厅状态 =====
   const [lobbyPhase, setLobbyPhase] = useState<LobbyPhase>("lobby");
+  const [gameMode, setGameMode] = useState<GameMode>("local");
   const [preselectedDeck, setPreselectedDeck] = useState<PreselectedDeck | null>(null);
   const [firstPlayerChoice, setFirstPlayerChoice] = useState<FirstPlayerChoice>("random");
 
@@ -331,12 +347,24 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
 
   // === 大厅阶段 ===
   if (!state && lobbyPhase === "lobby") {
+    // 联机模式
+    if (gameMode === "online") {
+      return (
+        <OnlineBattleLobby
+          db={db}
+          savedDecks={savedDecks}
+          cardMap={cardMap}
+          onBack={() => setGameMode("local")}
+        />
+      );
+    }
     return (
       <BattleLobby
         db={db}
         savedDecks={savedDecks}
         cardMap={cardMap}
         onStart={handleLobbyStart}
+        onSwitchMode={() => setGameMode("online")}
       />
     );
   }
