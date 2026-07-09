@@ -34,7 +34,7 @@ function getDefaultWsUrl(): string {
   const host = window.location.hostname;
   // 生产环境走 Caddy 反代
   if (host === "hero.grand-umi.com" || host === "grand-umi.com") {
-    return `wss://${host}/ws`;
+    return `wss://${host}/ws/`;
   }
   // 本地开发
   return `ws://${host}:8081`;
