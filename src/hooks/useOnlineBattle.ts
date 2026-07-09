@@ -6,9 +6,14 @@
  * - 服务端盖章（seq + playerIdx）广播回来后才 apply
  * - 对手操作亦由服务端广播送达后 apply
  *
+ * 自动连接：根据页面 hostname 推导 WebSocket URL，组件挂载后自动连接。
+ *   生产 (hero.grand-umi.com) → wss://hero.grand-umi.com/ws
+ *   本地开发 (localhost)      → ws://localhost:8081
+ *   其他自部署                 → ws://{hostname}:8081
+ *
  * 连接状态自动机：
  *   idle → connecting → queuing → matched → inGame
- *                     → error（连接失败 / 匹配超时）
+ *                     → error（连接失败）
  */
 
 import { useState, useRef, useCallback, useEffect, useReducer } from "react";
@@ -23,6 +28,17 @@ import {
   type Zone,
 } from "../engine";
 import type { ServerMessage } from "../types/protocol";
+
+/** 根据当前页面 hostname 自动推导 WebSocket URL */
+function getDefaultWsUrl(): string {
+  const host = window.location.hostname;
+  // 生产环境走 Caddy 反代
+  if (host === "hero.grand-umi.com" || host === "grand-umi.com") {
+    return `wss://${host}/ws`;
+  }
+  // 本地开发
+  return `ws://${host}:8081`;
+}
 
 // ============================================================
 // 状态类型
@@ -46,10 +62,16 @@ export function useOnlineBattle(db: CardDatabase) {
   const wsRef = useRef<WebSocket | null>(null);
   const lastSeqRef = useRef(0);
   const playerIdxRef = useRef<0 | 1>(0);
+  const connectedRef = useRef(false);
 
-  // ===== 连接 =====
-  const connect = useCallback((url: string) => {
-    if (wsRef.current) return;
+  // ===== 自动连接（组件挂载后建立 WebSocket） =====
+  const urlRef = useRef(getDefaultWsUrl());
+
+  useEffect(() => {
+    if (connectedRef.current) return;
+    connectedRef.current = true;
+
+    const url = urlRef.current;
     setStatus({ type: "connecting" });
 
     try {
@@ -169,7 +191,6 @@ export function useOnlineBattle(db: CardDatabase) {
     dispatch,
     playerIdx: playerIdxRef.current,
     isMyTurn,
-    connect,
     joinQueue,
     sendAction,
     disconnect,
