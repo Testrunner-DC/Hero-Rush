@@ -22,7 +22,7 @@ export type ClientMessage =
 export type ServerMessage =
   | { type: "QUEUE_STATUS"; position: number }
   | { type: "MATCHED"; roomId: string; playerIndex: 0 | 1; opponentName: string }
-  | { type: "GAME_START"; deck: string[]; rushDeck: string[]; opponentName: string }
+  | { type: "GAME_START"; deck: string[]; rushDeck: string[]; opponentDeck: string[]; opponentRushDeck: string[]; opponentName: string; playerIndex: 0 | 1 }
   | { type: "GAME_ACTION"; seq: number; playerIdx: number; action: unknown }
   | { type: "OPPONENT_DISCONNECTED" }
   | { type: "ERROR"; message: string }

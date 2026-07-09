@@ -1,30 +1,24 @@
 /**
  * ★ useOnlineBattle —— 联机对战契约层
  *
- * 与 useBattle 共享同样的 reducer + 预校验逻辑，但 dispatch 流程不同：
- * - 本地操作：不直接 dispatch，打包后发送服务端
+ * 与 useBattle 共享同样的 reducer，但 dispatch 流程不同：
+ * - 本地操作：不直接 dispatch，先发服务端
  * - 服务端盖章（seq + playerIdx）广播回来后才 apply
  * - 对手操作亦由服务端广播送达后 apply
  *
- * 自动连接：根据页面 hostname 推导 WebSocket URL，组件挂载后自动连接。
- *   生产 (hero.grand-umi.com) → wss://hero.grand-umi.com/ws
- *   本地开发 (localhost)      → ws://localhost:8081
- *   其他自部署                 → ws://{hostname}:8081
+ * 配对成功后 P1 创建初始 BattleState（洗牌/发牌/先后手），
+ * 通过中继以 SETUP_COMPLETE action 同步给双端——保证开局完全一致。
  *
- * 连接状态自动机：
- *   idle → connecting → queuing → matched → inGame
- *                     → error（连接失败）
+ * 自动连接：根据页面 hostname 推导 WebSocket URL
  */
 
 import { useState, useRef, useCallback, useEffect, useReducer } from "react";
-import type { CardDatabase, Card, DeckEntry } from "../types/card";
+import type { CardDatabase } from "../types/card";
 import {
   createGameReducer,
-  canZoneAttack,
-  ZONE_LIST,
   type BattleState,
   type GameAction,
-  type TurnPhase,
+  type PlayerState,
   type Zone,
 } from "../engine";
 import type { ServerMessage } from "../types/protocol";
@@ -32,11 +26,9 @@ import type { ServerMessage } from "../types/protocol";
 /** 根据当前页面 hostname 自动推导 WebSocket URL */
 function getDefaultWsUrl(): string {
   const host = window.location.hostname;
-  // 生产环境走 Caddy 反代
   if (host === "hero.grand-umi.com" || host === "grand-umi.com") {
     return `wss://${host}/ws/`;
   }
-  // 本地开发
   return `ws://${host}:8081`;
 }
 
@@ -54,6 +46,83 @@ export type OnlineStatus =
   | { type: "inGame"; playerIndex: 0 | 1; opponentName: string };
 
 // ============================================================
+// 初始状态构建（联机用——确保双端一致）
+// ============================================================
+
+function shuffleDeck(deck: string[]): string[] {
+  const a = [...deck];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function makePlayer(
+  id: 1 | 2, name: string, deck: string[], rushDeck: string[],
+  hand: string[], isFirstPlayer: boolean
+): PlayerState {
+  return {
+    id, name, deck, rushDeck, hand,
+    baseCards: [], baseCovered: [],
+    field: { vanguard: [], flankLeft: [], flankRight: [], rear: [] },
+    timeline: [], retreat: [], void: [],
+    isFirstPlayer,
+  } as PlayerState;
+}
+
+function createInitialState(
+  p1Deck: string[], p1Rush: string[], p1Name: string,
+  p2Deck: string[], p2Rush: string[], p2Name: string
+): BattleState {
+  const shuffled1 = shuffleDeck(p1Deck);
+  const shuffled2 = shuffleDeck(p2Deck);
+  const p1Hand = shuffled1.splice(0, 6);
+  const p2Hand = shuffled2.splice(0, 6);
+  const firstPlayer = Math.random() < 0.5 ? 0 : 1;
+
+  return {
+    isSetup: false,
+    setupPhase: "DONE",
+    turnPhase: "TURN_START",
+    players: [
+      makePlayer(1, p1Name, shuffled1, p1Rush, p1Hand, firstPlayer === 0),
+      makePlayer(2, p2Name, shuffled2, p2Rush, p2Hand, firstPlayer === 1),
+    ],
+    activePlayerIndex: firstPlayer,
+    turnNumber: 1,
+    remainingSummons: 3,
+    baseDeployedThisTurn: false,
+    baseMovesUsed: {},
+    conflictZonesCompleted: [],
+    conflictAttackedCards: [],
+    log: [`🎮 联机对战开始！`, `📋 ${p1Name} vs ${p2Name}`, `🎲 玩家${firstPlayer + 1} 先攻`],
+    isGameOver: false,
+    winner: null,
+    conflictSubPhase: "adjust",
+    conflictMovesUsed: 0,
+    currentAttackZone: null,
+    pendingAttack: null,
+    eventListeners: [],
+    registeredAbilities: [],
+    pendingSummon: null,
+    modifiers: [],
+    attachments: {},
+    pendingCounter: null,
+    pendingTargetSelection: null,
+    counterUsedThisTurn: [false, false],
+    counterPassCount: 0,
+    conflictAttackCount: {},
+    temporaryAbilities: {},
+    interceptUsedThisTurn: [],
+    effectUsedThisTurn: [],
+    activatedEffectsThisTurn: [],
+    mulliganSelected: [],
+    enteredThisTurn: [],
+  };
+}
+
+// ============================================================
 // 钩子
 // ============================================================
 
@@ -64,8 +133,9 @@ export function useOnlineBattle(db: CardDatabase) {
   const lastSeqRef = useRef(0);
   const playerIdxRef = useRef<0 | 1>(0);
   const connectedRef = useRef(false);
+  const opponentNameRef = useRef("");
 
-  // ===== 自动连接（组件挂载后建立 WebSocket） =====
+  // ===== 自动连接 =====
   const urlRef = useRef(getDefaultWsUrl());
 
   useEffect(() => {
@@ -102,18 +172,37 @@ export function useOnlineBattle(db: CardDatabase) {
             break;
 
           case "GAME_START": {
-            // 游戏开始：只有 P1 执行开局逻辑，P2 等待 SETUP_COMPLETE
-            const pi = playerIdxRef.current;
-            setStatus({ type: "inGame", playerIndex: pi, opponentName: msg.opponentName });
+            opponentNameRef.current = msg.opponentName;
+            if (msg.playerIndex === 0) {
+              // P1：创建初始状态，通过中继同步给双端
+              const p1Deck = msg.deck;
+              const p1Rush = msg.rushDeck;
+              const p2Deck = msg.opponentDeck;
+              const p2Rush = msg.opponentRushDeck;
+              const p1Name = msg.opponentName; // P1 名称存在 opponentName 字段
+              // 游戏 GAME_START 中 deck 是"自己的卡组"，opponentName 是对手名
+              // 但 P1 侧：自己名称由 JOIN_QUEUE 携带——这里只需唯一区别
+              const state = createInitialState(p1Deck, p1Rush, "P1", p2Deck, p2Rush, msg.opponentName);
+              // 发给服务器中继
+              ws.send(JSON.stringify({ type: "GAME_ACTION", action: { type: "SETUP_COMPLETE", state } as unknown as GameAction }));
+            }
             break;
           }
 
-          case "GAME_ACTION":
-            // 防重复（掉线重连可能收到历史消息）
+          case "GAME_ACTION": {
+            // SETUP_COMPLETE（含初始状态）的处理——进入游戏
+            const action = msg.action as any;
+            if (action.type === "SETUP_COMPLETE") {
+              dispatch(action);
+              setStatus({ type: "inGame", playerIndex: playerIdxRef.current, opponentName: opponentNameRef.current });
+              return;
+            }
+            // 防重复
             if (msg.seq <= lastSeqRef.current) return;
             lastSeqRef.current = msg.seq;
-            dispatch(msg.action as GameAction);
+            dispatch(action);
             break;
+          }
 
           case "OPPONENT_DISCONNECTED":
             setStatus((s) => s.type === "inGame" ? { type: "error", message: "对手断开连接" } : s);
@@ -161,7 +250,7 @@ export function useOnlineBattle(db: CardDatabase) {
     ws.send(JSON.stringify({ type: "GAME_ACTION", action }));
   }, []);
 
-  // ===== 离开匹配/断开 =====
+  // ===== 断开 =====
   const disconnect = useCallback(() => {
     const ws = wsRef.current;
     if (ws) {
@@ -183,7 +272,6 @@ export function useOnlineBattle(db: CardDatabase) {
     };
   }, []);
 
-  // ===== 当前玩家是否是活跃玩家（可以操作） =====
   const isMyTurn = state ? state.activePlayerIndex === playerIdxRef.current : false;
 
   return {
@@ -195,12 +283,5 @@ export function useOnlineBattle(db: CardDatabase) {
     joinQueue,
     sendAction,
     disconnect,
-    /** 原始 useBattle 兼容的 actions（sendAction 的一个版本，在 isMyTurn 时才发送） */
-    sendActionIfMyTurn: useCallback((action: GameAction) => {
-      if (playerIdxRef.current === 0 || true) {
-        // P1/P2 各自只能操作自己的回合；活跃性由 engine dispatch 时自己判断
-        sendAction(action);
-      }
-    }, [sendAction]),
   };
 }

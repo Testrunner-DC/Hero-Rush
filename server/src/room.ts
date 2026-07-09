@@ -99,9 +99,9 @@ function createRoom(p1: QueueEntry, p2: QueueEntry): string {
   send(p1.ws, { type: "MATCHED", roomId, playerIndex: 0, opponentName: p2.name });
   send(p2.ws, { type: "MATCHED", roomId, playerIndex: 1, opponentName: p1.name });
 
-  // 发送 GAME_START（每人拿到自己的卡组和对家信息）
-  send(p1.ws, { type: "GAME_START", deck: p1.deck, rushDeck: p1.rushDeck, opponentName: p2.name });
-  send(p2.ws, { type: "GAME_START", deck: p2.deck, rushDeck: p2.rushDeck, opponentName: p1.name });
+  // 发送 GAME_START（每人拿到双方卡组，由 P1 创建初始状态后通过中继同步）
+  send(p1.ws, { type: "GAME_START", deck: p1.deck, rushDeck: p1.rushDeck, opponentDeck: p2.deck, opponentRushDeck: p2.rushDeck, opponentName: p2.name, playerIndex: 0 });
+  send(p2.ws, { type: "GAME_START", deck: p2.deck, rushDeck: p2.rushDeck, opponentDeck: p1.deck, opponentRushDeck: p1.rushDeck, opponentName: p1.name, playerIndex: 1 });
 
   return roomId;
 }
