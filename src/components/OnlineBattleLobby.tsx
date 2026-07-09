@@ -84,6 +84,8 @@ export default function OnlineBattleLobby({ db, savedDecks, cardMap, onBack }: O
           <section className="flex items-center gap-2 text-sm">
             {status.type === "idle" || status.type === "connecting" ? (
               <><span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" /><span className="text-stone-500">正在连接服务器…</span></>
+            ) : status.type === "connected" ? (
+              <><span className="w-2 h-2 rounded-full bg-green-500" /><span className="text-green-600">已连接，准备匹配</span></>
             ) : status.type === "error" ? (
               <><span className="w-2 h-2 rounded-full bg-red-500" /><span className="text-red-500">⚠️ 服务器连接失败，请刷新重试</span></>
             ) : status.type === "queuing" ? (
@@ -129,7 +131,7 @@ export default function OnlineBattleLobby({ db, savedDecks, cardMap, onBack }: O
             >取消匹配</button>
           ) : (
             <button onClick={handleJoinQueue}
-              disabled={!selectedDeck || (status.type !== "idle" && status.type !== "connecting")}
+              disabled={!selectedDeck || (status.type !== "connected" && status.type !== "connecting")}
               className="w-full py-3 rounded-lg bg-indigo-600 text-white font-bold hover:bg-indigo-500 transition disabled:opacity-40"
             >⚔ 开始匹配</button>
           )}

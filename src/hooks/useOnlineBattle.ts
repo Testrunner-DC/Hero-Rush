@@ -47,6 +47,7 @@ function getDefaultWsUrl(): string {
 export type OnlineStatus =
   | { type: "idle" }
   | { type: "connecting" }
+  | { type: "connected" }
   | { type: "queuing"; position: number }
   | { type: "error"; message: string }
   | { type: "matched"; roomId: string; playerIndex: 0 | 1; opponentName: string }
@@ -79,7 +80,7 @@ export function useOnlineBattle(db: CardDatabase) {
       wsRef.current = ws;
 
       ws.onopen = () => {
-        // 状态保持为 connecting，等用户调用 joinQueue
+        setStatus({ type: "connected" });
       };
 
       ws.onmessage = (e) => {
