@@ -4,7 +4,7 @@
  * 自动连接服务器 → 选卡组排队匹配 → 对战中渲染阶段按钮与手牌。
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import type { CardDatabase, Card, Deck } from "../types/card";
 import { useOnlineBattle } from "../hooks/useOnlineBattle";
 import {
@@ -35,6 +35,39 @@ export default function OnlineBattleLobby({ db, savedDecks, cardMap, onBack }: O
   const { status, state, playerIdx, isMyTurn, joinQueue, sendAction, disconnect } = useOnlineBattle(db);
   const [selectedDeck, setSelectedDeck] = useState<string | null>(null);
   const [playerName, setPlayerName] = useState("斗士");
+  const [toast, setToast] = useState<string | null>(null);
+  const [highlightCards, setHighlightCards] = useState<Set<string>>(new Set());
+  const prevLogLen = useRef(0);
+
+  // ===== 监听日志变化 → Toast + 高亮标记 =====
+  useEffect(() => {
+    if (!state) return;
+    const log = state.log;
+    if (log.length > prevLogLen.current) {
+      for (let i = prevLogLen.current; i < log.length; i++) {
+        const entry = log[i];
+        // 回手/抽卡/撤退等关键事件弹出 toast
+        if (entry.startsWith("🔄") || entry.startsWith("📥") || entry.startsWith("⬇️") || entry.startsWith("⬆️") || entry.startsWith("🛡️") || entry.startsWith("💪") || entry.startsWith("🤖") || entry.startsWith("✨") || entry.startsWith("🔍") || entry.startsWith("⏭️") || entry.startsWith("❌")) {
+          setToast(entry);
+          setTimeout(() => setToast(null), 2500);
+        }
+        // 高亮回手卡牌：解析日志中的卡牌 ID
+        const match = entry.match(/「([^」]+)」/);
+        if (match && (entry.includes("移至") || entry.includes("回手") || entry.includes("返回"))) {
+          const name = match[1];
+          // 从手牌找匹配名的高亮
+          if (state.players[playerIdx].hand.some((id) => db.cards.find((c) => c.id === id)?.name === name)) {
+            const cardId = state.players[playerIdx].hand.find((id) => db.cards.find((c) => c.id === id)?.name === name);
+            if (cardId) {
+              setHighlightCards((prev) => new Set(prev).add(cardId));
+              setTimeout(() => setHighlightCards((prev) => { const next = new Set(prev); next.delete(cardId); return next; }), 2000);
+            }
+          }
+        }
+      }
+    }
+    prevLogLen.current = log.length;
+  }, [state?.log?.length]);
 
   // ===== 卡组 ID 列表构造 =====
   function getDeckCards(key: string): { mainCards: string[]; rushCards: string[] } | null {
@@ -151,8 +184,9 @@ export default function OnlineBattleLobby({ db, savedDecks, cardMap, onBack }: O
     }
     const powerBuffed = effPower > basePower;
     const rBuffed = effR > baseR;
+    const isHighlighted = highlightCards.has(id);
     return (
-      <div key={key} className="relative inline-block w-9" title={card?.name ?? id}>
+      <div key={key} className={`relative inline-block w-9 transition-all duration-500 ${isHighlighted ? "ring-2 ring-yellow-400 scale-110 z-10" : ""}`} title={card?.name ?? id}>
         <img src={`/cards/${id}.png`} alt="" className="w-9 h-[52px] rounded object-cover border border-white/10"
           onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
         />
@@ -254,6 +288,13 @@ export default function OnlineBattleLobby({ db, savedDecks, cardMap, onBack }: O
             </div>
           </div>
         </div>
+
+        {/* Toast 通知 */}
+        {toast && (
+          <div className="fixed bottom-16 left-1/2 -translate-x-1/2 z-[100] px-4 py-1.5 rounded-lg bg-amber-900/90 text-amber-100 text-xs font-medium shadow-2xl backdrop-blur-sm border border-amber-500/30 transition-all duration-300 whitespace-nowrap">
+            {toast}
+          </div>
+        )}
 
         {/* 底部阶段按钮 */}
         <div className="shrink-0 h-14 bg-black/60 backdrop-blur-sm border-t border-white/10 flex items-center justify-center gap-2 px-4">
