@@ -11,6 +11,7 @@ import {
   ZONE_LIST, ZONE_LABELS, PHASE_LABELS,
   getRushCardIds, deckEntriesToCardIds,
   getAllFieldCards, canZoneAttack,
+  getEffectivePower, getEffectiveR,
   type Zone, type TurnPhase,
 } from "../engine";
 import SidebarSection from "./battle/SidebarSection";
@@ -138,13 +139,35 @@ export default function OnlineBattleLobby({ db, savedDecks, cardMap, onBack }: O
   const me = state.players[playerIdx];
   const opponent = state.players[1 - playerIdx];
 
-  const renderMiniCard = (id: string, i: number) => (
-    <span key={i} className="inline-block w-8 h-11 rounded border border-white/10 bg-black/30 overflow-hidden" title={getCard(id)?.name ?? id}>
-      <img src={`/cards/${id}.png`} alt="" className="w-full h-full object-cover opacity-80"
-        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-      />
-    </span>
-  );
+  const renderMiniCard = (id: string, key: number | string, showStats = false) => {
+    const card = getCard(id);
+    const basePower = card ? parseInt(card.power ?? "0") : 0;
+    const baseR = card?.r ?? 1;
+    let effPower = basePower;
+    let effR = baseR;
+    if (state && showStats) {
+      effPower = getEffectivePower(state, id, db);
+      effR = getEffectiveR(state, id, db);
+    }
+    const powerBuffed = effPower > basePower;
+    const rBuffed = effR > baseR;
+    return (
+      <div key={key} className="relative inline-block w-9" title={card?.name ?? id}>
+        <img src={`/cards/${id}.png`} alt="" className="w-9 h-[52px] rounded object-cover border border-white/10"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+        />
+        {showStats && (
+          <div className="absolute bottom-0 left-0 right-0 flex justify-between text-[10px] leading-tight px-0.5 bg-black/70 rounded-b">
+            <span className={powerBuffed ? "text-green-400 font-bold" : "text-white/70"}>{effPower}</span>
+            <span className={rBuffed ? "text-green-400 font-bold" : "text-white/70"}>R{effR}</span>
+          </div>
+        )}
+        {!showStats && (powerBuffed || rBuffed) && (
+          <span className="absolute top-0 right-0 w-2 h-2 bg-green-400 rounded-full shadow-sm" />
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="flex h-full gap-0 bg-[#0f1923]">
@@ -157,7 +180,7 @@ export default function OnlineBattleLobby({ db, savedDecks, cardMap, onBack }: O
         </SidebarSection>
         <SidebarSection label="手牌" badge={`${me.hand.length}`}>
           <div className="flex flex-wrap gap-0.5">
-            {me.hand.slice(0, 9).map((id, i) => renderMiniCard(id, i))}
+            {me.hand.slice(0, 9).map((id, i) => renderMiniCard(id, `side-hand-${i}`, true))}
           </div>
         </SidebarSection>
         <SidebarSection label="场上" badge={`${getAllFieldCards(me).length}`}>
@@ -167,7 +190,7 @@ export default function OnlineBattleLobby({ db, savedDecks, cardMap, onBack }: O
         </SidebarSection>
         <SidebarSection label="时间线" badge={`${me.timeline.length}/9`}>
           <div className="flex gap-0.5 flex-wrap">
-            {me.timeline.map((id, i) => renderMiniCard(id, i))}
+            {me.timeline.map((id, i) => renderMiniCard(id, `timeline-${i}`, true))}
             {me.timeline.length === 0 && <span className="text-[11px] text-white/20">无</span>}
           </div>
         </SidebarSection>
@@ -194,7 +217,7 @@ export default function OnlineBattleLobby({ db, savedDecks, cardMap, onBack }: O
               <div key={z} className="flex flex-col items-center">
                 <span className="text-[10px] text-white/20">{ZONE_LABELS[z]}</span>
                 <div className="flex gap-0.5">
-                  {opponent.field[z].map((id, i) => renderMiniCard(id, i * 10 + ZONE_LIST.indexOf(z)))}
+                  {opponent.field[z].map((id, i) => renderMiniCard(id, i * 10 + ZONE_LIST.indexOf(z), true))}
                   {opponent.field[z].length === 0 && <span className="w-8 h-11 rounded border border-white/5 bg-black/20" />}
                 </div>
               </div>
@@ -219,7 +242,7 @@ export default function OnlineBattleLobby({ db, savedDecks, cardMap, onBack }: O
               <div key={z} className="flex flex-col items-center">
                 <span className="text-[10px] text-white/20">{ZONE_LABELS[z]}</span>
                 <div className="flex gap-0.5">
-                  {me.field[z].map((id, i) => renderMiniCard(id, i * 10 + ZONE_LIST.indexOf(z)))}
+                  {me.field[z].map((id, i) => renderMiniCard(id, i * 10 + ZONE_LIST.indexOf(z), true))}
                   {me.field[z].length === 0 && <span className="w-8 h-11 rounded border border-white/5 bg-black/20" />}
                 </div>
               </div>
@@ -227,13 +250,7 @@ export default function OnlineBattleLobby({ db, savedDecks, cardMap, onBack }: O
           </div>
           <div className="mt-2 space-y-1">
             <div className="flex gap-1 overflow-x-auto">
-              {me.hand.map((id, i) => (
-                <span key={i} className="shrink-0" title={getCard(id)?.name ?? id}>
-                  <img src={`/cards/${id}.png`} alt="" className="w-8 h-11 rounded object-cover border border-white/10"
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                  />
-                </span>
-              ))}
+              {me.hand.map((id, i) => renderMiniCard(id, `hand-${i}`, true))}
             </div>
           </div>
         </div>
