@@ -12,6 +12,9 @@ import type { CardEffect, EffectContext } from "./effects/types";
 import { getEffectsByCardNo, registerEffects } from "./effects/registry";
 import type { CardDatabase } from "../types/card";
 
+/** 能力定义保存在静态注册表，BattleState 中只记录能力 ID。 */
+const abilityRegistry = new Map<string, Ability>();
+
 /**
  * 注册能力到游戏状态
  * @param state 当前游戏状态
@@ -19,9 +22,12 @@ import type { CardDatabase } from "../types/card";
  * @returns 更新后的状态
  */
 export function registerAbility(state: BattleState, ability: Ability): BattleState {
+  abilityRegistry.set(ability.id, ability);
   return {
     ...state,
-    registeredAbilities: [...state.registeredAbilities, ability],
+    registeredAbilities: state.registeredAbilities.includes(ability.id)
+      ? state.registeredAbilities
+      : [...state.registeredAbilities, ability.id],
   };
 }
 
@@ -34,7 +40,7 @@ export function registerAbility(state: BattleState, ability: Ability): BattleSta
 export function unregisterAbility(state: BattleState, id: string): BattleState {
   return {
     ...state,
-    registeredAbilities: state.registeredAbilities.filter((a) => a.id !== id),
+    registeredAbilities: state.registeredAbilities.filter((registeredId) => registeredId !== id),
   };
 }
 
@@ -75,7 +81,7 @@ export function resolveAbility(
   if (ability.once) {
     newState = {
       ...newState,
-      registeredAbilities: newState.registeredAbilities.filter((a) => a.id !== ability.id),
+      registeredAbilities: newState.registeredAbilities.filter((id) => id !== ability.id),
     };
   }
 
@@ -90,7 +96,9 @@ export function resolveAbility(
  * @returns 该卡牌的所有能力
  */
 export function getAbilitiesByCard(state: BattleState, sourceCardId: string): Ability[] {
-  return state.registeredAbilities.filter((a) => a.sourceCardId === sourceCardId);
+  return state.registeredAbilities
+    .map((id) => abilityRegistry.get(id))
+    .filter((ability): ability is Ability => Boolean(ability?.sourceCardId === sourceCardId));
 }
 
 // ============================================================

@@ -40,6 +40,11 @@
 | 测试 | Vitest 4 |
 | 状态管理 | `useReducer`（无第三方状态库） |
 | 卡牌数据 | `public/cards.json`（240卡/296变体） |
+| 联机协议 | 共享 Zod 协议 + WebSocket |
+| 对战服务 | Node.js 权威 MatchRoom，服务端执行规则 |
+| 持久化 | Supabase PostgreSQL 事件流与快照 |
+
+联机架构详见 [`docs/AUTHORITATIVE_ONLINE_ARCHITECTURE.md`](./docs/AUTHORITATIVE_ONLINE_ARCHITECTURE.md)。
 
 ## 📁 项目结构
 

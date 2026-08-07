@@ -8,8 +8,11 @@
 import type { BattleState } from "./state";
 import type { EventListener, EventContext, GameEventType } from "./types";
 
-/** 防重入标志 */
-let isTriggering = false;
+/**
+ * 监听器定义不进入 BattleState，避免快照中混入函数。
+ * 注册表只保存版本化、进程级静态定义；状态仅记录定义 ID。
+ */
+const listenerRegistry = new Map<string, EventListener>();
 
 /**
  * 注册事件监听器
@@ -18,9 +21,12 @@ let isTriggering = false;
  * @returns 更新后的状态
  */
 export function registerEvent(state: BattleState, listener: EventListener): BattleState {
+  listenerRegistry.set(listener.id, listener);
   return {
     ...state,
-    eventListeners: [...state.eventListeners, listener],
+    eventListeners: state.eventListeners.includes(listener.id)
+      ? state.eventListeners
+      : [...state.eventListeners, listener.id],
   };
 }
 
@@ -33,7 +39,7 @@ export function registerEvent(state: BattleState, listener: EventListener): Batt
 export function unregisterEvent(state: BattleState, id: string): BattleState {
   return {
     ...state,
-    eventListeners: state.eventListeners.filter((l) => l.id !== id),
+    eventListeners: state.eventListeners.filter((registeredId) => registeredId !== id),
   };
 }
 
@@ -52,26 +58,30 @@ export function triggerEvent(
   eventType: GameEventType,
   context: EventContext
 ): BattleState {
-  // 防重入
-  if (isTriggering) return state;
+  if (state.resolvingEventTypes?.includes(eventType)) return state;
 
-  let currentState = state;
+  const previousResolving = state.resolvingEventTypes ?? [];
+  let currentState: BattleState = {
+    ...state,
+    resolvingEventTypes: [...previousResolving, eventType],
+  };
   const toRemove: string[] = [];
 
   // 按活跃玩家优先排序监听器
   const activeIdx = state.activePlayerIndex;
   const listeners = currentState.eventListeners
-    .filter((l) => l.eventType === eventType)
+    .map((id) => listenerRegistry.get(id))
+    .filter((listener): listener is EventListener => Boolean(listener && listener.eventType === eventType))
     .sort((a, b) => {
       // 活跃玩家优先（通过 listener.id 中的 playerIdx 约定，或保持注册顺序）
       return 0;
     });
 
-  if (listeners.length === 0) return state;
+  if (listeners.length === 0) {
+    return { ...state, resolvingEventTypes: previousResolving };
+  }
 
-  isTriggering = true;
-  try {
-    for (const listener of listeners) {
+  for (const listener of listeners) {
       // 检查条件
       if (listener.condition && !listener.condition({ ...context, state: currentState })) {
         continue;
@@ -82,23 +92,18 @@ export function triggerEvent(
       if (listener.once) {
         toRemove.push(listener.id);
       }
-    }
+  }
 
-    // 移除已触发的 once 监听器
-    if (toRemove.length > 0) {
-      currentState = {
-        ...currentState,
-        eventListeners: currentState.eventListeners.filter(
-          (l) => !toRemove.includes(l.id)
-        ),
-      };
-    }
-  } finally {
-    isTriggering = false;
+  // 移除已触发的 once 监听器
+  if (toRemove.length > 0) {
+    currentState = {
+      ...currentState,
+      eventListeners: currentState.eventListeners.filter((id) => !toRemove.includes(id)),
+    };
   }
 
   // 记录活跃玩家 index（消除未使用变量警告）
   void activeIdx;
 
-  return currentState;
+  return { ...currentState, resolvingEventTypes: previousResolving };
 }

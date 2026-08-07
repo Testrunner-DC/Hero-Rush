@@ -6,10 +6,13 @@ import {
   getKeywordCardNames,
   getRushCardIds,
   deckEntriesToCardIds,
+  canZoneAttack,
+  createMatchCardDatabase,
   type TurnPhase,
   type Zone,
 } from "../engine";
-import { useBattle } from "../hooks/useBattle";
+import { useBattle, type BattleActions } from "../hooks/useBattle";
+import { useOnlineBattle } from "../hooks/useOnlineBattle";
 import GameSetup, { type PreselectedDeck } from "../components/GameSetup";
 import SidebarSection from "../components/battle/SidebarSection";
 import StatRow from "../components/battle/StatRow";
@@ -299,8 +302,57 @@ function BattleLobby({ db, savedDecks, cardMap, onStart, onSwitchMode }: BattleL
 // ============================================================
 
 export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps) {
-  // ===== 游戏状态（useBattle 契约层管理） =====
-  const { state, dispatch, actions } = useBattle(db);
+  // ===== 大厅状态 =====
+  const [lobbyPhase, setLobbyPhase] = useState<LobbyPhase>("lobby");
+  const [gameMode, setGameMode] = useState<GameMode>("local");
+  const [preselectedDeck, setPreselectedDeck] = useState<PreselectedDeck | null>(null);
+  const [firstPlayerChoice, setFirstPlayerChoice] = useState<FirstPlayerChoice>("random");
+
+  // 本地与联机始终共用同一套战场渲染；联机连接仅在选择联机模式后启用。
+  const localBattle = useBattle(db);
+  const onlineBattle = useOnlineBattle(db, gameMode === "online");
+  const state = gameMode === "online" ? onlineBattle.state : localBattle.state;
+  const dispatch = localBattle.dispatch;
+  const actions: BattleActions = gameMode === "online" ? {
+    drawCards: () => { onlineBattle.sendAction({ type: "DRAW_CARDS" }); },
+    advancePhase: (next) => onlineBattle.sendAction({ type: "ADVANCE_PHASE", next }),
+    endTurn: () => onlineBattle.sendAction({ type: "END_TURN" }),
+    endConflict: () => { onlineBattle.sendAction({ type: "ADVANCE_PHASE", next: "END_PHASE" }); },
+    deployToBase: (_playerIdx, handIndex) => {
+      const cardId = state?.players[onlineBattle.playerIdx].hand[handIndex];
+      return cardId ? onlineBattle.sendAction({ type: "DEPLOY_TO_BASE", cardId }) : false;
+    },
+    summonToField: (_playerIdx, handIndex, zone) => {
+      const cardId = state?.players[onlineBattle.playerIdx].hand[handIndex];
+      return cardId ? onlineBattle.sendAction({ type: "SUMMON_TO_FIELD", cardId, zone }) : false;
+    },
+    moveCharacter: (_playerIdx, fromZone, cardId, toZone) => onlineBattle.sendAction({ type: "MOVE_CHARACTER", fromZone, cardId, toZone }),
+    moveCard: (_playerIdx, fromLoc, cardId, toLoc) => onlineBattle.sendAction({ type: "MOVE_CARD", fromLoc, cardId, toLoc }),
+    setAttackZone: (zone) => { onlineBattle.sendAction({ type: "SET_ATTACK_ZONE", zone }); },
+    startAttack: (_playerIdx, zone, cardId) => {
+      onlineBattle.sendAction({ type: "START_ATTACK", zone, cardId });
+    },
+    confirmAttack: (_targetPlayerIdx, targetZone, targetCardId) => {
+      onlineBattle.sendAction({ type: "CONFIRM_ATTACK", targetZone, targetCardId });
+    },
+    skipZone: (zone) => { onlineBattle.sendAction({ type: "SKIP_ZONE", zone }); },
+    startAttackSubPhase: () => { onlineBattle.sendAction({ type: "START_ATTACK_SUBPHASE" }); },
+    clearAttackTarget: () => { onlineBattle.sendAction({ type: "CLEAR_ATTACK_TARGET" }); },
+    canAttackZone: (zone) => state ? canZoneAttack(state, zone) : false,
+    selectRetreat: (cardId, loc) => { onlineBattle.sendAction({ type: "SELECT_RETREAT", cardId, loc }); },
+    cancelSummon: () => { onlineBattle.sendAction({ type: "CANCEL_SUMMON" }); },
+    passCounter: () => { onlineBattle.sendAction({ type: "PASS_COUNTER" }); },
+    activateEffect: (_playerIdx, cardId, effectId) => {
+      onlineBattle.sendAction({ type: "ACTIVATE_EFFECT", cardId, effectId });
+    },
+    selectTargets: (_playerIdx, targetCardIds) => {
+      onlineBattle.sendAction({ type: "SELECT_TARGETS", targetCardIds });
+    },
+    cancelTargetSelection: () => { onlineBattle.sendAction({ type: "CANCEL_TARGET_SELECTION" }); },
+    confirmEffect: () => { onlineBattle.sendAction({ type: "CONFIRM_EFFECT" }); },
+    declineEffect: () => { onlineBattle.sendAction({ type: "DECLINE_EFFECT" }); },
+    resetBattle: () => { onlineBattle.returnToLobby(); },
+  } : localBattle.actions;
 
   // ===== UI 状态（useState 管理） =====
   const [actionMode, setActionMode] = useState<ActionMode>({ type: "none" });
@@ -310,12 +362,6 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
 
   // Toast 通知状态
   const [toast, setToast] = useState<string | null>(null);
-
-  // ===== 大厅状态 =====
-  const [lobbyPhase, setLobbyPhase] = useState<LobbyPhase>("lobby");
-  const [gameMode, setGameMode] = useState<GameMode>("local");
-  const [preselectedDeck, setPreselectedDeck] = useState<PreselectedDeck | null>(null);
-  const [firstPlayerChoice, setFirstPlayerChoice] = useState<FirstPlayerChoice>("random");
 
   // ===== 大厅启动回调 =====
   const handleLobbyStart = useCallback((deck: PreselectedDeck, firstPlayer: FirstPlayerChoice) => {
@@ -355,6 +401,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
           savedDecks={savedDecks}
           cardMap={cardMap}
           onBack={() => setGameMode("local")}
+          battle={onlineBattle}
         />
       );
     }
@@ -371,7 +418,6 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
 
   // === 准备阶段 ===
   if (!state) {
-    console.log("[BattlePage] Rendering GameSetup, lobbyPhase:", lobbyPhase, "preselectedDeck:", !!preselectedDeck);
     return (
       <GameSetup
         db={db}
@@ -383,7 +429,9 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
     );
   }
 
-  console.log("[BattlePage] State is non-null, rendering battle UI. turnPhase:", state.turnPhase, "players:", state.players.length);
+  const battleDb = gameMode === "online" && state.cardInstances
+    ? createMatchCardDatabase(db, state.cardInstances)
+    : db;
 
   // ============================================================
   // 事件处理（业务校验在 useBattle 契约层，这里只联动菜单 UI 状态）
@@ -431,6 +479,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
 
   // === 点击手牌：选中/取消选中 ===
   const onHandCardClick = (playerIdx: number, _cardId: string, handIndex: number) => {
+    if (gameMode === "online" && playerIdx !== onlineBattle.playerIdx) return;
     if (state.pendingSummon) return;
     if (state.activePlayerIndex !== playerIdx || state.turnPhase !== "ACTION") return;
     // 切换选中状态：再次点击同一手牌取消选中
@@ -447,6 +496,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
 
   // === 点击场上角色 ===
   const onFieldCardClick = (playerIdx: number, zone: Zone, cardId: string) => {
+    if (gameMode === "online" && playerIdx !== onlineBattle.playerIdx) return;
     // 冲突阶段：攻击方点击 = 选攻击者
     if (
       state.turnPhase === "CONFLICT" &&
@@ -489,8 +539,10 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
   // 派生变量
   // ============================================================
 
-  const p1 = state.players[0];
-  const p2 = state.players[1];
+  const mySeat = gameMode === "online" ? onlineBattle.playerIdx : 0;
+  const opponentSeat = (1 - mySeat) as 0 | 1;
+  const p1 = state.players[mySeat];
+  const p2 = state.players[opponentSeat];
   const activeIdx = state.activePlayerIndex;
   const activeP = state.players[activeIdx];
   const isActionPhase = state.turnPhase === "ACTION";
@@ -501,21 +553,27 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
   const currentAttackZone = state.currentAttackZone;
   const conflictSubPhase = state.conflictSubPhase;
   const conflictMovesUsed = state.conflictMovesUsed;
+  const canControlActivePlayer = gameMode === "local" || activeIdx === mySeat;
+  const onlineEnd = gameMode === "online" && onlineBattle.status.type === "ended"
+    ? onlineBattle.status
+    : null;
+  const displayedWinner = onlineEnd?.winner ?? state.winner;
+  const matchFinished = state.isGameOver || Boolean(onlineEnd);
 
   // 渲染小卡片（侧边栏用）
   const renderMiniCard = (id: string) => {
-    const card = db.cards.find((c) => c.id === id);
+    const card = battleDb.cards.find((c) => c.id === id);
     return (
       <div
         key={id}
-        className="w-10 h-14 rounded border border-white/10 bg-black/30 overflow-hidden relative shadow-inner"
+        className="battle-mini-card w-10 h-14 rounded-lg border border-white/10 bg-black/30 overflow-hidden relative shadow-inner"
         title={card?.name || id}
         onMouseEnter={() => card && onCardHover(card)}
         onMouseLeave={() => onCardHover(null)}
       >
         {card ? (
           <img
-            src={`/cards/${card.id}.png`}
+            src={card.image_url}
             alt={card.name}
             className="w-full h-full object-cover opacity-80"
             onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
@@ -529,11 +587,11 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
 
   return (
     <div
-      className="flex h-full gap-0 bg-[#0f1923]"
+      className="battle-shell flex h-full min-h-0 gap-0 overflow-hidden bg-[#080b11]"
       onClick={closeMenu}
     >
       {/* ═══ 左侧信息栏 ═══ */}
-      <div className="w-52 shrink-0 flex flex-col border-r border-white/10 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+      <aside className="battle-rail battle-rail--left w-[clamp(13rem,16vw,15.5rem)] shrink-0 flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <SidebarSection label="时间线" badge={`${Math.max(p1.timeline.length, p2.timeline.length)}/9`}>
           <div className="space-y-1">
             <div className="text-[11px] text-blue-300/70 mb-0.5">我方 ({p1.timeline.length})</div>
@@ -615,26 +673,31 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
         </SidebarSection>
 
         {/* 对战日志 */}
-        <div className="flex-1 min-h-0 mt-auto border-t border-white/10 flex flex-col overflow-hidden">
-          <div className="shrink-0 px-2 py-1.5 bg-white/5 border-b border-white/5 flex items-center justify-between">
-            <span className="text-xs font-bold text-white/50 tracking-wider">📜 日志</span>
-            <span className="text-[11px] text-white/30">{state.log.length}条</span>
+        <div className="battle-log flex-1 min-h-0 mt-auto flex flex-col overflow-hidden">
+          <div className="battle-log__header shrink-0 px-3 py-2 flex items-center justify-between">
+            <span className="text-xs font-bold text-white/70 tracking-[0.18em]">对战记录</span>
+            <span className="text-[11px] text-white/35 tabular-nums">{state.log.length} 条</span>
           </div>
-          <div className="flex-1 overflow-y-auto p-1.5 space-y-0.5">
+          <div className="battle-log__body flex-1 overflow-y-auto px-3 py-2 space-y-1">
             {state.log.slice(-80).map((entry, i) => (
-              <p key={i} className="text-[11px] text-white/45 font-mono leading-snug whitespace-pre-line">
+              <p key={i} className="text-[11px] text-white/50 leading-relaxed whitespace-pre-line">
                 {entry}
               </p>
             ))}
           </div>
         </div>
-      </div>
+      </aside>
 
       {/* ═══ 中央战场 ═══ */}
-      <div className="flex-1 flex flex-col min-w-0 relative" onClick={(e) => e.stopPropagation()}>
+      <main className="battle-stage flex-1 flex flex-col min-w-0 min-h-0 relative" onClick={(e) => e.stopPropagation()}>
+        {gameMode === "online" && onlineBattle.lastError && (
+          <div className="battle-prompt battle-prompt--danger absolute top-3 left-1/2 z-50 max-w-[70%] -translate-x-1/2 rounded-xl border border-red-400/40 bg-red-950/95 px-4 py-2 text-sm font-medium text-red-100 shadow-2xl backdrop-blur-sm">
+            {onlineBattle.lastError}
+          </div>
+        )}
         {/* ===== pendingSummon 覆盖层提示 ===== */}
         {state.pendingSummon && (
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-40 bg-black/90 border border-amber-500/40 rounded-lg px-4 py-2 flex items-center gap-3 shadow-2xl backdrop-blur-sm">
+          <div className="battle-prompt absolute top-3 left-1/2 -translate-x-1/2 z-40 bg-black/90 border border-amber-500/40 rounded-xl px-4 py-2 flex items-center gap-3 shadow-2xl backdrop-blur-sm">
             <span className="text-sm text-amber-300 font-medium">
               选择需要撤退的角色（还需 Lv {state.pendingSummon.requiredLv - state.pendingSummon.selectedLv}）
             </span>
@@ -651,10 +714,10 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
         {state.pendingCounter && (() => {
           const pc = state.pendingCounter;
           return (
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-40 bg-black/90 border border-purple-500/50 rounded-lg px-4 py-2.5 flex items-center gap-3 shadow-2xl backdrop-blur-sm">
+          <div className="battle-prompt absolute top-3 left-1/2 -translate-x-1/2 z-40 bg-black/90 border border-purple-500/50 rounded-xl px-4 py-2.5 flex items-center gap-3 shadow-2xl backdrop-blur-sm">
             <span className="text-sm text-purple-300 font-medium">
               🛡️ 应对窗口 — 玩家{pc.summoningPlayerIdx + 1} 正在号召
-              「{db.cards.find((c) => c.id === pc.summoningCardId)?.name ?? "?"}」
+              「{battleDb.cards.find((c) => c.id === pc.summoningCardId)?.name ?? "?"}」
             </span>
             <span className="text-xs text-purple-400/60">
               应对已用：P1 {state.counterUsedThisTurn?.[0] ? "✓" : "○"} | P2 {state.counterUsedThisTurn?.[1] ? "✓" : "○"}
@@ -676,7 +739,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
         {state.pendingEffectConfirmation && (() => {
           const pec = state.pendingEffectConfirmation;
           return (
-          <div className="absolute top-14 left-1/2 -translate-x-1/2 z-40 bg-black/90 border border-indigo-500/50 rounded-lg px-4 py-2.5 flex items-center gap-3 shadow-2xl backdrop-blur-sm">
+          <div className="battle-prompt absolute top-16 left-1/2 -translate-x-1/2 z-40 bg-black/90 border border-indigo-500/50 rounded-xl px-4 py-2.5 flex items-center gap-3 shadow-2xl backdrop-blur-sm">
             <span className="text-sm text-indigo-300 font-medium">
               ⚡ {pec.prompt}
             </span>
@@ -717,7 +780,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
               className="absolute inset-0 z-50 bg-black/70 flex items-center justify-center backdrop-blur-sm"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="bg-white border border-amber-300 rounded-2xl p-6 shadow-2xl max-w-md w-full mx-4">
+              <div className="battle-modal-card bg-[#f6f0e4] border border-amber-300/70 rounded-2xl p-6 shadow-2xl max-w-md w-full mx-4">
                 <h3 className="text-lg font-bold text-amber-700 text-center mb-2">
                   🎯 选择目标
                 </h3>
@@ -751,7 +814,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
                     })
                   ) : (
                     pts.availableTargets.map((cardId) => {
-                      const card = db.cards.find((c) => c.id === cardId);
+                      const card = battleDb.cards.find((c) => c.id === cardId);
                       const isSelected = selectedTargetIds.includes(cardId);
                       return (
                         <button
@@ -767,7 +830,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
                         >
                           {card ? (
                             <img
-                              src={`/cards/${card.id}.png`}
+                              src={card.image_url}
                               alt={card.name}
                               className="w-full h-full object-cover"
                               onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
@@ -819,11 +882,11 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
         })()}
 
         {/* ===== 敌方区域（上）===== */}
-        <div className="min-h-[40%] flex flex-col">
+        <div className="battle-player-wrap battle-player-wrap--enemy min-h-[40%] flex flex-col">
           <PlayerArea
             player={p2}
-            isActive={activeIdx === 1}
-            db={db}
+            isActive={gameMode === "local" && activeIdx === opponentSeat}
+            db={battleDb}
             isActionPhase={isActionPhase}
             isConflictPhase={isConflictPhase}
             isConflictAdjust={isConflictAdjust}
@@ -834,7 +897,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
             currentAttackZone={currentAttackZone}
             canZoneAttack={canZoneAttackFn}
             actionMode={actionMode}
-            playerIdx={1}
+            playerIdx={opponentSeat}
             onHandCardClick={onHandCardClick}
             onFieldCardClick={onFieldCardClick}
             onDeploy={deployToBase}
@@ -854,9 +917,9 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
         </div>
 
         {/* VS 分隔线 */}
-        <div className="shrink-0 h-7 flex items-center justify-center bg-gradient-to-r from-transparent via-red-950/50 to-transparent border-y border-red-500/20 gap-3">
-          <span className="text-sm font-bold tracking-widest text-red-400/80 drop-shadow">⚔ VS ⚔</span>
-          <span className="text-[11px] text-white/25">
+        <div className="battle-phase-divider shrink-0 h-9 flex items-center justify-center gap-3">
+          <span className="battle-phase-divider__mark text-sm font-bold tracking-[0.28em] text-amber-200/90 drop-shadow">对 决</span>
+          <span className="text-[11px] text-white/45">
             第{state.turnNumber}回合 · {PHASE_LABELS[state.turnPhase]} · {activeP.name}
             {activeP.isFirstPlayer && <span className="text-yellow-400/70 ml-1">★先攻</span>}
             {isConflictAttack && currentAttackZone && (
@@ -866,11 +929,11 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
         </div>
 
         {/* ===== 我方区域（下）===== */}
-        <div className="min-h-[40%] flex flex-col">
+        <div className="battle-player-wrap battle-player-wrap--self min-h-[40%] flex flex-col">
           <PlayerArea
             player={p1}
-            isActive={activeIdx === 0}
-            db={db}
+            isActive={activeIdx === mySeat}
+            db={battleDb}
             isActionPhase={isActionPhase}
             isConflictPhase={isConflictPhase}
             isConflictAdjust={isConflictAdjust}
@@ -881,7 +944,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
             currentAttackZone={currentAttackZone}
             canZoneAttack={canZoneAttackFn}
             actionMode={actionMode}
-            playerIdx={0}
+            playerIdx={mySeat}
             onHandCardClick={onHandCardClick}
             onFieldCardClick={onFieldCardClick}
             onDeploy={deployToBase}
@@ -901,8 +964,21 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
         </div>
 
         {/* ===== 底部阶段按钮栏 ===== */}
-        <div className="shrink-0 h-14 bg-black/60 backdrop-blur-sm border-t border-white/10 flex items-center justify-center gap-2 px-4 relative">
-          {state.turnPhase === "TURN_START" && (
+        <div className="battle-action-dock shrink-0 min-h-14 flex items-center justify-center gap-2 px-4 py-2 relative">
+          {gameMode === "online" && !matchFinished && (
+            <button
+              onClick={() => onlineBattle.surrender()}
+              className="absolute left-3 rounded-md border border-red-400/25 bg-red-950/60 px-3 py-1.5 text-xs font-medium text-red-200 transition hover:bg-red-900/80"
+            >
+              投降
+            </button>
+          )}
+
+          {!canControlActivePlayer && !matchFinished && (
+            <span className="text-sm text-white/35">等待 {activeP.name} 操作…</span>
+          )}
+
+          {canControlActivePlayer && state.turnPhase === "TURN_START" && (
             <button
               onClick={() => advancePhase("DRAW")}
               className="px-5 py-2 rounded-lg bg-emerald-600/90 text-white text-sm font-bold hover:bg-emerald-500 transition shadow-lg"
@@ -911,7 +987,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
             </button>
           )}
 
-          {state.turnPhase === "DRAW" && (
+          {canControlActivePlayer && state.turnPhase === "DRAW" && (
             <button
               onClick={() => drawCards()}
               className="px-5 py-2 rounded-lg bg-emerald-600/90 text-white text-sm font-bold hover:bg-emerald-500 transition shadow-lg"
@@ -920,7 +996,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
             </button>
           )}
 
-          {state.turnPhase === "ACTION" && (
+          {canControlActivePlayer && state.turnPhase === "ACTION" && (
             <>
               <button
                 onClick={() => advancePhase("CONFLICT")}
@@ -935,7 +1011,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
 
               {/* ===== 起动效果按钮 ===== */}
               {(() => {
-                const effectButtons = getActivatableEffects(state, db, activeIdx);
+                const effectButtons = getActivatableEffects(state, battleDb, activeIdx);
                 if (effectButtons.length === 0) return null;
 
                 return (
@@ -966,7 +1042,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
             </>
           )}
 
-          {state.turnPhase === "CONFLICT" && (
+          {canControlActivePlayer && state.turnPhase === "CONFLICT" && (
             <>
               {conflictSubPhase === "adjust" && (
                 <>
@@ -995,7 +1071,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
 
                   {/* ===== 连击提示 ===== */}
                   {(() => {
-                    const comboCards = getKeywordCardNames(state, db, activeIdx, "combo");
+                    const comboCards = getKeywordCardNames(state, battleDb, activeIdx, "combo");
                     if (comboCards.length === 0) return null;
                     return (
                       <span className="text-xs text-yellow-400/80 mr-2 px-2 py-0.5 rounded bg-yellow-900/20 border border-yellow-700/30">
@@ -1006,7 +1082,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
 
                   {/* ===== 强袭提示 ===== */}
                   {(() => {
-                    const assaultCards = getKeywordCardNames(state, db, activeIdx, "assault");
+                    const assaultCards = getKeywordCardNames(state, battleDb, activeIdx, "assault");
                     if (assaultCards.length === 0) return null;
                     return (
                       <span className="text-xs text-red-400/80 mr-2 px-2 py-0.5 rounded bg-red-900/20 border border-red-700/30">
@@ -1041,7 +1117,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
             </>
           )}
 
-          {state.turnPhase === "END_PHASE" && !state.isGameOver && (
+          {canControlActivePlayer && state.turnPhase === "END_PHASE" && !matchFinished && (
             <button
               onClick={endTurn}
               className="px-6 py-2 rounded-lg bg-indigo-600/90 text-white text-sm font-bold hover:bg-indigo-500 transition shadow-lg"
@@ -1050,18 +1126,21 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
             </button>
           )}
 
-          {state.isGameOver && (
+          {matchFinished && (
             <div
               className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center backdrop-blur-sm"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="bg-white border border-stone-200 rounded-2xl p-8 text-center shadow-2xl">
-                <p className="text-3xl mb-2">🎉 游戏结束!</p>
+              <div className="battle-result-card bg-[#f6f0e4] border border-amber-300/60 rounded-3xl px-10 py-8 text-center shadow-2xl">
+                <p className="text-xs font-bold tracking-[0.3em] text-amber-700/70 mb-3">BATTLE RESULT</p>
+                <p className="text-3xl mb-2">游戏结束</p>
                 <p className="text-xl font-bold text-msa-700 mb-1">
-                  {(state.winner === 0 ? p1.name : p2.name)} 获胜!
+                  {displayedWinner === null ? "对局结束" : `${state.players[displayedWinner].name} 获胜!`}
                 </p>
                 <p className="text-sm text-stone-500 mb-4">
-                  {state.winner === 0 ? "敌方时间线已满或卡组耗尽" : "我方时间线已满或卡组耗尽"}
+                  {onlineEnd?.reason === "surrender" ? "一方选择投降" :
+                    onlineEnd?.reason === "disconnect_timeout" ? "一方断线超时" :
+                    "时间线已满或卡组耗尽"}
                 </p>
                 <button
                   onClick={() => {
@@ -1078,21 +1157,21 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
             </div>
           )}
         </div>
-      </div>
+      </main>
 
       {/* ═══ 右侧信息栏（卡组信息 + 卡牌详情面板）═══ */}
-      <div
-        className="w-60 shrink-0 flex flex-col border-l border-white/10 overflow-hidden"
+      <aside
+        className="battle-rail battle-rail--right w-[clamp(15rem,19vw,18.5rem)] shrink-0 flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 卡组信息 */}
-        <div className="border-b border-white/5 shrink-0">
+        <div className="battle-decks shrink-0">
           {[p1, p2].map((p, pi) => (
-            <div key={pi} className="flex items-center gap-2 p-2 border-b border-white/5 last:border-b-0">
-              <span className={`text-[11px] w-8 shrink-0 ${pi === 0 ? "text-blue-300/80" : "text-red-300/80"}`}>
+            <div key={pi} className="battle-deck-row flex items-center gap-3 px-3 py-2.5 last:border-b-0">
+              <span className={`text-[11px] w-8 shrink-0 font-semibold ${pi === 0 ? "text-cyan-200/80" : "text-rose-200/80"}`}>
                 {pi === 0 ? "我方" : "敌方"}
               </span>
-              <div className="flex-1 h-12 rounded bg-black/40 border border-white/10 relative overflow-hidden">
+              <div className="battle-deck-counter flex-1 h-12 rounded-xl relative overflow-hidden">
                 {p.deck.length > 0 ? (
                   <>
                     <div className="absolute inset-0 bg-gradient-to-br from-blue-900/50 to-cyan-900/50" />
@@ -1112,8 +1191,8 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
         </div>
 
         {/* 精简 STATS */}
-        <div className="shrink-0 p-2 space-y-1 border-b border-white/5">
-          <div className="text-[11px] text-white/30 font-bold tracking-wider">STATS</div>
+        <div className="battle-stats shrink-0 px-3 py-3 space-y-1.5">
+          <div className="text-[10px] text-amber-100/45 font-bold tracking-[0.22em] mb-2">战局概览</div>
           <StatRow label="手牌" v1={p1.hand.length} v2={p2.hand.length} />
           <StatRow label="基地" v1={p1.baseCards.length + p1.baseCovered.length} v2={p2.baseCards.length + p2.baseCovered.length} suffix="/6" />
           <StatRow label="场上" v1={getAllFieldCards(p1).length} v2={getAllFieldCards(p2).length} />
@@ -1140,7 +1219,7 @@ export default function BattlePage({ db, savedDecks, cardMap }: BattlePageProps)
 
         {/* 卡牌详情面板 */}
         <CardDetailPanel card={hoveredCard} />
-      </div>
+      </aside>
 
       {/* Toast 通知 */}
       {toast && (

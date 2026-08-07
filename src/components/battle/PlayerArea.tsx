@@ -70,7 +70,7 @@ export default function PlayerArea({
       <>
         {card ? (
           <img
-            src={`/cards/${card.id}.png`}
+            src={card.image_url}
             alt={card.name}
             className="w-full h-full object-cover"
             onError={(e) => {
@@ -106,7 +106,7 @@ export default function PlayerArea({
     return (
       <div
         key={`${cardId}-${i}`}
-        className={`relative w-20 rounded border overflow-hidden shadow-md transition ${
+        className={`battle-field-card relative rounded-lg border overflow-hidden shadow-md transition ${
           isAlreadyRetreatSelected
             ? "ring-2 ring-red-500 opacity-40 border-red-500/50"
             : isSelectedAsAttacker
@@ -123,7 +123,7 @@ export default function PlayerArea({
             ? "cursor-pointer hover:shadow-lg hover:-translate-y-0.5"
             : ""
         } ${!isEnemy && !isActive ? "opacity-60" : ""}`}
-        style={{ aspectRatio: "746 / 1041" }}
+        style={{ aspectRatio: "746 / 1041", width: "clamp(3rem, 6.2vh, 4.75rem)" }}
         onClick={(e) => {
           e.stopPropagation();
           // 撤退选择模式优先
@@ -174,7 +174,7 @@ export default function PlayerArea({
 
     return (
       <div
-        className={`relative rounded-lg p-1 flex flex-col items-center justify-center gap-0.5 transition ${
+        className={`battle-zone battle-zone--${zone} relative rounded-xl p-1 flex flex-col items-center justify-center gap-1 transition ${
           isCompleted
             ? "bg-green-900/10 border border-green-500/20"
             : isCurrentAtk
@@ -229,7 +229,7 @@ export default function PlayerArea({
 
         {/* 冲突阶段按钮 */}
         {showButtons && (
-          <div className="flex gap-0.5 mt-0.5">
+          <div className="battle-zone__actions flex gap-1 mt-0.5">
             {hasUnattackedChars && zoneCanAttack && (
               <button
                 onClick={(e) => {
@@ -280,7 +280,7 @@ export default function PlayerArea({
   // 左翼/右翼紧贴中央，4个战区等大
 
   const renderFieldArea = () => (
-    <div className="flex-1 min-h-0 grid grid-cols-[1fr_1fr_1fr] gap-0 p-1.5 relative h-full">
+    <div className="battle-field-grid flex-1 min-h-0 grid grid-cols-[1fr_1fr_1fr] gap-1 px-3 py-2 relative h-full">
       {/* 左翼 — 紧贴中央列 */}
       <div className="flex items-center justify-center">
         {renderZone("flankLeft", ZONE_SHORT.flankLeft)}
@@ -300,7 +300,7 @@ export default function PlayerArea({
       {/* 移动菜单 */}
       {moveMenu && (
         <div
-          className="absolute z-30 bg-[#0a1120]/95 border border-blue-500/30 rounded-lg shadow-2xl py-1 min-w-[100px] backdrop-blur-sm"
+          className="battle-context-menu absolute z-30 bg-[#0a1120]/95 border border-blue-500/30 rounded-xl shadow-2xl py-1.5 min-w-[120px] backdrop-blur-sm"
           style={{ top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}
         >
           <p className="px-3 py-0.5 text-[11px] text-[#667788] font-medium border-b border-[#1e2d42]">移动到</p>
@@ -337,12 +337,15 @@ export default function PlayerArea({
   // ============================================================
 
   const renderHandArea = () => (
-    <div className="shrink-0 px-2 py-1.5 bg-black/30 border-y border-[#1e2d42]">
-      <div className="flex items-center gap-1.5">
-        <span className={`text-[11px] font-bold shrink-0 w-8 ${isEnemy ? "text-red-400/60" : "text-blue-400/60"}`}>
+    <div className="battle-hand shrink-0 px-3 py-2">
+      <div className="flex items-center gap-2">
+        <span className={`text-[10px] font-bold tracking-[0.16em] shrink-0 w-9 ${isEnemy ? "text-rose-200/55" : "text-cyan-200/55"}`}>
           手牌
         </span>
-        <div className="flex gap-1 items-center overflow-x-auto min-h-[140px] flex-1 pb-0.5">
+        <div
+          className="battle-hand__track flex gap-1.5 items-center overflow-x-auto flex-1 py-1"
+          style={{ minHeight: "clamp(4.75rem, 11vh, 7.5rem)" }}
+        >
           {player.hand.length === 0 ? (
             <span className="text-xs text-white/15">无</span>
           ) : (
@@ -352,12 +355,12 @@ export default function PlayerArea({
               return (
                 <div key={`${cardId}-${i}`} className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
                   <div
-                    className={`w-24 rounded border overflow-hidden shadow-md transition ${
+                    className={`battle-hand-card rounded-lg border overflow-hidden shadow-md transition ${
                       canActInAction && !isRetreatSelectMode
                         ? "cursor-pointer hover:border-amber-400 hover:shadow-lg hover:-translate-y-1 hover:z-10"
                         : "border-[#1e2d42]"
                     } ${isSelected ? "ring-2 ring-amber-400 border-amber-400 z-20 scale-105" : ""}`}
-                    style={{ aspectRatio: "746 / 1041" }}
+                    style={{ aspectRatio: "746 / 1041", width: "clamp(3.4rem, 7vh, 5.5rem)" }}
                     onClick={() => {
                       if (canActInAction && !isRetreatSelectMode) {
                         onHandCardClick(playerIdx, cardId, i);
@@ -387,11 +390,12 @@ export default function PlayerArea({
     const showDeployButton = handSelect != null && !isRetreatSelectMode && (player.baseCards.length + player.baseCovered.length) < 6;
 
     return (
-      <div className="shrink-0 px-2 py-1 bg-black/30 border-y border-[#1e2d42]">
-        <div className="flex items-center gap-1.5">
-          <span className="text-[11px] text-white/25 font-bold w-8 shrink-0">基地</span>
+      <div className="battle-base shrink-0 px-3 py-1.5">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] tracking-[0.16em] text-amber-100/40 font-bold w-9 shrink-0">基地</span>
           <div
-            className="flex gap-1 items-center min-h-[114px] flex-1 flex-wrap"
+            className="battle-base__track flex gap-1.5 items-center flex-1 flex-wrap"
+            style={{ minHeight: "clamp(4.5rem, 9vh, 6.75rem)" }}
             onClick={() => {
               if (baseMoveMenu) setBaseMoveMenu(null);
             }}
@@ -408,7 +412,7 @@ export default function PlayerArea({
                   return (
                     <div
                       key={baseCardId}
-                      className={`relative w-[4.5rem] rounded shrink-0 shadow-md border flex items-center justify-center transition overflow-hidden ${
+                      className={`battle-base-card relative rounded-lg shrink-0 shadow-md border flex items-center justify-center transition overflow-hidden ${
                         isBaseRetreatSelected
                           ? "ring-2 ring-red-500 opacity-40 border-red-500/50"
                           : isBaseRetreatSelectable
@@ -417,7 +421,7 @@ export default function PlayerArea({
                           ? "ring-2 ring-amber-400 border-amber-400 scale-105 z-10"
                           : "border-[#3a5a7a]/60 border-dashed bg-blue-950/20 cursor-pointer hover:shadow-lg hover:-translate-y-0.5"
                       }`}
-                      style={{ aspectRatio: "746 / 1041", maxHeight: "110px" }}
+                      style={{ aspectRatio: "746 / 1041", width: "clamp(3rem, 6vh, 4.5rem)", maxHeight: "110px" }}
                       title={`[号召] ${baseCard?.name || baseCardId} (Lv${baseCard?.cost ?? "?"} 战力${baseCard?.power ?? "?"})`}
                       onClick={(e) => {
                         if (isBaseRetreatSelectable) {
@@ -437,7 +441,7 @@ export default function PlayerArea({
                       {baseCard ? (
                         <>
                           <img
-                            src={`/cards/${baseCard.id}.png`}
+                            src={baseCard.image_url}
                             alt={baseCard.name}
                             className="w-full h-full object-cover opacity-85"
                             onError={(e) => {
@@ -470,7 +474,7 @@ export default function PlayerArea({
                   return (
                     <div
                       key={baseCardId}
-                      className={`relative w-[4.5rem] rounded shrink-0 shadow-md border flex items-center justify-center transition overflow-hidden ${
+                      className={`battle-base-card relative rounded-lg shrink-0 shadow-md border flex items-center justify-center transition overflow-hidden ${
                         isBaseRetreatSelected
                           ? "ring-2 ring-red-500 opacity-40 border-red-500/50"
                           : isBaseRetreatSelectable
@@ -481,7 +485,7 @@ export default function PlayerArea({
                           ? "border-[#1e2d42] cursor-pointer hover:shadow-lg hover:-translate-y-0.5"
                           : "border-[#1e2d42]"
                       }`}
-                      style={{ aspectRatio: "746 / 1041", maxHeight: "110px" }}
+                      style={{ aspectRatio: "746 / 1041", width: "clamp(3rem, 6vh, 4.5rem)", maxHeight: "110px" }}
                       title={showFaceDown
                         ? `[部署] ${baseCard?.name || baseCardId} (Lv${baseCard?.cost ?? "?"} 战力${baseCard?.power ?? "?"})`
                         : "盖放的基地卡"}
@@ -501,7 +505,7 @@ export default function PlayerArea({
                         <>
                           {baseCard ? (
                             <img
-                              src={`/cards/${baseCard.id}.png`}
+                              src={baseCard.image_url}
                               alt={baseCard.name}
                               className="w-full h-full object-cover opacity-60"
                               onError={(e) => {
@@ -530,7 +534,7 @@ export default function PlayerArea({
                   const availableZones = ZONE_LIST.filter((z) => player.field[z].length < 1);
                   return (
                     <div
-                      className="absolute z-30 bg-[#0a1120]/95 border border-amber-500/30 rounded-lg shadow-2xl py-1 min-w-[100px] backdrop-blur-sm"
+                      className="battle-context-menu absolute z-30 bg-[#0a1120]/95 border border-amber-500/30 rounded-xl shadow-2xl py-1.5 min-w-[120px] backdrop-blur-sm"
                       style={{ top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}
                     >
                       <p className="px-3 py-0.5 text-[11px] text-amber-400/70 font-medium border-b border-amber-500/20">
@@ -598,7 +602,7 @@ export default function PlayerArea({
   // ============================================================
 
   return (
-    <div className={`relative flex-1 flex flex-col border-l-2 border-r-2 ${borderColor} overflow-hidden`}>
+    <div className={`battle-player-area ${isEnemy ? "battle-player-area--enemy" : "battle-player-area--self"} relative flex-1 flex flex-col ${borderColor} overflow-y-auto overflow-x-hidden`}>
       {isEnemy ? (
         <>
           {renderHandArea()}

@@ -15,12 +15,12 @@ interface SidebarSectionProps {
 
 export default function SidebarSection({ label, badge, children, last = false }: SidebarSectionProps) {
   return (
-    <div className={`${last ? "" : "border-b border-white/5"} shrink-0`}>
-      <div className="flex items-center justify-between px-2 py-1 bg-white/5">
-        <span className="text-xs font-bold text-white/50 tracking-wider">{label}</span>
-        {badge && <span className="text-[11px] text-white/30 font-mono">{badge}</span>}
+    <section className={`battle-sidebar-section ${last ? "battle-sidebar-section--last" : ""} shrink-0`}>
+      <div className="battle-sidebar-section__header flex items-center justify-between px-3 py-2">
+        <span className="text-[11px] font-bold text-white/70 tracking-[0.16em]">{label}</span>
+        {badge && <span className="battle-sidebar-section__badge text-[11px] text-amber-100/75 font-mono tabular-nums">{badge}</span>}
       </div>
-      <div className="p-1.5 max-h-28 overflow-y-auto">{children}</div>
-    </div>
+      <div className="battle-sidebar-section__body px-3 py-2 max-h-32 overflow-y-auto">{children}</div>
+    </section>
   );
 }

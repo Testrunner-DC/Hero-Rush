@@ -1,0 +1,22 @@
+{
+  "name": "@hero-rush/game-core",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./card": {
+      "types": "./dist/types/card.d.ts",
+      "import": "./dist/types/card.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts src/types/card.ts --format esm --dts --clean --out-dir dist",
+    "test": "vitest run"
+  }
+}

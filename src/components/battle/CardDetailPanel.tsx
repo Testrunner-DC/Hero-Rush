@@ -14,21 +14,21 @@ interface CardDetailPanelProps {
 export default function CardDetailPanel({ card }: CardDetailPanelProps) {
   if (!card) {
     return (
-      <div className="flex-1 flex items-center justify-center p-4 min-h-0">
-        <div className="text-center space-y-2">
-          <div className="text-3xl opacity-10">🃏</div>
-          <p className="text-xs text-white/20">将鼠标悬停在卡牌上查看详情</p>
+      <div className="battle-card-detail battle-card-detail--empty flex-1 flex items-center justify-center p-5 min-h-0">
+        <div className="text-center space-y-3">
+          <div className="battle-card-detail__empty-mark mx-auto flex h-14 w-10 items-center justify-center rounded-lg border border-amber-100/10 text-lg text-amber-100/20">◇</div>
+          <p className="text-xs tracking-wide text-white/30">悬停卡牌查看详情</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-2 space-y-2 min-h-0">
+    <div className="battle-card-detail flex-1 overflow-y-auto px-4 py-4 space-y-3 min-h-0">
       {/* 卡牌大图 */}
-      <div className="mx-auto w-[220px] h-[308px] rounded-lg overflow-hidden border-2 border-white/20 shadow-xl bg-black/40">
+      <div className="battle-card-detail__art mx-auto w-[min(100%,220px)] aspect-[746/1041] rounded-xl overflow-hidden border border-amber-100/20 shadow-xl bg-black/40">
         <img
-          src={`/cards/${card.id}.png`}
+          src={card.image_url}
           alt={card.name}
           className="w-full h-full object-cover"
           onError={(e) => {
@@ -44,15 +44,15 @@ export default function CardDetailPanel({ card }: CardDetailPanelProps) {
       </div>
 
       {/* 卡牌信息 */}
-      <div className="space-y-1 text-center">
-        <h3 className="text-sm font-bold text-white/90 leading-tight">{card.name}</h3>
-        <div className="flex justify-center flex-wrap gap-1 text-[11px]">
-          <span className="px-1.5 py-0.5 rounded bg-white/10 text-white/70">Lv{card.cost}</span>
-          <span className="px-1.5 py-0.5 rounded bg-white/10 text-white/70">
+      <div className="space-y-2 text-center">
+        <h3 className="text-sm font-bold text-amber-50/95 leading-tight">{card.name}</h3>
+        <div className="flex justify-center flex-wrap gap-1.5 text-[11px]">
+          <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-white/75">Lv{card.cost}</span>
+          <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-white/75">
             战力 {card.power || "-"}
           </span>
           <span
-            className="px-1.5 py-0.5 rounded"
+            className="rounded-full border border-white/5 px-2 py-0.5"
             style={{
               backgroundColor: (card.attribute_color || "#666") + "30",
               color: card.attribute_color || "#999",
@@ -60,7 +60,7 @@ export default function CardDetailPanel({ card }: CardDetailPanelProps) {
           >
             {card.attribute_name}
           </span>
-          <span className="px-1.5 py-0.5 rounded" style={{ color: card.rarity_color || "#999" }}>
+          <span className="rounded-full border border-white/5 px-2 py-0.5" style={{ color: card.rarity_color || "#999" }}>
             {card.rarity_cn}
           </span>
         </div>
@@ -68,8 +68,8 @@ export default function CardDetailPanel({ card }: CardDetailPanelProps) {
 
       {/* 效果文本 */}
       {card.effect && (
-        <div className="bg-black/30 rounded-lg p-2 border border-white/5">
-          <p className="text-[11px] text-white/50 leading-relaxed whitespace-pre-wrap">{card.effect}</p>
+        <div className="battle-card-detail__effect rounded-xl p-3 border border-white/5">
+          <p className="text-xs text-white/60 leading-relaxed whitespace-pre-wrap">{card.effect}</p>
         </div>
       )}
     </div>

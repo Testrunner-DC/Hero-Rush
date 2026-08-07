@@ -2,8 +2,8 @@
  * 对战引擎 — 游戏状态类型定义（基于超英击战综合规则书 1.00）
  */
 
-import type { EventListener, Ability } from "./types";
 import type { Modifier } from "./effects/types";
+import type { DeterministicRandomState } from "./random";
 
 /** 战区类型 — 先锋 / 侧翼左 / 侧翼右 / 后卫 */
 export type Zone = "vanguard" | "flankLeft" | "flankRight" | "rear";
@@ -129,11 +129,25 @@ export interface BattleState {
     attackerCardId: string;
   } | null;
 
-  /** 已注册的事件监听器（为卡牌效果预留） */
-  eventListeners: EventListener[];
+  /** 已注册的事件定义 ID。执行函数保存在静态注册表中，状态本身保持可序列化。 */
+  eventListeners: string[];
 
-  /** 已注册的能力（为卡牌效果预留） */
-  registeredAbilities: Ability[];
+  /** 已注册的能力定义 ID。 */
+  registeredAbilities: string[];
+
+  /** 当前正在解析的事件类型，用于纯状态方式阻止递归重入。 */
+  resolvingEventTypes?: string[];
+
+  /** 对局内实体卡 ID → 卡牌目录定义 ID。 */
+  cardInstances?: Record<string, string>;
+
+  /** 服务端确定性随机数状态。 */
+  randomState?: DeterministicRandomState;
+
+  /** 对局固定版本，供持久化和回放使用。 */
+  rulesetVersion?: string;
+  cardDataVersion?: string;
+  engineVersion?: string;
 
   /** 待完成的号召（Lv4+需手动撤退时使用） */
   pendingSummon: PendingSummon | null;

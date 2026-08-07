@@ -7,6 +7,7 @@
 
 import type { BattleState, Zone, PlayerState } from "../state";
 import type { CardDatabase } from "../../types/card";
+import { createRandomState, shuffleDeterministic } from "../random";
 import type { Modifier } from "./types";
 import { triggerEffectsByTiming } from "./registry";
 
@@ -706,19 +707,14 @@ export function millDeck(
 /**
  * 洗混卡组（Fisher-Yates 洗牌算法）
  *
- * 非纯函数（使用 Math.random），但与 GameSetup.tsx 中的 shuffleArray 保持一致。
- * 引擎本身不执行洗牌（保持与现有架构一致），此函数供 UI 层调用。
+ * 兼容辅助函数。使用牌序内容生成固定种子，保证同一输入得到同一结果。
+ * 权威服务端需要推进随机数游标时，应直接调用 shuffleDeterministic。
  *
  * @param deck 卡牌 ID 数组
  * @returns 洗混后的新数组（不修改原数组）
  */
 export function shuffleDeck(deck: string[]): string[] {
-  const result = [...deck];
-  for (let i = result.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [result[i], result[j]] = [result[j], result[i]];
-  }
-  return result;
+  return shuffleDeterministic(deck, createRandomState(deck.join("|"))).items;
 }
 
 /**

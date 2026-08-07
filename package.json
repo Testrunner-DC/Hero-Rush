@@ -3,13 +3,20 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "workspaces": [
+    "packages/*",
+    "server"
+  ],
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "build:packages": "npm run build -w @hero-rush/game-core && npm run build -w @hero-rush/protocol",
+    "dev": "npm run build:packages && vite",
+    "build": "npm run build:packages && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "npm run build:packages && npm run test -w @hero-rush/game-core && vitest run"
   },
   "dependencies": {
+    "@hero-rush/game-core": "*",
+    "@hero-rush/protocol": "*",
     "@supabase/supabase-js": "^2.49.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -20,8 +27,9 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
-    "postcss": "^8.4.49",
+    "postcss": "^8.5.26",
     "tailwindcss": "^3.4.17",
+    "tsup": "^8.5.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
     "vitest": "^4.1.9"
