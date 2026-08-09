@@ -13,6 +13,7 @@
  *   - "全选" button clears the selection array (shows all)
  */
 
+import { useMemo } from "react";
 import type { CardDatabase } from "../types/card";
 
 export type SortBy = "card_no" | "cost" | "power" | "name";
@@ -74,22 +75,35 @@ const SORT_LABELS: Record<SortBy, string> = {
   name: "名称",
 };
 
-const PACKAGE_OPTIONS: { value: string; label: string }[] = [
-  { value: "BP01", label: "BP01" },
-  { value: "SD01", label: "SD01" },
-  { value: "SD02", label: "SD02" },
-  { value: "SD03", label: "SD03" },
-  { value: "SD04", label: "SD04" },
-  { value: "PB01", label: "PB01" },
-  { value: "TB01", label: "TB01" },
-];
+export interface PackageOption {
+  value: string;
+  label: string;
+  title: string;
+}
+
+export function getPackageOptions(db: CardDatabase): PackageOption[] {
+  const fullNames = db.packages || [];
+  const codes = [...new Set(db.cards.map((card) => card.package_short))]
+    .filter((code): code is string => typeof code === "string" && code.length > 0)
+    .sort((left, right) => left.localeCompare(right));
+
+  return codes.map((code) => {
+    const fullName = fullNames.find((name) => name === code || name.startsWith(`${code} `));
+    return { value: code, label: code, title: fullName || code };
+  });
+}
+
+export function getCostOptions(db: CardDatabase): number[] {
+  return [...new Set(db.cards.map((card) => card.cost))]
+    .filter((cost): cost is number => typeof cost === "number" && Number.isFinite(cost))
+    .sort((left, right) => left - right);
+}
 
 export default function FilterSidebar({
   db,
   state,
   onChange,
   onReset,
-  resultCount,
   compact = false,
   hideSearch = false,
   multiSelect = false,
@@ -110,6 +124,9 @@ export default function FilterSidebar({
     selectedRarities,
     selectedCosts,
   } = state;
+
+  const packageOptions = useMemo(() => getPackageOptions(db), [db]);
+  const costOptions = useMemo(() => getCostOptions(db), [db]);
 
   const sectionTitle = compact
     ? "text-[11px] text-stone-500 font-semibold uppercase tracking-wide mb-1.5"
@@ -147,13 +164,6 @@ export default function FilterSidebar({
             placeholder="搜索卡名/编号/效果..."
             className="w-full bg-white border border-stone-200 rounded text-sm text-stone-700 placeholder-stone-400 pl-8 pr-3 py-2 focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 transition"
           />
-        </div>
-      )}
-
-      {/* ── Result count ─────────────────────────────────────── */}
-      {!hideSearch && (
-        <div className="text-xs text-stone-500 pb-1 border-b border-stone-100">
-          {resultCount} 张结果
         </div>
       )}
 
@@ -285,7 +295,7 @@ export default function FilterSidebar({
               >
                 全选
               </button>
-              {([0, 1, 2, 3, 4, 5, 6] as const).map((v) => {
+              {costOptions.map((v) => {
                 const isSelected = selectedCosts.includes(v);
                 return (
                   <button
@@ -303,7 +313,7 @@ export default function FilterSidebar({
               })}
             </>
           ) : (
-            (["all", 0, 1, 2, 3, 4, 5, 6] as const).map((v) => (
+            (["all", ...costOptions] as const).map((v) => (
               <button
                 key={v}
                 onClick={() => onChange({ filterCost: v })}
@@ -423,9 +433,10 @@ export default function FilterSidebar({
           >
             全部
           </button>
-          {PACKAGE_OPTIONS.map((pkg) => (
+          {packageOptions.map((pkg) => (
             <button
               key={pkg.value}
+              title={pkg.title}
               onClick={() => onChange({ filterPackage: pkg.value })}
               className={`${btnBase} rounded transition ${
                 filterPackage === pkg.value

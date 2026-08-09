@@ -10,12 +10,14 @@ import BattlePage from "./pages/BattlePage";
 import HelpPage from "./pages/HelpPage";
 import WelcomePage from "./pages/WelcomePage";
 import ChatPage from "./pages/ChatPage";
+import CardSearchPage from "./pages/CardSearchPage";
 import SettingsPage from "./pages/SettingsPage";
 import AuthPage from "./pages/AuthPage";
 import ProfilePage from "./pages/ProfilePage";
 
 const NAV_TABS: { path: string; label: string }[] = [
   { path: "/chat", label: "聊天" },
+  { path: "/search", label: "卡查" },
   { path: "/plaza", label: "卡组广场" },
   { path: "/builder", label: "组卡器" },
   { path: "/battle", label: "对战" },
@@ -286,6 +288,7 @@ export default function App() {
           <Route path="/" element={<WelcomePage db={db} />} />
           <Route path="/login" element={<AuthPage />} />
           <Route path="/chat" element={<ChatPage />} />
+          <Route path="/search" element={<CardSearchPage db={db} cardMap={cardMap} />} />
           <Route path="/plaza" element={<DeckPlazaPage db={db} cardMap={cardMap} onLoadDeck={loadDeckFromPlaza} />} />
           <Route path="/builder" element={
             <DeckBuilderPage

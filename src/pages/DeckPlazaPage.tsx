@@ -14,6 +14,8 @@ import { useDecks } from "../hooks/useDecks";
 import { useFavorites } from "../hooks/useFavorites";
 import AuthModal from "../components/AuthModal";
 import CardDetailSidebar from "../components/CardDetailSidebar";
+import PaginationControls from "../components/PaginationControls";
+import { CARD_PAGE_SIZE, paginateItems } from "../utils/pagination";
 
 interface DeckPlazaPageProps {
   db: CardDatabase;
@@ -575,6 +577,7 @@ function DeckDetailView({ deck, stats, cardMap, db, onBack, onLoad, onDelete, on
   const [selectedCardDetail, setSelectedCardDetail] = useState<Card | null>(null);
   const [sortMode, setSortMode] = useState<DeckSortMode>("cost");
   const [sortAsc, setSortAsc] = useState(false);
+  const [cardPage, setCardPage] = useState(1);
 
   const handleCopy = () => { onCopyCode(); setCopyLabel("已复制!"); setTimeout(() => setCopyLabel("复制卡组码"), 2000); };
 
@@ -619,6 +622,15 @@ function DeckDetailView({ deck, stats, cardMap, db, onBack, onLoad, onDelete, on
     });
     return arr;
   }, [expandedCards, sortMode, sortAsc]);
+
+  const cardPagination = useMemo(
+    () => paginateItems(sortedCards, cardPage, CARD_PAGE_SIZE),
+    [sortedCards, cardPage],
+  );
+
+  useEffect(() => {
+    setCardPage(1);
+  }, [deck, sortMode, sortAsc]);
 
   const displayCard = selectedCardDetail ?? sortedCards[0] ?? null;
   const isValid = stats.mainCount === 50;
@@ -710,25 +722,34 @@ function DeckDetailView({ deck, stats, cardMap, db, onBack, onLoad, onDelete, on
             {sortedCards.length === 0 ? (
               <div className="text-center py-20 text-stone-400"><p className="text-sm">暂无卡牌数据</p></div>
             ) : (
-              <div className="grid grid-cols-10 gap-2">
-                {sortedCards.map((card, idx) => (
-                  <div key={`${card.card_no}-${idx}`} className="flex flex-col items-center cursor-pointer group"
-                    onClick={() => setSelectedCardDetail(card)}>
-                    <div className="w-full">
-                      <div className={`w-full aspect-[3/4] rounded overflow-hidden bg-gray-100 border-2 transition ${selectedCardDetail?.card_no === card.card_no ? "border-red-500 shadow-md" : "border-stone-200 group-hover:border-red-400 group-hover:shadow-md"}`}>
-                        {card.image_url ? (
-                          <img src={card.image_url} alt={card.name} className="w-full h-full object-cover" loading="lazy"
-                            onError={(e) => { (e.target as HTMLImageElement).style.opacity = "0.15"; }} />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-400">暂无</div>
-                        )}
+              <>
+                <div className="grid grid-cols-10 gap-2">
+                  {cardPagination.items.map((card, idx) => (
+                    <div key={`${card.card_no}-${cardPagination.page}-${idx}`} className="flex flex-col items-center cursor-pointer group"
+                      onClick={() => setSelectedCardDetail(card)}>
+                      <div className="w-full">
+                        <div className={`w-full aspect-[3/4] rounded overflow-hidden bg-gray-100 border-2 transition ${selectedCardDetail?.card_no === card.card_no ? "border-red-500 shadow-md" : "border-stone-200 group-hover:border-red-400 group-hover:shadow-md"}`}>
+                          {card.image_url ? (
+                            <img src={card.image_url} alt={card.name} className="w-full h-full object-cover" loading="lazy"
+                              onError={(e) => { (e.target as HTMLImageElement).style.opacity = "0.15"; }} />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-400">暂无</div>
+                          )}
+                        </div>
                       </div>
+                      <span className="text-[10px] text-stone-700 mt-1 text-center leading-tight truncate w-full group-hover:text-red-600 transition">{card.name}</span>
+                      <span className="text-[9px] text-stone-400">Lv{card.cost}</span>
                     </div>
-                    <span className="text-[10px] text-stone-700 mt-1 text-center leading-tight truncate w-full group-hover:text-red-600 transition">{card.name}</span>
-                    <span className="text-[9px] text-stone-400">Lv{card.cost}</span>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+                <PaginationControls
+                  page={cardPagination.page}
+                  pageCount={cardPagination.pageCount}
+                  total={cardPagination.total}
+                  pageSize={CARD_PAGE_SIZE}
+                  onPageChange={setCardPage}
+                />
+              </>
             )}
           </div>
 
