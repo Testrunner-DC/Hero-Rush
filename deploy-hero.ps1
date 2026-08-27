@@ -12,7 +12,7 @@ param(
 )
 $ErrorActionPreference = "Stop"
 $SRV  = "root@8.210.155.25"
-$repo = "D:\Self\CYJZ\Hero-Rush"
+$repo = $PSScriptRoot
 Set-Location $repo
 
 function Die($msg) { Write-Host $msg -ForegroundColor Red; exit 1 }

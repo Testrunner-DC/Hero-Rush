@@ -3,6 +3,13 @@ node_modules/
 
 # Build output
 dist/
+coverage/
+*.tsbuildinfo
+
+# Project-local caches and temporary reports
+.cache/
+.tmp/
+storage-report*.json
 
 # Debug scripts (local only)
 debug-console.mjs

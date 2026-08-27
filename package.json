@@ -12,7 +12,9 @@
     "dev": "npm run build:packages && vite",
     "build": "npm run build:packages && vite build",
     "preview": "vite preview",
-    "test": "npm run build:packages && npm run test -w @hero-rush/game-core && vitest run"
+    "test": "npm run build:packages && npm run test -w @hero-rush/game-core && vitest run",
+    "storage:audit": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/audit_storage.ps1",
+    "clean:generated": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/clean_generated.ps1"
   },
   "dependencies": {
     "@hero-rush/game-core": "*",
