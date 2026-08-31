@@ -1,64 +1,136 @@
-#!/bin/bash
-# ============================================================
-# deploy-server.sh — 香港服务器联机服务端部署脚本
-# 由 deploy-hero.ps1 在 SSH 时远程触发
-# 功能：确保 systemd 服务 + Caddy WebSocket 代理已配置
-# ============================================================
-set -e
+#!/usr/bin/env bash
+# 在正式服务器上配置 Hero Rush 联机中继与 Nginx 站点。
+set -euo pipefail
 
 SERVICE_NAME="hero-rush-relay"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
-CADDY_FILE="/etc/caddy/Caddyfile"
-PORT=8082
+NGINX_SITE="/etc/nginx/sites-available/hero-rush"
+NGINX_LINK="/etc/nginx/sites-enabled/hero-rush"
+REPO_DIR="/opt/hero-rush"
+ACME_ROOT="/var/www/certbot"
+DOMAIN="hero.grand-umi.com"
+PORT="8092"
+NODE_BIN="$(command -v node)"
 
-# ── 1. systemd 服务 ──
-if [ ! -f "$SERVICE_FILE" ]; then
-  echo "创建 systemd 服务: $SERVICE_NAME (端口 $PORT)"
-  cat > "$SERVICE_FILE" <<EOF
+install -d -m 0755 "$ACME_ROOT"
+
+# 先开放 ACME 校验路径，首次部署时用于签发证书。
+if [ ! -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]; then
+  cat > "$NGINX_SITE" <<EOF
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${DOMAIN};
+
+    location ^~ /.well-known/acme-challenge/ {
+        root ${ACME_ROOT};
+        default_type text/plain;
+    }
+
+    location / {
+        root ${REPO_DIR}/dist;
+        try_files \$uri \$uri/ /index.html;
+    }
+}
+EOF
+  ln -sfn "$NGINX_SITE" "$NGINX_LINK"
+  nginx -t
+  systemctl reload nginx
+  certbot certonly --webroot -w "$ACME_ROOT" -d "$DOMAIN" \
+    --non-interactive --agree-tos --register-unsafely-without-email
+fi
+
+# 正式 HTTPS、单页应用回退和 WebSocket 反向代理。
+cat > "$NGINX_SITE" <<EOF
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${DOMAIN};
+
+    location ^~ /.well-known/acme-challenge/ {
+        root ${ACME_ROOT};
+        default_type text/plain;
+    }
+
+    location / {
+        return 308 https://${DOMAIN}\$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name ${DOMAIN};
+
+    ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:HeroRushTls:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+
+    location /ws/ {
+        proxy_pass http://127.0.0.1:${PORT}/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_read_timeout 75s;
+        proxy_send_timeout 15s;
+        proxy_connect_timeout 3s;
+        proxy_buffering off;
+    }
+
+    location /assets/ {
+        root ${REPO_DIR}/dist;
+        try_files \$uri =404;
+        expires 7d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location / {
+        root ${REPO_DIR}/dist;
+        try_files \$uri \$uri/ /index.html;
+    }
+}
+EOF
+
+ln -sfn "$NGINX_SITE" "$NGINX_LINK"
+nginx -t
+systemctl reload nginx
+
+cat > "$SERVICE_FILE" <<EOF
 [Unit]
 Description=Hero Rush Online Relay Server
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/opt/hero-rush/server
-ExecStart=/usr/bin/node /opt/hero-rush/server/dist/index.js
-Restart=on-failure
+WorkingDirectory=${REPO_DIR}/server
+EnvironmentFile=-${REPO_DIR}/.env
+Environment=PORT=${PORT}
+ExecStart=${NODE_BIN} ${REPO_DIR}/server/dist/index.js
+Restart=always
 RestartSec=5
-Environment=PORT=$PORT
 
 [Install]
 WantedBy=multi-user.target
 EOF
-  systemctl daemon-reload
-  systemctl enable "$SERVICE_NAME"
-  echo "服务已创建并启用"
-fi
 
-# ── 2. Caddy WebSocket 反代 ──
-if ! grep -q "hero.grand-umi.com.*/ws" "$CADDY_FILE" 2>/dev/null; then
-  echo "添加 Caddy WebSocket 反向代理路由"
-  # 在 hero.grand-umi.com 块内插入 ws 路由（在 root 指令之前）
-  sed -i '/hero.grand-umi.com {/a\
-    # WebSocket 联机对战中继服务\
-    handle_path \/ws\/* {\
-        reverse_proxy localhost:'"$PORT"'\
-    }' "$CADDY_FILE"
-  systemctl reload caddy
-  echo "Caddy 已重载"
-fi
-
-# ── 3. 启动/重启服务 ──
+systemctl daemon-reload
+systemctl enable "$SERVICE_NAME"
 systemctl restart "$SERVICE_NAME"
-echo "$SERVICE_NAME 已重启"
 
-# ── 4. 验证 ──
-sleep 1
-if systemctl is-active --quiet "$SERVICE_NAME"; then
-  echo "✓ $SERVICE_NAME 运行中"
-else
-  echo "✕ $SERVICE_NAME 未运行"
-  systemctl status "$SERVICE_NAME" --no-pager | tail -5
+if ! systemctl is-active --quiet "$SERVICE_NAME"; then
+  systemctl status "$SERVICE_NAME" --no-pager | tail -20
   exit 1
 fi
+
+echo "${SERVICE_NAME} 已在 127.0.0.1:${PORT} 对外提供联机服务"
