@@ -1,5 +1,15 @@
 import type { Deck, DeckEntry, CardDatabase } from "../types/card";
 
+const LOCAL_DECKS_KEY = "marvel-tcg-decks";
+const STARTER_DECKS_MARKER_KEY = "hero-rush-starter-decks-v1";
+
+export const STARTER_PRECON_PATHS = [
+  "/precon_sd01.json",
+  "/precon_sd02.json",
+  "/precon_sd03.json",
+  "/precon_sd04.json",
+] as const;
+
 /**
  * Encode a deck into a compact base64 string for URL sharing.
  * Format: name|card_no:count,card_no:count,...
@@ -46,12 +56,12 @@ export function saveDeckToLocal(deck: Deck): void {
   } else {
     decks.push(deck);
   }
-  localStorage.setItem("marvel-tcg-decks", JSON.stringify(decks));
+  localStorage.setItem(LOCAL_DECKS_KEY, JSON.stringify(decks));
 }
 
 export function getLocalDecks(): Deck[] {
   try {
-    const raw = localStorage.getItem("marvel-tcg-decks");
+    const raw = localStorage.getItem(LOCAL_DECKS_KEY);
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
@@ -60,7 +70,7 @@ export function getLocalDecks(): Deck[] {
 
 export function deleteLocalDeck(name: string): void {
   const decks = getLocalDecks().filter((d) => d.name !== name);
-  localStorage.setItem("marvel-tcg-decks", JSON.stringify(decks));
+  localStorage.setItem(LOCAL_DECKS_KEY, JSON.stringify(decks));
 }
 
 /** Precon deck data format as stored in public/precon_sdXX.json files. */
@@ -119,6 +129,26 @@ export function preconToDeck(precon: PreconDeckData, db: CardDatabase): Deck {
     rush_deck: [],
     created_at: new Date().toISOString(),
   };
+}
+
+/**
+ * Give a new local player the four official starter decks exactly once.
+ * Existing players keep their own deck list untouched, and deleted starters
+ * stay deleted because the marker is retained after first initialization.
+ */
+export function ensureStarterDecks(precons: PreconDeckData[], db: CardDatabase): Deck[] {
+  let decks = getLocalDecks();
+  try {
+    if (localStorage.getItem(STARTER_DECKS_MARKER_KEY) === "1") return decks;
+    if (decks.length === 0) {
+      decks = precons.map((precon) => preconToDeck(precon, db));
+      localStorage.setItem(LOCAL_DECKS_KEY, JSON.stringify(decks));
+    }
+    localStorage.setItem(STARTER_DECKS_MARKER_KEY, "1");
+  } catch {
+    // Browsers with blocked localStorage can still use the in-memory editor.
+  }
+  return decks;
 }
 
 /**

@@ -1,18 +1,31 @@
 import { supabase } from '../lib/supabase';
+import { resolveAuthIdentifier } from '../utils/authIdentifier';
 
-/** Register a new user with email, password, and nickname */
-export async function signUp(email: string, password: string, nickname: string) {
+/** Register a new username (legacy email identifiers remain supported). */
+export async function signUp(identifier: string, password: string, nickname: string) {
+  let identity;
+  try {
+    identity = resolveAuthIdentifier(identifier);
+  } catch (error) {
+    return { data: null, error: error as Error };
+  }
   const { data, error } = await supabase.auth.signUp({
-    email,
+    email: identity.email,
     password,
-    options: { data: { nickname } }
+    options: { data: { nickname, username: identity.username } }
   });
   return { data, error };
 }
 
-/** Sign in with email and password */
-export async function signIn(email: string, password: string) {
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+/** Sign in with a username or a legacy email address. */
+export async function signIn(identifier: string, password: string) {
+  let identity;
+  try {
+    identity = resolveAuthIdentifier(identifier);
+  } catch (error) {
+    return { data: null, error: error as Error };
+  }
+  const { data, error } = await supabase.auth.signInWithPassword({ email: identity.email, password });
   return { data, error };
 }
 

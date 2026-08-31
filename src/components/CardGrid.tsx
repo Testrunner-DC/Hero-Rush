@@ -8,6 +8,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Card } from "../types/card";
+import CardImage from "./CardImage";
 import PaginationControls from "./PaginationControls";
 import { CARD_PAGE_SIZE, paginateItems } from "../utils/pagination";
 
@@ -64,16 +65,14 @@ export default function CardGrid({
           >
             {/* Scale wrapper: overflow-hidden clips the scaled image */}
             <div className="overflow-hidden">
-              <img
-                src={card.image_url}
+              <CardImage
+                cardId={card.id}
+                legacyUrl={card.image_url}
+                intent="thumb"
                 alt={card.name}
                 className="card-img w-full object-cover"
                 style={{ transform: `scale(${cardScale})`, transformOrigin: "center" }}
                 loading="lazy"
-                onError={(e) => {
-                  const img = e.target as HTMLImageElement;
-                  img.style.opacity = "0.2";
-                }}
               />
             </div>
             {/* Rarity color bottom bar */}

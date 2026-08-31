@@ -17,7 +17,7 @@ export default function AuthPage() {
   const { signIn, signUp } = useAuth();
 
   const [mode, setMode] = useState<AuthMode>('signin');
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -28,8 +28,8 @@ export default function AuthPage() {
       e.preventDefault();
       setError(null);
 
-      if (!email.trim() || !password.trim()) {
-        setError('请填写邮箱和密码');
+      if (!identifier.trim() || !password.trim()) {
+        setError('请填写用户名和密码');
         return;
       }
 
@@ -41,14 +41,14 @@ export default function AuthPage() {
       setSubmitting(true);
       try {
         if (mode === 'signin') {
-          const { error: err } = await signIn(email.trim(), password);
+          const { error: err } = await signIn(identifier.trim(), password);
           if (err) {
             setError(err.message);
           } else {
             navigate('/');
           }
         } else {
-          const { error: err } = await signUp(email.trim(), password, nickname.trim());
+          const { error: err } = await signUp(identifier.trim(), password, nickname.trim());
           if (err) {
             setError(err.message);
           } else {
@@ -60,7 +60,7 @@ export default function AuthPage() {
         setSubmitting(false);
       }
     },
-    [mode, email, password, nickname, signIn, signUp, navigate]
+    [mode, identifier, password, nickname, signIn, signUp, navigate]
   );
 
   const switchMode = useCallback(() => {
@@ -87,18 +87,19 @@ export default function AuthPage() {
         {/* Form card */}
         <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Email */}
+            {/* Username */}
             <div>
               <label className="block text-xs font-medium text-stone-500 mb-1">
-                邮箱
+                用户名
               </label>
               <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="your@email.com"
+                type="text"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                placeholder="3–24 位用户名"
                 className="auth-input"
-                autoComplete="email"
+                autoComplete="username"
+                maxLength={64}
               />
             </div>
 

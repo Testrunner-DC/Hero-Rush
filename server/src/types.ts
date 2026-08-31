@@ -6,6 +6,7 @@ export interface ClientSession {
   userId: string | null;
   authenticated: boolean;
   helloComplete: boolean;
+  protocolVersion?: 2;
   matchId?: string;
   seat?: 0 | 1;
 }

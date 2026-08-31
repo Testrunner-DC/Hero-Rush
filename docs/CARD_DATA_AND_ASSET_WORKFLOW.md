@@ -2,11 +2,13 @@
 
 ## 当前基线
 
-- `public/cards.json`：326 个唯一卡号、412 个稀有度变体。
-- `public/cards/`：423 张 PNG，约 534 MiB；其中 412 张被当前数据引用，另有 11 张既有兼容图片。
+- `public/cards.json`：346 个唯一卡号、456 个稀有度变体。
+- `public/cards/`：456 张被数据引用的卡图（412 PNG + 44 WebP），约 505.64 MiB；无缺图、孤儿图或同变体双格式文件。
+- `F:\Projects\Hero-Rush\assets`：仓库外原图归档与内容寻址发布库；首版三档 WebP 共 130,113,176 字节（约 124.08 MiB）。
+- 2026-08-29 官方同步新增 44 个 SP01 变体，但通过 WebP 和 5 张异常 PNG 修复，使发布资产总量未增长。
 - 卡查、组卡器卡池、卡组广场详情统一采用每页 30 张卡，并保留图片懒加载，避免单页同时请求全部卡图。
 
-分页降低的是浏览器首屏请求数和内存压力，不会缩小既有 Git 历史。历史仓库减重需要单独执行 Git LFS 迁移或将图片迁至对象存储/CDN；两种方案都会影响部署链路，不能与普通功能提交混做。
+分页降低的是浏览器首屏请求数和内存压力，不会缩小既有 Git 历史。外置内容寻址管线已经落地，详见 `docs/CARD_ASSET_PIPELINE.md`；`public/cards/` 从 Git 当前版本移除及历史减重仍是后续独立验收项，不能与普通功能提交混做。
 
 ## 已验证的新卡更新流程
 
@@ -30,14 +32,18 @@
 - 应用数据 `public/cards.json`；
 - 卡图目录 `public/cards/`。
 
-旧记录中的 `update_zhanshuang_full.py` 已被确认不可作为当前主流程；后续应以经过验证的 API 合并脚本为基础，并先在独立分支运行。
+旧记录中的 `update_zhanshuang_full.py` 已被确认不可作为当前主流程。当前入口为 `scripts/sync_official_cards.py`：默认只审计，只有显式传入 `--apply` 才写入；它按官方数值 ID 合并，同时用 `(card_no, rarity)` 防止官方换 ID 后保留语义重复记录。
+
+卡图由 `scripts/card_image_pipeline.py` 处理。裁边只读取 Alpha 通道，目标尺寸为 746×1041；新图默认质量 92 的 WebP。项目本地 Python 环境固定在 F 盘 `.venv/`，依赖清单为 `scripts/requirements-card-sync.txt`。完整命令和本次数据见 `docs/CARD_UPDATE_2026-08-29.md`。
+
+标准化后的图片再由 `scripts/card_asset_release.py` 归档到 F 盘外置库，并生成 240/480/960 三档内容寻址 WebP。前端统一通过 `CardImage` 使用派生图并保留旧路径降级；图片上传由 `scripts/publish_card_assets.ps1` 独立完成，默认仅预演。
 
 ## 每次更新的验收门槛
 
 - API 拉取结果非空，字段结构与预期一致。
 - JSON、Excel、应用 JSON 的卡牌数量可以相互解释。
 - `id` 无重复；同卡号的变体重复必须符合业务规则。
-- `image_url` 对应文件全部存在；新增图片尺寸和裁切结果抽样通过。
+- `image_url` 对应 PNG/WebP 文件全部存在；每个变体只能有一种发布格式；新增图片尺寸和裁切结果抽样通过。
 - 新增系列与等级出现在筛选器中。筛选选项由数据库动态生成，禁止再硬编码卡包编号。
 - `npm test` 与 `npm run build` 通过。
 - 不在同一提交中执行 Git 历史改写。

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Card, CardDatabase } from "../types/card";
+import CardImage from "./CardImage";
 
 interface Props {
   card: Card;
@@ -32,13 +33,12 @@ export default function CardDetailModal({ card, db, onClose }: Props) {
           {/* Card image */}
           <div className="flex-shrink-0 mx-auto md:mx-0">
             <div className="relative w-48 md:w-56 aspect-[746/1041] rounded-xl overflow-hidden bg-stone-100 border border-stone-200 shadow-md">
-              <img
-                src={currentCard.image_url}
+              <CardImage
+                cardId={currentCard.id}
+                legacyUrl={currentCard.image_url}
+                intent="detail"
                 alt={currentCard.name}
                 className="card-img w-full h-full object-cover"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.opacity = "0.3";
-                }}
               />
             </div>
             {/* Variant selector */}

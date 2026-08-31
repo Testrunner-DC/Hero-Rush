@@ -19,7 +19,7 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
   const { signIn, signUp } = useAuth();
 
   const [mode, setMode] = useState<AuthMode>('signin');
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +29,7 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
   useEffect(() => {
     if (open) {
       setMode('signin');
-      setEmail('');
+      setIdentifier('');
       setPassword('');
       setNickname('');
       setError(null);
@@ -41,8 +41,8 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
       e.preventDefault();
       setError(null);
 
-      if (!email.trim() || !password.trim()) {
-        setError('请填写邮箱和密码');
+      if (!identifier.trim() || !password.trim()) {
+        setError('请填写用户名和密码');
         return;
       }
 
@@ -54,14 +54,14 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
       setSubmitting(true);
       try {
         if (mode === 'signin') {
-          const { error: err } = await signIn(email.trim(), password);
+          const { error: err } = await signIn(identifier.trim(), password);
           if (err) {
             setError(err.message);
           } else {
             onClose();
           }
         } else {
-          const { error: err } = await signUp(email.trim(), password, nickname.trim());
+          const { error: err } = await signUp(identifier.trim(), password, nickname.trim());
           if (err) {
             setError(err.message);
           } else {
@@ -72,7 +72,7 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
         setSubmitting(false);
       }
     },
-    [mode, email, password, nickname, signIn, signUp, onClose]
+    [mode, identifier, password, nickname, signIn, signUp, onClose]
   );
 
   const switchMode = useCallback(() => {
@@ -111,14 +111,15 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
         <div className="p-5">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-stone-500 mb-1">邮箱</label>
+              <label className="block text-xs font-medium text-stone-500 mb-1">用户名</label>
               <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="your@email.com"
+                type="text"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                placeholder="3–24 位用户名"
                 className="auth-input"
-                autoComplete="email"
+                autoComplete="username"
+                maxLength={64}
               />
             </div>
 

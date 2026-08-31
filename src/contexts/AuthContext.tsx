@@ -5,10 +5,11 @@ import type { Session as SupabaseSession } from '@supabase/supabase-js';
 import * as authService from '../services/authService';
 import * as userService from '../services/userService';
 import { migrateLocalDecks, hasLocalDecksToMigrate } from '../utils/migration';
+import { getPublicAccountLabel } from '../utils/authIdentifier';
 
 export interface AuthContextValue extends AuthState {
-  signUp: (email: string, password: string, nickname: string) => Promise<{ error: Error | null }>;
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signUp: (identifier: string, password: string, nickname: string) => Promise<{ error: Error | null }>;
+  signIn: (identifier: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -32,6 +33,7 @@ function buildUser(
   return {
     id: session.user.id,
     email: session.user.email || '',
+    username: getPublicAccountLabel(session.user.email, session.user.user_metadata?.username),
     nickname: profile?.nickname || (session.user.user_metadata?.nickname as string) || '玩家',
     avatar_url: profile?.avatar_url || null,
     bio: profile?.bio || '',
@@ -127,14 +129,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [buildUserFromSession]);
 
   /** Sign up a new user */
-  const signUp = useCallback(async (email: string, password: string, nickname: string) => {
-    const { error } = await authService.signUp(email, password, nickname);
+  const signUp = useCallback(async (identifier: string, password: string, nickname: string) => {
+    const { error } = await authService.signUp(identifier, password, nickname);
     return { error: error as Error | null };
   }, []);
 
   /** Sign in an existing user */
-  const signIn = useCallback(async (email: string, password: string) => {
-    const { error } = await authService.signIn(email, password);
+  const signIn = useCallback(async (identifier: string, password: string) => {
+    const { error } = await authService.signIn(identifier, password);
     return { error: error as Error | null };
   }, []);
 

@@ -10,11 +10,25 @@
   "scripts": {
     "build:packages": "npm run build -w @hero-rush/game-core && npm run build -w @hero-rush/protocol",
     "dev": "npm run build:packages && vite",
-    "build": "npm run build:packages && vite build",
+    "build": "npm run build:packages && npm run cards:assets:contract && vite build",
     "preview": "vite preview",
     "test": "npm run build:packages && npm run test -w @hero-rush/game-core && vitest run",
-    "storage:audit": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/audit_storage.ps1",
-    "clean:generated": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/clean_generated.ps1"
+    "storage:audit": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/audit_storage.ps1",
+    "clean:generated": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/clean_generated.ps1",
+    "cards:sync:audit": ".venv\\Scripts\\python.exe scripts\\sync_official_cards.py",
+    "cards:sync:apply": ".venv\\Scripts\\python.exe scripts\\sync_official_cards.py --apply --repair-existing",
+    "cards:verify": ".venv\\Scripts\\python.exe scripts\\verify_card_assets.py",
+    "cards:assets:archive": ".venv\\Scripts\\python.exe scripts\\card_asset_release.py archive",
+    "cards:assets:build": ".venv\\Scripts\\python.exe scripts\\card_asset_release.py build",
+    "cards:assets:audit": ".venv\\Scripts\\python.exe scripts\\card_asset_release.py audit",
+    "cards:assets:prune": ".venv\\Scripts\\python.exe scripts\\card_asset_release.py prune",
+    "cards:assets:publish": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/publish_card_assets.ps1",
+    "cards:assets:contract": "node scripts/check_card_asset_contract.mjs",
+    "cards:v2:coverage": "node scripts/report_v2_card_coverage.mjs",
+    "gate:v2": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/check_v2_release_gate.ps1",
+    "gate:v2:release": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/check_v2_release_gate.ps1 -RequireCardPool",
+    "rules:v2:coverage": "node scripts/report_v2_rule_coverage.mjs --strict",
+    "gate:v2:switch": "node scripts/check_v2_switch_gate.mjs"
   },
   "dependencies": {
     "@hero-rush/game-core": "*",

@@ -10,6 +10,7 @@ import { useNavigate } from "react-router-dom";
 import type { CardDatabase } from "../types/card";
 import { useAuth } from "../hooks/useAuth";
 import { getLocalDecks } from "../utils/deckCode";
+import CardImage from "../components/CardImage";
 
 interface WelcomePageProps {
   db: CardDatabase;
@@ -453,8 +454,10 @@ function CardGallery({
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         {displayCards.map((card) => (
           <div key={card.id} className="flex flex-col items-center">
-            <img
-              src={`/cards/${card.id}.png`}
+            <CardImage
+              cardId={card.id}
+              legacyUrl={card.image_url}
+              intent="thumb"
               alt={card.name}
               className="w-full rounded-lg shadow-md object-contain bg-stone-50"
               loading="lazy"

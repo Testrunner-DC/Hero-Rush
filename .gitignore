@@ -9,7 +9,14 @@ coverage/
 # Project-local caches and temporary reports
 .cache/
 .tmp/
+.runtime-logs/
 storage-report*.json
+
+# Card binaries are built and retained in the external sibling asset library.
+# Never recreate these generated directories inside the Git working tree.
+public/card-assets/
+public/cards-thumb/
+public/cards-webp/
 
 # Debug scripts (local only)
 debug-console.mjs
@@ -34,6 +41,7 @@ nul
 *.sw?
 
 # Python
+.venv/
 __pycache__/
 *.pyc
 

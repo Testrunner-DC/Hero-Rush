@@ -1,12 +1,11 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { lazy, Suspense, useState, useEffect, useMemo, useCallback } from "react";
 import { Routes, Route, useNavigate, useLocation, Link, Navigate } from "react-router-dom";
 import type { CardDatabase, Card, Deck, DeckEntry } from "./types/card";
-import { encodeDeck, decodeDeck, saveDeckToLocal, getLocalDecks, deleteLocalDeck } from "./utils/deckCode";
+import { encodeDeck, decodeDeck, saveDeckToLocal, getLocalDecks, deleteLocalDeck, ensureStarterDecks, STARTER_PRECON_PATHS, type PreconDeckData } from "./utils/deckCode";
 import { useAuth } from "./hooks/useAuth";
 import UserMenu from "./components/UserMenu";
 import DeckPlazaPage from "./pages/DeckPlazaPage";
 import DeckBuilderPage from "./pages/DeckBuilderPage";
-import BattlePage from "./pages/BattlePage";
 import HelpPage from "./pages/HelpPage";
 import WelcomePage from "./pages/WelcomePage";
 import ChatPage from "./pages/ChatPage";
@@ -14,6 +13,11 @@ import CardSearchPage from "./pages/CardSearchPage";
 import SettingsPage from "./pages/SettingsPage";
 import AuthPage from "./pages/AuthPage";
 import ProfilePage from "./pages/ProfilePage";
+import { loadCardAssetManifest } from "./lib/cardAssets";
+
+const BattlePageV2 = lazy(() => import("./pages/BattlePageV2"));
+const BattleSandboxPageV2 = lazy(() => import("./pages/BattleSandboxPageV2"));
+const AdminPage = lazy(() => import("./pages/AdminPage"));
 
 const NAV_TABS: { path: string; label: string }[] = [
   { path: "/chat", label: "聊天" },
@@ -51,12 +55,15 @@ export default function App() {
 
   // Load card database
   useEffect(() => {
-    fetch("./cards.json")
+    Promise.all([
+      fetch("/cards.json")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load card data");
         return res.json();
-      })
-      .then((data: CardDatabase) => {
+      }),
+      loadCardAssetManifest(),
+    ])
+      .then(([data]: [CardDatabase, unknown]) => {
         setDb(data);
         setLoading(false);
       })
@@ -66,10 +73,22 @@ export default function App() {
       });
   }, []);
 
-  // Load saved decks
+  // Initialize new players with the four official starter decks.
   useEffect(() => {
-    setSavedDecks(getLocalDecks());
-  }, []);
+    if (!db) return;
+    let cancelled = false;
+    Promise.all(STARTER_PRECON_PATHS.map((path) => fetch(path).then((response) => {
+      if (!response.ok) throw new Error(`Failed to load ${path}`);
+      return response.json() as Promise<PreconDeckData>;
+    })))
+      .then((precons) => {
+        if (!cancelled) setSavedDecks(ensureStarterDecks(precons, db));
+      })
+      .catch(() => {
+        if (!cancelled) setSavedDecks(getLocalDecks());
+      });
+    return () => { cancelled = true; };
+  }, [db]);
 
   // Check URL for shared deck
   useEffect(() => {
@@ -86,12 +105,13 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Map: card_no -> Card (first/highest rarity variant for display)
+  // Map: card_no -> Card (lowest-rarity canonical variant for decks and ordinary users)
   const cardMap = useMemo(() => {
     const m = new Map<string, Card>();
     if (db) {
       for (const c of db.cards) {
-        if (!m.has(c.card_no)) m.set(c.card_no, c);
+        const current = m.get(c.card_no);
+        if (!current || c.rarity < current.rarity || (c.rarity === current.rarity && c.id.localeCompare(current.id) < 0)) m.set(c.card_no, c);
       }
     }
     return m;
@@ -141,6 +161,20 @@ export default function App() {
     setSavedDecks(getLocalDecks());
     alert("卡组已保存!");
   }, [deckName, mainDeck]);
+
+  const saveDeckAs = useCallback((name: string) => {
+    const nextName = name.trim() || "未命名卡组";
+    const deck: Deck = {
+      name: nextName,
+      main_deck: mainDeck,
+      rush_deck: [],
+      created_at: new Date().toISOString(),
+    };
+    saveDeckToLocal(deck);
+    setDeckName(nextName);
+    setSavedDecks(getLocalDecks());
+    alert(`已另存为「${nextName}」`);
+  }, [mainDeck]);
 
   const loadDeck = useCallback((deck: Deck) => {
     setDeckName(deck.name);
@@ -228,12 +262,14 @@ export default function App() {
     );
   }
 
-  const isDeckPath = location.pathname === "/builder";
+  const isBattleWorkspace = location.pathname === "/battle"
+    || location.pathname.startsWith("/battle/")
+    || location.pathname === "/battle-v2";
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-[#fcfaf7]">
       {/* ── Header (MSA-style glass-morphism nav bar) ──────────── */}
-      <header className="sticky top-0 z-50 h-12 bg-white/80 backdrop-blur-md border-b border-stone-200 flex items-center px-4 gap-4 flex-shrink-0 shadow-sm">
+      {!isBattleWorkspace && <header className="sticky top-0 z-50 h-12 bg-white/80 backdrop-blur-md border-b border-stone-200 flex items-center px-4 gap-4 flex-shrink-0 shadow-sm">
         {/* Logo — click to go to Welcome page */}
         <Link
           to="/"
@@ -280,7 +316,7 @@ export default function App() {
         <div className="ml-auto">
           <UserMenu />
         </div>
-      </header>
+      </header>}
 
       {/* ── Main content (full height, each page manages its own scroll) ── */}
       <main className="flex-1 overflow-hidden">
@@ -303,12 +339,20 @@ export default function App() {
               onRemove={removeFromDeck}
               onClear={clearDeck}
               onSave={saveDeck}
+              onSaveAs={saveDeckAs}
               onLoad={loadDeck}
               onDelete={removeDeck}
               onShare={shareDeck}
             />
           } />
-          <Route path="/battle" element={<BattlePage db={db} savedDecks={savedDecks} cardMap={cardMap} />} />
+          <Route path="/battle" element={(
+            <Suspense fallback={<div className="grid h-full place-items-center bg-slate-950 text-white/60">加载 V2 对战…</div>}>
+              <BattlePageV2 db={db} savedDecks={savedDecks} cardMap={cardMap} />
+            </Suspense>
+          )} />
+          <Route path="/battle-v2" element={<Navigate to="/battle" replace />} />
+          <Route path="/battle/sandbox" element={<Suspense fallback={<div className="grid h-full place-items-center">加载规则沙盒…</div>}><BattleSandboxPageV2 db={db} /></Suspense>} />
+          <Route path="/admin" element={<Suspense fallback={<div className="grid h-full place-items-center">加载管理后台…</div>}><AdminPage /></Suspense>} />
           <Route path="/help" element={<HelpPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/profile" element={

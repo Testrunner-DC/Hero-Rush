@@ -46,7 +46,7 @@ if ($LASTEXITCODE -ne 0) {
   Die "服务器缺少 /opt/hero-rush/.env(Supabase 凭据),部署最新版会导致线上白屏,已中止。"
 }
 # 前端部署
-ssh $SRV "cd /opt/hero-rush && git checkout main 2>/dev/null; git pull && npm install --no-audit --no-fund && npm run build"
+ssh $SRV "cd /opt/hero-rush && git checkout main 2>/dev/null; git pull && npm install --no-audit --no-fund && npm run build && if test -e /opt/hero-rush-static/card-assets/current; then ln -sfn /opt/hero-rush-static/card-assets/current /opt/hero-rush/dist/card-assets; fi"
 if ($LASTEXITCODE -ne 0) { Die "前端构建报错。" }
 
 # 服务端(联机中继)部署

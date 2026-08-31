@@ -1,35 +1,19 @@
-/**
- * DeckBuilderPage — Piltover Archive style two-column layout
- *
- * Top bar:    deck name + stats badges + save/import/share/clear buttons
- * Left (~60%): type tabs, collapsible filters, column selector, card grid
- * Right (~456px): view tabs (已选/Stats/Hand), control toolbar, content
- * Bottom:     hover card detail strip
- *
- * P0: Column selector on left panel, Stats view with cost curve + color distribution
- * P1: 战力/距离 range filters, Import/Export deck codes
- * P2: Sample hand simulator, sort dropdowns in deck sections
- *
- * NOTE: Impact cards (card_type === 2) are display-only and not added to any deck.
- */
-
-import { useState, useMemo, useCallback } from "react";
-import type { CardDatabase, Card, Deck, DeckEntry } from "../types/card";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import type { Card, CardDatabase, Deck, DeckEntry } from "../types/card";
+import CardImage from "../components/CardImage";
+import CardVariantImage from "../components/CardVariantImage";
 import ColumnSelector from "../components/ColumnSelector";
 import FilterSidebar, { DEFAULT_FILTERS, type FilterState } from "../components/FilterSidebar";
-import CardGrid from "../components/CardGrid";
-import CardDetailModal from "../components/CardDetailModal";
-import DeckStatsView from "../components/DeckStatsView";
-import SampleHandView from "../components/SampleHandView";
 import ImportDeckModal from "../components/ImportDeckModal";
+import PaginationControls from "../components/PaginationControls";
 import PublishDeckModal from "../components/PublishDeckModal";
 import { useAuth } from "../hooks/useAuth";
 import { useDecks } from "../hooks/useDecks";
-import { encodeDeck, decodeDeck, extractDeckCode } from "../utils/deckCode";
-
-// ─────────────────────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────────────────────
+import { decodeDeck, encodeDeck, extractDeckCode } from "../utils/deckCode";
+import { downloadDeckImage } from "../utils/deckImage";
+import { deckEligibleVariant, groupCardVariants, ORDINARY_CARD_VARIANT_ACCESS } from "../utils/cardVariants";
+import { CARD_PAGE_SIZE, paginateItems } from "../utils/pagination";
 
 interface DeckStats {
   mainCount: number;
@@ -45,7 +29,7 @@ interface Props {
   db: CardDatabase;
   cardMap: Map<string, Card>;
   deckName: string;
-  setDeckName: (v: string) => void;
+  setDeckName: (value: string) => void;
   mainDeck: DeckEntry[];
   stats: DeckStats;
   savedDecks: Deck[];
@@ -53,689 +37,149 @@ interface Props {
   onRemove: (cardNo: string) => void;
   onClear: () => void;
   onSave: () => void;
+  onSaveAs: (name: string) => void;
   onLoad: (deck: Deck) => void;
   onDelete: (name: string) => void;
   onShare: () => void;
 }
 
-type PickerTab = "all" | "main";
-type RightViewMode = "gallery" | "stats" | "hand";
+type PickerTab = "all" | "main" | "impact";
 type DeckSort = "energy" | "power" | "name";
+const sortLabels: Record<DeckSort, string> = { energy: "等级", power: "战力", name: "名称" };
 
-const TAB_CONFIG: { key: PickerTab; label: string; activeClass: string }[] = [
-  { key: "all", label: "全部", activeClass: "bg-stone-700 text-white" },
-  { key: "main", label: "角色卡", activeClass: "bg-red-600 text-white" },
-];
-
-const SORT_LABELS: Record<DeckSort, string> = {
-  energy: "等级",
-  power: "战力",
-  name: "名称",
-};
-
-const SORT_OPTIONS: DeckSort[] = ["energy", "power", "name"];
-
-// ─────────────────────────────────────────────────────────────────────────
-// Component
-// ─────────────────────────────────────────────────────────────────────────
-
-export default function DeckBuilderPage(props: Props) {
-  const {
-    db,
-    cardMap,
-    deckName,
-    setDeckName,
-    mainDeck,
-    stats,
-    savedDecks,
-    onAdd,
-    onRemove,
-    onClear,
-    onSave,
-    onLoad,
-    onDelete,
-  } = props;
-
-  // ── Card search state ──
-  const [pickerTab, setPickerTab] = useState<PickerTab>("all");
-  const [hoveredCard, setHoveredCard] = useState<Card | null>(null);
-  const [selectedCard, setSelectedCard] = useState<Card | null>(null);
+export default function DeckBuilderPage({ db, cardMap, deckName, setDeckName, mainDeck, stats, savedDecks, onAdd, onRemove, onClear, onSave, onSaveAs, onLoad, onDelete, onShare }: Props) {
+  const navigate = useNavigate();
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
-
-  // ── UI state ──
+  const [pickerTab, setPickerTab] = useState<PickerTab>("all");
   const [columns, setColumns] = useState(6);
+  const [page, setPage] = useState(1);
+  const [selectedCard, setSelectedCard] = useState<Card | null>(null);
+  const [hoveredCard, setHoveredCard] = useState<Card | null>(null);
+  const [deckSort, setDeckSort] = useState<DeckSort>("energy");
   const [showImport, setShowImport] = useState(false);
-  const [filterCollapsed, setFilterCollapsed] = useState(true);
-
-  // ── Auth & publish ──
+  const [showPublish, setShowPublish] = useState(false);
+  const [generatingImage, setGeneratingImage] = useState(false);
   const { isAuthenticated } = useAuth();
   const { createDeck } = useDecks();
-  const [showPublish, setShowPublish] = useState(false);
+  const actionClass = "rounded border border-[var(--msa-border-strong)] bg-[var(--msa-surface)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--msa-text-secondary)] transition hover:border-red-300 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-35";
 
-  // ── Right panel state ──
-  const [rightViewMode, setRightViewMode] = useState<RightViewMode>("gallery");
-  const [mainSort, setMainSort] = useState<DeckSort>("energy");
-
-  // ── Collapse state for right-column sections ──
-  const [mainCollapsed, setMainCollapsed] = useState(false);
-  const [savedCollapsed, setSavedCollapsed] = useState(false);
-
-  // ── Filter handlers ──
-  const onFilterChange = useCallback((patch: Partial<FilterState>) => {
-    setFilters((prev) => ({ ...prev, ...patch }));
-  }, []);
-
-  const onReset = useCallback(() => {
-    setFilters(DEFAULT_FILTERS);
-  }, []);
-
-  // ── New deck handler ──
-  const handleNewDeck = useCallback(() => {
-    onClear();
-    setDeckName("未命名卡组");
-  }, [onClear, setDeckName]);
-
-  // ── Share handler: copy raw deck code to clipboard ─────
-  const handleShare = useCallback(() => {
-    const deck: Deck = {
-      name: deckName,
-      main_deck: mainDeck,
-      rush_deck: [],
-      created_at: new Date().toISOString(),
-    };
-    const code = encodeDeck(deck);
-    navigator.clipboard.writeText(code).then(() => {
-      alert("已复制到剪贴板");
-    }).catch(() => {
-      prompt("复制以下卡组码:", code);
-    });
-  }, [deckName, mainDeck]);
-
-  // ── Publish handler ────
-  const handlePublish = useCallback(
-    async (title: string, description: string) => {
-      const cardsJson = JSON.stringify(mainDeck);
-      await createDeck(title, description, cardsJson, true);
-      setShowPublish(false);
-      alert("卡组已发布到广场！");
-    },
-    [mainDeck, createDeck]
-  );
-
-  // ── Import handler: decode → clear → add all cards ────
-  const handleImport = useCallback(
-    (code: string) => {
-      const extracted = extractDeckCode(code);
-      const deck = decodeDeck(extracted);
-      if (!deck) return;
-
-      onClear();
-      for (const entry of deck.main_deck) {
-        const card = cardMap.get(entry.card_no);
-        if (card) {
-          for (let i = 0; i < entry.count; i++) {
-            onAdd(card);
-          }
-        }
-      }
-      setDeckName(deck.name);
-      setShowImport(false);
-    },
-    [onClear, onAdd, cardMap, setDeckName]
-  );
-
-  // ── Card picker (all cards including rarity variants) ──
-  const pickerCards = useMemo(() => {
-    // Deck builder shows ALL rarity variants so users can pick their preferred version.
-    // Deck counting still uses card_no, so different rarities of the same card count as one.
-    return db.cards;
-  }, [db.cards]);
-
-  const filteredPicker = useMemo(() => {
-    const { search, filterAttr, filterRarity, filterCost, filterPackage, sortBy, powerMin, powerMax, distanceMin, distanceMax, selectedAttrs, selectedRarities, selectedCosts } = filters;
-    let result = pickerCards.filter((c) => {
-      if (pickerTab === "main" && c.card_type !== 1) return false;
-      if (search) {
-        const q = search.toLowerCase();
-        if (!c.name.toLowerCase().includes(q) && !c.card_no.toLowerCase().includes(q) && !(c.feature_text || "").toLowerCase().includes(q)) return false;
-      }
-      if (filterAttr !== "all" && c.attribute !== filterAttr) return false;
-      if (filterRarity !== "all" && c.rarity !== filterRarity) return false;
-      if (filterCost !== "all" && c.cost !== filterCost) return false;
-      // Multi-select filters (DeckBuilder mode — used when arrays are non-empty)
-      if (selectedAttrs.length > 0 && !selectedAttrs.includes(c.attribute)) return false;
-      if (selectedRarities.length > 0 && !selectedRarities.includes(c.rarity)) return false;
-      if (selectedCosts.length > 0 && !selectedCosts.includes(c.cost)) return false;
-      if (filterPackage !== "all" && c.package_short !== filterPackage) return false;
-      const cardPower = c.power ? parseInt(c.power) : null;
-      if (powerMin !== "all" && (cardPower == null || cardPower < powerMin)) return false;
-      if (powerMax !== "all" && (cardPower == null || cardPower > powerMax)) return false;
-      // 距离 range filter（匹配卡片显示的 R 值，即 c.r）
-      if (distanceMin !== "all" && (c.r == null || c.r < distanceMin)) return false;
-      if (distanceMax !== "all" && (c.r == null || c.r > distanceMax)) return false;
+  const countFor = useCallback((card: Card) => mainDeck.find((entry) => entry.card_no === card.card_no)?.count || 0, [mainDeck]);
+  const allGroupsByNo = useMemo(() => new Map(groupCardVariants(db.cards).map((group) => [group.cardNo, group])), [db.cards]);
+  const filteredGroups = useMemo(() => {
+    const keyword = filters.search.trim().toLocaleLowerCase("zh-CN");
+    const matched = db.cards.filter((card) => {
+      if (pickerTab === "main" && card.card_type !== 1) return false;
+      if (pickerTab === "impact" && card.card_type !== 2) return false;
+      if (filters.selectedAttrs.length && !filters.selectedAttrs.includes(card.attribute)) return false;
+      if (filters.selectedRarities.length && !filters.selectedRarities.includes(card.rarity)) return false;
+      if (filters.selectedCosts.length && !filters.selectedCosts.includes(card.cost)) return false;
+      if (filters.filterPackage !== "all" && card.package_short !== filters.filterPackage) return false;
+      if (filters.powerMin !== "all" && Number(card.power || 0) < filters.powerMin) return false;
+      if (filters.powerMax !== "all" && Number(card.power || 0) > filters.powerMax) return false;
+      if (filters.distanceMin !== "all" && (card.r ?? 0) < filters.distanceMin) return false;
+      if (filters.distanceMax !== "all" && (card.r ?? 0) > filters.distanceMax) return false;
+      if (keyword && ![card.name, card.card_no, card.effect, card.feature_text].some((value) => value?.toLocaleLowerCase("zh-CN").includes(keyword))) return false;
       return true;
     });
+    return groupCardVariants(matched).sort((left, right) => filters.sortBy === "name" ? left.lowest.name.localeCompare(right.lowest.name, "zh-CN") : filters.sortBy === "cost" ? left.lowest.cost - right.lowest.cost || left.cardNo.localeCompare(right.cardNo) : filters.sortBy === "power" ? Number(right.lowest.power || 0) - Number(left.lowest.power || 0) : left.cardNo.localeCompare(right.cardNo));
+  }, [db.cards, pickerTab, filters]);
+  const pagination = useMemo(() => paginateItems(filteredGroups, page, CARD_PAGE_SIZE), [filteredGroups, page]);
 
-    result.sort((a, b) => {
-      switch (sortBy) {
-        case "cost":
-          return a.cost === b.cost ? a.card_no.localeCompare(b.card_no) : a.cost - b.cost;
-        case "power":
-          return (b.power ? parseInt(b.power) : 0) - (a.power ? parseInt(a.power) : 0);
-        case "name":
-          return a.name.localeCompare(b.name, "zh-CN");
-        default:
-          return a.card_no.localeCompare(b.card_no);
-      }
-    });
-    return result;
-  }, [pickerCards, pickerTab, filters]);
+  const deckEntries = useMemo(() => [...mainDeck].sort((left, right) => {
+    const a = cardMap.get(left.card_no); const b = cardMap.get(right.card_no);
+    if (!a || !b) return 0;
+    if (deckSort === "name") return a.name.localeCompare(b.name, "zh-CN");
+    if (deckSort === "power") return Number(b.power || 0) - Number(a.power || 0) || a.card_no.localeCompare(b.card_no);
+    return a.cost - b.cost || a.card_no.localeCompare(b.card_no);
+  }), [mainDeck, cardMap, deckSort]);
+  const curve = useMemo(() => {
+    const values = Array(9).fill(0) as number[];
+    mainDeck.forEach((entry) => { const card = cardMap.get(entry.card_no); if (card) values[Math.min(8, card.cost)] += entry.count; });
+    return values;
+  }, [mainDeck, cardMap]);
+  const maxCurve = Math.max(1, ...curve);
+  const detailCard = hoveredCard ?? selectedCard ?? (deckEntries[0] ? cardMap.get(deckEntries[0].card_no) ?? null : null);
+  const validation = stats.mainCount !== 50 ? `主卡组需要 50 张，当前 ${stats.mainCount} 张` : !stats.colorValid ? "卡组颜色超过 2 种" : !stats.nameValid ? `同名卡超过 3 张：${stats.overThreeNames.join("、")}` : "卡组合法，可以保存并用于对战";
 
-  // ── Count for a card in the current deck ──
-  const countFor = useCallback(
-    (card: Card): number => {
-      // Impact cards (card_type === 2) are never in any deck
-      if (card.card_type === 2) return 0;
-      return mainDeck.find((e) => e.card_no === card.card_no)?.count || 0;
-    },
-    [mainDeck]
-  );
-
-  // ── Card select handler ──
-  const handleCardSelect = useCallback(
-    (card: Card) => {
-      // Impact cards (card_type === 2) are display-only, do nothing on click
-      if (card.card_type === 2) {
-        setSelectedCard(card);
-        return;
-      }
-      if (card.card_type === 1) {
-        onAdd(card);
-      } else {
-        setSelectedCard(card);
-      }
-    },
-    [onAdd]
-  );
-
-  // ── Sort utility for deck entries ──
-  const sortEntries = useCallback(
-    (entries: DeckEntry[], sort: DeckSort): DeckEntry[] => {
-      const sorted = [...entries];
-      sorted.sort((a, b) => {
-        const ca = cardMap.get(a.card_no);
-        const cb = cardMap.get(b.card_no);
-        if (!ca || !cb) return 0;
-        switch (sort) {
-          case "energy":
-            return ca.cost === cb.cost
-              ? ca.name.localeCompare(cb.name, "zh-CN")
-              : ca.cost - cb.cost;
-          case "power":
-            return (cb.power ? parseInt(cb.power) : 0) === (ca.power ? parseInt(ca.power) : 0)
-              ? ca.name.localeCompare(cb.name, "zh-CN")
-              : (cb.power ? parseInt(cb.power) : 0) - (ca.power ? parseInt(ca.power) : 0);
-          case "name":
-            return ca.name.localeCompare(cb.name, "zh-CN");
-          default:
-            return 0;
-        }
-      });
-      return sorted;
-    },
-    [cardMap]
-  );
-
-  const sortedMainDeck = useMemo(
-    () => sortEntries(mainDeck, mainSort),
-    [mainDeck, mainSort, sortEntries]
-  );
-
-  // ── Render deck entry row ──
-  const renderDeckEntry = (entry: DeckEntry) => {
-    const card = cardMap.get(entry.card_no);
-    if (!card) return null;
-    return (
-      <div
-        key={entry.card_no}
-        className="flex items-center gap-1.5 px-1.5 py-1.5 rounded hover:bg-[var(--msa-surface-hover)] group transition"
-        onMouseEnter={() => setHoveredCard(card)}
-        onMouseLeave={() => setHoveredCard(null)}
-      >
-        <div
-          className="w-0.5 h-16 rounded-full flex-shrink-0"
-          style={{ backgroundColor: card.attribute_color }}
-        />
-        <div className="w-12 h-[68px] flex-shrink-0 overflow-hidden rounded-sm">
-          <img
-            src={card.image_url}
-            alt=""
-            className="w-12 h-[68px] object-cover rounded-sm bg-white/90"
-            loading="lazy"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.opacity = "0.2";
-            }}
-          />
-        </div>
-        <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setSelectedCard(card)}>
-          <p className="text-[11px] text-[var(--msa-text-secondary)] truncate group-hover:text-[var(--msa-text-primary)] transition leading-tight">
-            {card.name}
-          </p>
-          <p className="text-[10px] text-[var(--msa-text-muted)] leading-tight">
-            Lv{card.cost} · {card.attribute_name}
-            {card.power && ` · ${card.power}`}
-          </p>
-        </div>
-        <div className="flex items-center gap-0.5 flex-shrink-0">
-          <button
-            onClick={() => onRemove(entry.card_no)}
-            className="w-5 h-5 rounded bg-[var(--msa-surface)] text-[var(--msa-text-muted)] hover:text-[var(--msa-red)] text-xs flex items-center justify-center transition"
-          >
-            −
-          </button>
-          <span className="text-xs text-[var(--msa-text-primary)] w-4 text-center font-medium">
-            {entry.count}
-          </span>
-          <button
-            onClick={() => onAdd(card)}
-            className="w-5 h-5 rounded bg-[var(--msa-surface)] text-[var(--msa-text-muted)] hover:text-green-600 text-xs flex items-center justify-center transition"
-          >
-            +
-          </button>
-        </div>
-      </div>
-    );
+  useEffect(() => { setPage(1); }, [pickerTab, filters]);
+  const add = (requested: Card) => {
+    const group = allGroupsByNo.get(requested.card_no);
+    const card = group ? deckEligibleVariant(group, ORDINARY_CARD_VARIANT_ACCESS, requested) : requested;
+    setSelectedCard(card);
+    if (card.card_type === 1 && countFor(card) < 3 && stats.mainCount < 50) onAdd(card);
+  };
+  const newDeck = () => { onClear(); setDeckName("未命名卡组"); setSelectedCard(null); };
+  const saveAs = () => {
+    const base = `${deckName || "未命名卡组"} 副本`; let candidate = base; let index = 2;
+    while (savedDecks.some((deck) => deck.name === candidate)) candidate = `${base} ${index++}`;
+    onSaveAs(candidate);
+  };
+  const handleImport = (input: string) => {
+    const deck = decodeDeck(extractDeckCode(input)); if (!deck) return;
+    onLoad(deck); setSelectedCard(null); setShowImport(false);
+  };
+  const copyCode = () => {
+    const code = encodeDeck({ name: deckName, main_deck: mainDeck, rush_deck: [], created_at: new Date().toISOString() });
+    navigator.clipboard.writeText(code).then(() => alert("卡组码已复制")).catch(() => prompt("复制以下卡组码：", code));
+  };
+  const publish = async (title: string, description: string) => { const created = await createDeck(title, description, JSON.stringify(mainDeck), true); if (created) setShowPublish(false); };
+  const handleDeckImageDownload = async () => {
+    setGeneratingImage(true);
+    try { await downloadDeckImage({ name: deckName, main_deck: mainDeck, rush_deck: [], created_at: new Date().toISOString() }, cardMap); }
+    finally { setGeneratingImage(false); }
   };
 
-  // ── Collapse arrow ──
-  const collapseArrow = (collapsed: boolean) => (
-    <svg
-      className={`w-3 h-3 transition-transform ${collapsed ? "" : "rotate-90"}`}
-      fill="currentColor"
-      viewBox="0 0 20 20"
-    >
-      <path
-        fillRule="evenodd"
-        d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-        clipRule="evenodd"
-      />
-    </svg>
-  );
-
-  // ── Sort dropdown (compact) ──
-  const renderSortSelect = (value: DeckSort, onChange: (s: DeckSort) => void) => (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value as DeckSort)}
-      className="text-[10px] text-stone-400 bg-transparent border border-stone-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-red-400 transition cursor-pointer"
-      title="排序方式"
-    >
-      {SORT_OPTIONS.map((s) => (
-        <option key={s} value={s}>
-          {SORT_LABELS[s]} ▲
-        </option>
-      ))}
-    </select>
-  );
-
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* ═══ TOP BAR ═══ */}
-      <div className="flex items-center gap-2 px-3 py-2 bg-white/90 border-b border-[var(--msa-border)] flex-shrink-0">
-        <input
-          value={deckName}
-          onChange={(e) => setDeckName(e.target.value)}
-          placeholder="卡组名称"
-          className="w-48 bg-[var(--msa-bg-alt)] border border-[var(--msa-border-strong)] rounded text-sm text-[var(--msa-text-primary)] px-2.5 py-1.5 focus:outline-none focus:border-red-500 transition"
-        />
+    <div className="flex h-full flex-col overflow-hidden bg-[var(--msa-bg)]">
+      <header className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b border-[var(--msa-border)] bg-white/90 px-3 py-2">
+        <button onClick={() => navigate("/plaza")} className="rounded border border-[var(--msa-border-strong)] bg-[var(--msa-surface)] px-2.5 py-1.5 text-xs text-[var(--msa-text-secondary)]">← 返回卡组</button>
+        <div className="mr-2"><p className="text-[9px] uppercase tracking-[0.16em] text-[var(--msa-text-muted)]">Deck Editor</p><h1 className="text-sm font-bold text-[var(--msa-text-primary)]">组卡器</h1></div>
+        <label className="flex items-center gap-2 text-[10px] text-[var(--msa-text-muted)]"><span>卡组名称</span><input value={deckName} maxLength={30} onChange={(event) => setDeckName(event.target.value)} className="w-44 rounded border border-[var(--msa-border-strong)] bg-[var(--msa-bg-alt)] px-2.5 py-1.5 text-sm text-[var(--msa-text-primary)]" /></label>
+        <div className={`flex items-baseline gap-1 ${stats.allValid ? "text-emerald-600" : "text-amber-600"}`}><b className="text-2xl">{stats.mainCount}</b><span className="text-[10px]">/ 50</span></div>
+        <div className="ml-auto flex flex-wrap gap-1"><button onClick={newDeck} className={actionClass}>新建</button><button onClick={onSave} disabled={!stats.allValid} className={actionClass}>保存</button><button onClick={saveAs} disabled={!stats.allValid} className={actionClass}>另存为</button><button onClick={() => setShowImport(true)} className={actionClass}>导入</button><button onClick={copyCode} className={actionClass}>导出码</button><button onClick={onShare} className={actionClass}>分享</button><button onClick={handleDeckImageDownload} disabled={!stats.allValid || generatingImage} className={actionClass}>{generatingImage ? "生成中…" : "生成卡组图"}</button>{isAuthenticated && <button onClick={() => setShowPublish(true)} disabled={!stats.allValid} className={actionClass}>发布</button>}<button onClick={onClear} className={`${actionClass} text-red-600`}>清空</button></div>
+      </header>
 
-        <div className="flex flex-wrap gap-1">
-          <span
-            className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-              stats.mainValid ? "bg-green-50 text-green-600" : "bg-amber-50 text-amber-600"
-            }`}
-          >
-            主卡组 {stats.mainCount}/50
-          </span>
-          {stats.colors.length > 0 && (
-            <span
-              className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                stats.colorValid ? "bg-green-50 text-green-600" : "bg-amber-50 text-amber-600"
-              }`}
-            >
-              {stats.colors.join("/")}
-            </span>
-          )}
-          {stats.allValid && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-600 font-medium">
-              ✓ 合规
-            </span>
-          )}
-        </div>
+      <main className="grid min-h-0 flex-1 grid-cols-[238px_minmax(420px,1fr)_350px] gap-2 overflow-hidden p-2 max-[1100px]:grid-cols-[210px_minmax(380px,1fr)_310px] max-[900px]:grid-cols-[180px_minmax(300px,1fr)_260px]">
+        <aside className="min-h-0 overflow-y-auto rounded-xl border border-[var(--msa-border)] bg-[var(--msa-surface)] p-3 scrollbar-thin">
+          <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--msa-text-muted)]">Filter</p><h2 className="mb-3 text-sm font-bold text-[var(--msa-text-primary)]">筛选</h2>
+          <FilterSidebar db={db} state={filters} onChange={(patch) => setFilters((current) => ({ ...current, ...patch }))} onReset={() => setFilters(DEFAULT_FILTERS)} resultCount={filteredGroups.length} multiSelect />
+          <div className="my-4 border-t border-[var(--msa-border)]" />
+          <div className="mb-2 flex items-center justify-between"><div><p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--msa-text-muted)]">Saved Decks</p><h2 className="text-sm font-bold text-[var(--msa-text-primary)]">我的卡组</h2></div><span className="text-[10px] text-[var(--msa-text-muted)]">{savedDecks.length}</span></div>
+          <div className="space-y-1.5">{savedDecks.length ? savedDecks.map((deck) => <article key={`${deck.name}-${deck.created_at}`} className={`flex items-center rounded-lg border ${deck.name === deckName ? "border-red-300 bg-red-50" : "border-[var(--msa-border)] bg-[var(--msa-bg-alt)]"}`}><button onClick={() => onLoad(deck)} className="min-w-0 flex-1 px-2 py-2 text-left"><b className="block truncate text-xs text-[var(--msa-text-primary)]">{deck.name}</b><span className="text-[9px] text-[var(--msa-text-muted)]">{deck.main_deck.reduce((sum, entry) => sum + entry.count, 0)} 张</span></button><button onClick={() => confirm(`确定删除「${deck.name}」吗？`) && onDelete(deck.name)} className="px-2 py-2 text-stone-400 hover:text-red-600">×</button></article>) : <p className="py-3 text-center text-[10px] text-[var(--msa-text-muted)]">暂无本地卡组</p>}</div>
+        </aside>
 
-        <div className="ml-auto flex gap-1">
-          <button onClick={onSave} className="px-3 py-1.5 text-xs bg-[var(--msa-surface)] text-[var(--msa-text-muted)] hover:text-[var(--msa-text-primary)] rounded border border-[var(--msa-border-strong)] transition font-medium">
-            保存
-          </button>
-          <button onClick={() => setShowImport(true)} className="px-3 py-1.5 text-xs bg-[var(--msa-surface)] text-[var(--msa-text-muted)] hover:text-[var(--msa-text-primary)] rounded border border-[var(--msa-border-strong)] transition font-medium">
-            导入
-          </button>
-          <button onClick={handleShare} className="px-3 py-1.5 text-xs bg-blue-600 text-white hover:bg-blue-500 rounded transition font-medium">
-            分享
-          </button>
-          {isAuthenticated && (
-            <button onClick={() => setShowPublish(true)} className="px-3 py-1.5 text-xs bg-green-600 text-white hover:bg-green-500 rounded transition font-medium">
-              发布到广场
-            </button>
-          )}
-          <button onClick={onClear} className="px-3 py-1.5 text-xs bg-[var(--msa-surface)] text-[var(--msa-text-muted)] hover:text-[var(--msa-red)] rounded border border-[var(--msa-border-strong)] transition font-medium">
-            清空
-          </button>
-        </div>
-      </div>
-
-      {/* ═══ MAIN CONTENT ═══ */}
-      <div className="flex-1 flex overflow-hidden min-h-0">
-        {/* ── LEFT COLUMN ── */}
-        <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-          {/* Type tabs + Filter toggle */}
-          <div className="flex items-center gap-1 p-1.5 bg-[var(--msa-bg-alt)] border-b border-[var(--msa-border)] flex-shrink-0">
-            <button
-              onClick={() => setFilterCollapsed(!filterCollapsed)}
-              className="px-2 py-1 text-[11px] rounded bg-[var(--msa-surface)] text-[var(--msa-text-muted)] hover:text-[var(--msa-text-primary)] border border-[var(--msa-border-strong)] transition font-medium flex items-center gap-1"
-            >
-              <svg
-                className={`w-3 h-3 transition-transform ${filterCollapsed ? "" : "rotate-180"}`}
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-              </svg>
-              {filterCollapsed ? "展开筛选" : "收起筛选"}
-            </button>
-
-            {/* Search input — always visible regardless of filter collapse */}
-            <div className="relative flex-1 min-w-[120px] max-w-[280px]">
-              <svg
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400 pointer-events-none"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M16.5 10.5a6 6 0 11-12 0 6 6 0 0112 0z" />
-              </svg>
-              <input
-                type="text"
-                value={filters.search}
-                onChange={(e) => onFilterChange({ search: e.target.value })}
-                placeholder="搜索卡名/编号/效果..."
-                className="w-full bg-white border border-stone-200 rounded text-sm text-stone-700 placeholder-stone-400 pl-8 pr-3 py-2 focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 transition"
-              />
-            </div>
-
-            {TAB_CONFIG.map((t) => (
-              <button
-                key={t.key}
-                onClick={() => setPickerTab(t.key)}
-                className={`px-3 py-1 text-[11px] rounded transition font-medium ${
-                  pickerTab === t.key
-                    ? t.activeClass
-                    : "bg-[var(--msa-surface)] text-[var(--msa-text-muted)] hover:text-[var(--msa-text-primary)]"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
+        <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-[var(--msa-border)] bg-[var(--msa-surface)]">
+          <header className="flex items-center justify-between border-b border-[var(--msa-border)] px-3 py-2"><div><p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--msa-text-muted)]">Card Pool</p><h2 className="text-sm font-bold text-[var(--msa-text-primary)]">卡池</h2></div><div className="flex items-center gap-2"><span className="text-[10px] text-[var(--msa-text-muted)]">{filteredGroups.length} 张结果</span><ColumnSelector columns={columns} onChange={setColumns} /></div></header>
+          <nav className="grid grid-cols-3 gap-1 border-b border-[var(--msa-border)] bg-[var(--msa-bg-alt)] p-1.5" aria-label="组卡器卡池分类">{([{ key: "all", label: "全部卡牌" }, { key: "main", label: "角色卡" }, { key: "impact", label: "冲击参考" }] as { key: PickerTab; label: string }[]).map((tab) => <button key={tab.key} onClick={() => setPickerTab(tab.key)} className={`rounded px-3 py-1.5 text-xs font-medium transition ${pickerTab === tab.key ? "bg-red-600 text-white" : "bg-[var(--msa-surface)] text-[var(--msa-text-muted)] hover:text-[var(--msa-text-primary)]"}`}>{tab.label}</button>)}</nav>
+          <div className="min-h-0 flex-1 overflow-y-auto p-2 scrollbar-thin">
+            <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>{pagination.items.map((group) => { const card = group.lowest; const count = countFor(card); const addDisabled = card.card_type !== 1 || count >= 3 || stats.mainCount >= 50; return <article key={group.cardNo} onMouseEnter={() => setHoveredCard(card)} onMouseLeave={() => setHoveredCard(null)} onClick={() => setSelectedCard(card)} className={`min-w-0 overflow-hidden rounded-lg border bg-white transition ${selectedCard?.card_no === card.card_no ? "border-red-400 shadow-md" : count ? "border-amber-300" : "border-[var(--msa-border)] hover:border-red-300"}`}><div role="button" tabIndex={0} onDoubleClick={(event) => { event.stopPropagation(); add(card); }} className="relative block aspect-[746/1041] w-full overflow-hidden bg-stone-100"><CardVariantImage variants={group.variants} lockedToLowest onVariantChange={(variant) => { setSelectedCard(variant); setHoveredCard(variant); }} />{count > 0 && <b className="pointer-events-none absolute right-1 top-1 rounded bg-red-600 px-1.5 py-0.5 text-[10px] text-white">×{count}</b>}<span className="pointer-events-none absolute left-1 top-1 grid h-5 min-w-5 place-items-center rounded-full bg-black/75 px-1 text-[9px] font-bold text-white">{card.cost}</span></div><div className="p-1.5"><b className="block truncate text-[10px] text-[var(--msa-text-primary)]">{card.name}</b><span className="block truncate text-[8px] text-[var(--msa-text-muted)]">{card.card_no}</span></div><div className="grid grid-cols-[1fr_28px_1fr] border-t border-[var(--msa-border)]"><button aria-label={`减少 ${card.name}`} disabled={!count} onClick={(event) => { event.stopPropagation(); onRemove(card.card_no); }} className="py-1 text-sm text-[var(--msa-text-secondary)] disabled:opacity-30">−</button><strong className="grid place-items-center border-x border-[var(--msa-border)] text-[10px]">{count}</strong><button aria-label={`增加 ${card.name}`} disabled={addDisabled} onClick={(event) => { event.stopPropagation(); add(card); }} className="py-1 text-sm text-[var(--msa-text-secondary)] disabled:opacity-30">＋</button></div></article>; })}</div>
+            <PaginationControls page={pagination.page} pageCount={pagination.pageCount} total={pagination.total} pageSize={CARD_PAGE_SIZE} onPageChange={setPage} />
           </div>
+        </section>
 
-          {/* Collapsible filter bar */}
-          {!filterCollapsed && (
-            <div className="flex-shrink-0 overflow-y-auto scrollbar-thin bg-white/80 border-b border-[var(--msa-border)]">
-              <div className="p-2">
-                <FilterSidebar
-                  db={db}
-                  state={filters}
-                  onChange={onFilterChange}
-                  onReset={onReset}
-                  resultCount={filteredPicker.length}
-                  compact
-                  hideSearch
-                  multiSelect
-                />
-              </div>
-            </div>
-          )}
+        <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--msa-border)] bg-[var(--msa-surface)]">
+          <header className="flex items-end justify-between px-3 py-2"><div><p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--msa-text-muted)]">Deck List</p><h2 className="text-sm font-bold text-[var(--msa-text-primary)]">当前构筑</h2></div><b className={`text-2xl ${stats.allValid ? "text-emerald-600" : "text-red-600"}`}>{stats.mainCount}</b></header>
+          <div className="flex h-[92px] flex-shrink-0 items-end gap-1 border-y border-[var(--msa-border)] bg-[var(--msa-bg-alt)] px-3 py-2">{curve.map((value, index) => <div key={index} className="grid h-full flex-1 content-end justify-items-center"><span className="w-full max-w-5 rounded-t bg-red-400" style={{ height: `${Math.max(3, value / maxCurve * 54)}px` }} /><b className="text-[8px] text-[var(--msa-text-secondary)]">{index === 8 ? "8+" : index}</b><small className="text-[7px] text-[var(--msa-text-muted)]">{value}</small></div>)}</div>
+          <div className="flex items-center gap-2 border-b border-[var(--msa-border)] px-3 py-2"><div className="h-1.5 flex-1 overflow-hidden rounded-full bg-stone-200"><div className={`h-full ${stats.allValid ? "bg-emerald-500" : "bg-red-500"}`} style={{ width: `${Math.min(100, stats.mainCount / 50 * 100)}%` }} /></div><select value={deckSort} onChange={(event) => setDeckSort(event.target.value as DeckSort)} className="rounded border border-[var(--msa-border)] bg-white px-1.5 py-0.5 text-[9px]">{(Object.keys(sortLabels) as DeckSort[]).map((key) => <option key={key} value={key}>{sortLabels[key]}</option>)}</select></div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-2 scrollbar-thin">{deckEntries.length ? deckEntries.map((entry) => {
+            const card = cardMap.get(entry.card_no); if (!card) return null;
+            return <article key={entry.card_no} onClick={() => setSelectedCard(card)} className={`relative isolate mb-1 flex min-h-11 items-center gap-1.5 overflow-hidden rounded-lg border p-1.5 ${selectedCard?.card_no === card.card_no ? "border-red-400 ring-1 ring-red-300" : "border-[var(--msa-border)]"}`}>
+              <CardImage cardId={card.id} legacyUrl={card.image_url} intent="thumb" alt="" aria-hidden="true" className="absolute inset-0 z-0 h-full w-full object-cover object-[center_28%] opacity-45 saturate-[.9] contrast-110" />
+              <span className="absolute inset-0 z-[1] bg-gradient-to-r from-white/95 via-white/55 to-white/90" />
+              <span className="relative z-10 grid h-7 w-7 flex-shrink-0 place-items-center rounded bg-white/90 text-xs font-bold shadow-sm">{card.cost}</span>
+              <div className="relative z-10 min-w-0 flex-1"><b className="block truncate text-[10px] text-[var(--msa-text-primary)]">{card.name}</b><small className="block text-[8px] text-[var(--msa-text-secondary)]">{card.card_no}</small></div>
+              <strong className="relative z-10 text-xs text-red-700">×{entry.count}</strong>
+              <button disabled={entry.count >= 3 || stats.mainCount >= 50} onClick={(event) => { event.stopPropagation(); add(card); }} className="relative z-10 grid h-7 w-7 place-items-center rounded border border-[var(--msa-border)] bg-white/90 disabled:opacity-30">＋</button>
+              <button onClick={(event) => { event.stopPropagation(); onRemove(entry.card_no); }} className="relative z-10 grid h-7 w-7 place-items-center rounded border border-[var(--msa-border)] bg-white/90">−</button>
+            </article>;
+          }) : <p className="py-6 text-center text-[10px] text-[var(--msa-text-muted)]">从中间卡池加入卡牌，双击卡面也可快速加入。</p>}</div>
+          {detailCard && <section className="flex max-h-[150px] flex-shrink-0 gap-2 border-t border-[var(--msa-border)] bg-[var(--msa-bg-alt)] p-2"><CardImage cardId={detailCard.id} legacyUrl={detailCard.image_url} intent="detail" alt={detailCard.name} className="h-[132px] w-auto rounded object-cover" /><div className="min-w-0 overflow-y-auto"><small className="text-[8px] text-red-500">{detailCard.card_no}</small><h3 className="text-xs font-bold text-[var(--msa-text-primary)]">{detailCard.name}</h3><p className="mt-1 whitespace-pre-line text-[9px] leading-relaxed text-[var(--msa-text-muted)]">{detailCard.effect || "无效果文字"}</p></div></section>}
+          <footer className={`flex-shrink-0 border-t px-3 py-2 text-[10px] ${stats.allValid ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>{validation}</footer>
+        </aside>
+      </main>
 
-          {/* Result count + Column selector */}
-          <div className="px-3 py-1 text-[10px] text-[var(--msa-text-muted)] bg-white/80 flex-shrink-0 flex items-center justify-between">
-            <span>{filteredPicker.length} 张结果</span>
-            <ColumnSelector columns={columns} onChange={setColumns} />
-          </div>
-
-          {/* Card grid (always visible) */}
-          <main className="flex-1 overflow-y-auto scrollbar-thin p-1.5 bg-[#fcfaf7]">
-            {filteredPicker.length === 0 ? (
-              <div className="text-center py-20 text-gray-400">
-                <p className="text-sm">没有匹配的卡牌</p>
-              </div>
-            ) : (
-              <CardGrid
-                cards={filteredPicker}
-                onHover={setHoveredCard}
-                onSelect={handleCardSelect}
-                countFor={countFor}
-                columns={columns}
-              />
-            )}
-          </main>
-        </div>
-
-        {/* ── RIGHT COLUMN ── */}
-        <div className="w-[456px] flex-shrink-0 bg-white/90 border-l border-[var(--msa-border)] flex flex-col overflow-hidden">
-          {/* View mode tabs */}
-          <div className="flex items-center gap-0.5 p-1 bg-[var(--msa-bg-alt)] border-b border-[var(--msa-border)] flex-shrink-0">
-            {(["gallery", "stats", "hand"] as const).map((mode) => (
-              <button
-                key={mode}
-                onClick={() => setRightViewMode(mode)}
-                className={`px-2.5 py-1 text-[11px] rounded font-medium transition ${
-                  rightViewMode === mode
-                    ? "bg-msa-600 text-white shadow-sm"
-                    : "bg-[var(--msa-surface)] text-[var(--msa-text-muted)] hover:text-[var(--msa-text-primary)]"
-                }`}
-              >
-                {mode === "gallery" ? "已选" : mode === "stats" ? "统计" : "起手"}
-              </button>
-            ))}
-          </div>
-
-          {/* Right panel content */}
-          <div className="flex-1 overflow-y-auto scrollbar-thin">
-            {rightViewMode === "stats" ? (
-              <DeckStatsView
-                mainDeck={mainDeck}
-                rushDeck={[]}
-                cardMap={cardMap}
-                stats={{ ...stats, rushCount: 0, rushValid: true }}
-              />
-            ) : rightViewMode === "hand" ? (
-              <SampleHandView
-                mainDeck={mainDeck}
-                rushDeck={[]}
-                cardMap={cardMap}
-              />
-            ) : (
-              <>
-                {/* Main deck section */}
-                <div className="border-b border-[var(--msa-border)]">
-                  <button
-                    onClick={() => setMainCollapsed(!mainCollapsed)}
-                    className="sticky top-0 z-10 w-full flex items-center gap-1.5 bg-white/95 px-2.5 py-2 border-b border-[var(--msa-border)] hover:bg-[var(--msa-surface-hover)] transition"
-                  >
-                    <span className="text-[var(--msa-text-muted)] flex-shrink-0">
-                      {collapseArrow(mainCollapsed)}
-                    </span>
-                    <span className="text-[11px] text-[var(--msa-text-muted)] font-semibold uppercase tracking-wide">
-                      当前选择 · {stats.mainCount}/50
-                    </span>
-                    <div className="ml-auto" onClick={(e) => e.stopPropagation()}>
-                      {renderSortSelect(mainSort, setMainSort)}
-                    </div>
-                  </button>
-                  {!mainCollapsed && (
-                    <div className="p-1.5 space-y-0.5">
-                      {sortedMainDeck.length === 0 ? (
-                        <p className="text-center text-[11px] text-gray-400 py-4">
-                          点击卡牌加入卡组
-                        </p>
-                      ) : (
-                        sortedMainDeck.map((e) => renderDeckEntry(e))
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Saved decks section */}
-                <div className="flex-1">
-                  <button
-                    onClick={() => setSavedCollapsed(!savedCollapsed)}
-                    className="sticky top-0 z-10 w-full flex items-center gap-1.5 bg-white/95 px-2.5 py-2 border-b border-[var(--msa-border)] hover:bg-[var(--msa-surface-hover)] transition"
-                  >
-                    <span className="text-[var(--msa-text-muted)] flex-shrink-0">
-                      {collapseArrow(savedCollapsed)}
-                    </span>
-                    <span className="text-[11px] text-[var(--msa-text-muted)] font-semibold uppercase tracking-wide">
-                      我的卡组 ({savedDecks.length})
-                    </span>
-                  </button>
-                  {!savedCollapsed && (
-                    <div className="p-2 space-y-1.5">
-                      <button
-                        onClick={handleNewDeck}
-                        className="w-full py-2 text-sm font-medium bg-red-600 text-white hover:bg-red-500 rounded-lg transition flex items-center justify-center gap-1.5"
-                      >
-                        <span className="text-base leading-none">+</span> 新建卡组
-                      </button>
-
-                      {savedDecks.length === 0 ? (
-                        <p className="text-center text-[11px] text-gray-400 py-2">
-                          还没有保存的卡组
-                        </p>
-                      ) : (
-                        savedDecks.map((deck) => (
-                          <div
-                            key={`${deck.name}-${deck.created_at}`}
-                            className="flex items-center gap-1 rounded bg-[var(--msa-bg-alt)] hover:bg-[var(--msa-surface-hover)] transition group"
-                          >
-                            <button
-                              onClick={() => onLoad(deck)}
-                              className="flex-1 flex items-center gap-2 px-2 py-1.5 text-left min-w-0"
-                            >
-                              <div className="w-1 h-6 rounded-full bg-blue-500 flex-shrink-0" />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs text-[var(--msa-text-secondary)] group-hover:text-[var(--msa-text-primary)] transition truncate leading-tight">
-                                  {deck.name}
-                                </p>
-                                <p className="text-[10px] text-[var(--msa-text-muted)] leading-tight">
-                                  {deck.main_deck.reduce((s, e) => s + e.count, 0)}/50
-                                </p>
-                              </div>
-                            </button>
-                            <button
-                              onClick={() => {
-                                if (confirm(`确定要删除卡组「${deck.name}」吗？`)) {
-                                  onDelete(deck.name);
-                                }
-                              }}
-                              className="text-gray-400 hover:text-[var(--msa-red)] transition px-1.5 py-1 flex-shrink-0"
-                              title="删除卡组"
-                            >
-                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3" />
-                              </svg>
-                            </button>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* ═══ BOTTOM: hover card detail strip ═══ */}
-      <div className="h-[110px] flex-shrink-0 bg-[var(--msa-bg-alt)] border-t border-[var(--msa-border)] flex items-center px-3 gap-3 overflow-hidden">
-        {hoveredCard ? (
-          <>
-            <img
-              src={hoveredCard.image_url}
-              alt={hoveredCard.name}
-              className="h-[95px] w-auto rounded object-cover flex-shrink-0 bg-white/90"
-              loading="lazy"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.opacity = "0.2";
-              }}
-            />
-            <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-[var(--msa-text-primary)]">
-                  {hoveredCard.name}
-                </span>
-                <span
-                  className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                  style={{
-                    backgroundColor: `${hoveredCard.attribute_color}30`,
-                    color: hoveredCard.attribute_color,
-                  }}
-                >
-                  {hoveredCard.attribute_name}
-                </span>
-                <span className="text-[10px] text-[var(--msa-text-muted)]">
-                  Lv{hoveredCard.cost}
-                </span>
-                {hoveredCard.power && (
-                  <span className="text-[10px] text-red-500 font-medium">
-                    {hoveredCard.power}
-                  </span>
-                )}
-                <span className="text-[10px] text-gray-400">{hoveredCard.card_no}</span>
-              </div>
-              <p className="text-xs text-[var(--msa-text-muted)] leading-relaxed line-clamp-3 overflow-hidden">
-                {hoveredCard.effect}
-              </p>
-            </div>
-          </>
-        ) : (
-          <div className="flex-1 text-center text-xs text-gray-400">
-            悬停卡牌查看详情
-          </div>
-        )}
-      </div>
-
-      {/* ── Import modal ── */}
-      {showImport && (
-        <ImportDeckModal onImport={handleImport} onClose={() => setShowImport(false)} />
-      )}
-
-      {/* ── Publish modal ── */}
-      {showPublish && (
-        <PublishDeckModal
-          open={showPublish}
-          deckName={deckName}
-          onPublish={handlePublish}
-          onClose={() => setShowPublish(false)}
-        />
-      )}
-
-      {/* ── Click modal ── */}
-      {selectedCard && (
-        <CardDetailModal card={selectedCard} db={db} onClose={() => setSelectedCard(null)} />
-      )}
+      {showImport && <ImportDeckModal onImport={handleImport} onClose={() => setShowImport(false)} />}
+      {showPublish && <PublishDeckModal open={showPublish} deckName={deckName} onPublish={publish} onClose={() => setShowPublish(false)} />}
     </div>
   );
 }

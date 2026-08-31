@@ -92,7 +92,7 @@ export default function ProfilePage() {
               ) : (
                 <>
                   <h1 className="text-xl font-bold text-stone-800">{profile?.nickname || user.nickname}</h1>
-                  <p className="text-xs text-stone-400 mt-0.5">{user.email}</p>
+                  <p className="text-xs text-stone-400 mt-0.5">@{user.username}</p>
                   <p className="text-sm text-stone-600 mt-2 leading-relaxed">
                     {profile?.bio || '这个人很懒，什么都没写...'}
                   </p>

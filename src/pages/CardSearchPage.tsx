@@ -1,174 +1,97 @@
-import { useCallback, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Card, CardDatabase } from "../types/card";
-import FilterSidebar, { DEFAULT_FILTERS, type FilterState } from "../components/FilterSidebar";
-import CardGrid from "../components/CardGrid";
-import CardDetailModal from "../components/CardDetailModal";
-import ColumnSelector from "../components/ColumnSelector";
+import CardDetailSidebar from "../components/CardDetailSidebar";
+import CardVariantImage from "../components/CardVariantImage";
+import PaginationControls from "../components/PaginationControls";
+import { getCostOptions, getPackageOptions } from "../components/FilterSidebar";
+import { groupCardVariants } from "../utils/cardVariants";
+import { CARD_PAGE_SIZE, paginateItems } from "../utils/pagination";
 
 interface Props {
   db: CardDatabase;
   cardMap: Map<string, Card>;
 }
 
+type SortMode = "card_no" | "cost" | "power" | "name";
+const selectClass = "min-w-0 rounded-lg border border-[var(--msa-border-strong)] bg-[var(--msa-bg)] px-2.5 py-2 text-xs text-[var(--msa-text-secondary)] focus:border-red-400 focus:outline-none";
+
 export default function CardSearchPage({ db, cardMap }: Props) {
-  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
-  const [columns, setColumns] = useState(8);
+  const [query, setQuery] = useState("");
+  const [type, setType] = useState<number | "all">("all");
+  const [attribute, setAttribute] = useState<number | "all">("all");
+  const [cardPackage, setCardPackage] = useState<string | "all">("all");
+  const [cost, setCost] = useState<number | "all">("all");
+  const [rarity, setRarity] = useState<number | "all">("all");
+  const [sort, setSort] = useState<SortMode>("card_no");
+  const [powerMin, setPowerMin] = useState("");
+  const [distance, setDistance] = useState<number | "all">("all");
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
-  const [showFilters, setShowFilters] = useState(true);
+  const [page, setPage] = useState(1);
 
-  const onFilterChange = useCallback((patch: Partial<FilterState>) => {
-    setFilters((current) => ({ ...current, ...patch }));
-  }, []);
-
-  const onReset = useCallback(() => setFilters(DEFAULT_FILTERS), []);
-  const baseCards = useMemo(() => Array.from(cardMap.values()), [cardMap]);
-
-  // Filter every rarity variant first, then deduplicate for display. Doing this
-  // in the opposite order would hide cards whose matching rarity is not the
-  // representative variant stored in cardMap.
-  const filteredCards = useMemo(() => {
+  const packageOptions = useMemo(() => getPackageOptions(db), [db]);
+  const costOptions = useMemo(() => getCostOptions(db), [db]);
+  const cardGroups = useMemo(() => {
+    const keyword = query.trim().toLocaleLowerCase("zh-CN");
+    const minimumPower = powerMin.trim() ? Number(powerMin) : null;
     const matched = db.cards.filter((card) => {
-      const {
-        search,
-        filterType,
-        filterAttr,
-        filterRarity,
-        filterCost,
-        filterPackage,
-        powerMin,
-        powerMax,
-        distanceMin,
-        distanceMax,
-        selectedAttrs,
-        selectedRarities,
-        selectedCosts,
-      } = filters;
-
-      if (filterType !== "all" && card.card_type !== filterType) return false;
-      if (search) {
-        const query = search.toLowerCase();
-        if (
-          !card.name.toLowerCase().includes(query) &&
-          !card.card_no.toLowerCase().includes(query) &&
-          !(card.feature_text || "").toLowerCase().includes(query)
-        ) return false;
-      }
-      if (filterAttr !== "all" && card.attribute !== filterAttr) return false;
-      if (filterRarity !== "all" && card.rarity !== filterRarity) return false;
-      if (filterCost !== "all" && card.cost !== filterCost) return false;
-      if (selectedAttrs.length > 0 && !selectedAttrs.includes(card.attribute)) return false;
-      if (selectedRarities.length > 0 && !selectedRarities.includes(card.rarity)) return false;
-      if (selectedCosts.length > 0 && !selectedCosts.includes(card.cost)) return false;
-      if (filterPackage !== "all" && card.package_short !== filterPackage) return false;
-
-      const power = card.power ? parseInt(card.power, 10) : null;
-      if (powerMin !== "all" && (power == null || power < powerMin)) return false;
-      if (powerMax !== "all" && (power == null || power > powerMax)) return false;
-      if (distanceMin !== "all" && (card.r == null || card.r < distanceMin)) return false;
-      if (distanceMax !== "all" && (card.r == null || card.r > distanceMax)) return false;
+      if (type !== "all" && card.card_type !== type) return false;
+      if (attribute !== "all" && card.attribute !== attribute) return false;
+      if (cardPackage !== "all" && card.package_short !== cardPackage) return false;
+      if (cost !== "all" && card.cost !== cost) return false;
+      if (rarity !== "all" && card.rarity !== rarity) return false;
+      if (distance !== "all" && card.r !== distance) return false;
+      if (minimumPower != null && Number.isFinite(minimumPower) && Number(card.power || 0) < minimumPower) return false;
+      if (keyword && ![card.name, card.card_no, card.effect, card.feature_text, card.package_short]
+        .some((value) => value?.toLocaleLowerCase("zh-CN").includes(keyword))) return false;
       return true;
     });
-
-    const seen = new Set<string>();
-    const result = matched.filter((card) => {
-      if (seen.has(card.card_no)) return false;
-      seen.add(card.card_no);
-      return true;
+    return groupCardVariants(matched).sort((left, right) => {
+      if (sort === "name") return left.lowest.name.localeCompare(right.lowest.name, "zh-CN");
+      if (sort === "cost") return left.lowest.cost - right.lowest.cost || left.cardNo.localeCompare(right.cardNo);
+      if (sort === "power") return Number(right.lowest.power || 0) - Number(left.lowest.power || 0) || left.cardNo.localeCompare(right.cardNo);
+      return left.cardNo.localeCompare(right.cardNo);
     });
+  }, [db.cards, query, type, attribute, cardPackage, cost, rarity, distance, powerMin, sort]);
 
-    result.sort((left, right) => {
-      switch (filters.sortBy) {
-        case "cost":
-          return left.cost === right.cost
-            ? left.card_no.localeCompare(right.card_no)
-            : left.cost - right.cost;
-        case "power":
-          return (right.power ? parseInt(right.power, 10) : 0) -
-            (left.power ? parseInt(left.power, 10) : 0);
-        case "name":
-          return left.name.localeCompare(right.name, "zh-CN");
-        default:
-          return left.card_no.localeCompare(right.card_no);
-      }
-    });
+  const pagination = useMemo(() => paginateItems(cardGroups, page, CARD_PAGE_SIZE), [cardGroups, page]);
+  const detailCard = selectedCard && cardGroups.some((group) => group.cardNo === selectedCard.card_no) ? selectedCard : cardGroups[0]?.lowest ?? null;
+  useEffect(() => { setPage(1); }, [query, type, attribute, cardPackage, cost, rarity, distance, powerMin, sort]);
 
-    return result;
-  }, [db.cards, filters]);
-
-  const handleHover = useCallback(() => undefined, []);
+  const reset = () => {
+    setQuery(""); setType("all"); setAttribute("all"); setCardPackage("all");
+    setCost("all"); setRarity("all"); setDistance("all"); setPowerMin(""); setSort("card_no");
+  };
 
   return (
-    <div className="flex h-full overflow-hidden bg-[#fcfaf7]">
-      {showFilters && (
-        <aside className="w-[264px] flex-shrink-0 overflow-y-auto border-r border-stone-200 bg-white/90 scrollbar-thin">
-          <div className="p-3">
-            <div className="mb-3 flex items-center justify-between">
-              <h1 className="text-sm font-bold tracking-wide text-stone-800">卡查</h1>
-              <span className="text-[10px] text-stone-400">共 {baseCards.length} 张卡</span>
-            </div>
-            <FilterSidebar
-              db={db}
-              state={filters}
-              onChange={onFilterChange}
-              onReset={onReset}
-              resultCount={filteredCards.length}
-            />
-          </div>
-        </aside>
-      )}
+    <div className="flex h-full flex-col overflow-hidden bg-[var(--msa-bg)]">
+      <header className="flex flex-shrink-0 items-end justify-between border-b border-[var(--msa-border)] bg-[var(--msa-surface)] px-5 py-3">
+        <div><p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--msa-text-muted)]">Card Archive</p><h1 className="text-xl font-bold text-[var(--msa-text-primary)]">卡查</h1></div>
+        <div className="flex items-baseline gap-1 text-[var(--msa-text-muted)]"><b className="text-2xl text-red-600">{cardGroups.length}</b><span className="text-xs">/ {cardMap.size} 张</span></div>
+      </header>
 
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="flex flex-shrink-0 items-center gap-2 border-b border-stone-200 bg-white/80 px-3 py-1.5">
-          <button
-            type="button"
-            onClick={() => setShowFilters((visible) => !visible)}
-            className="flex items-center gap-1 rounded border border-stone-200 bg-stone-100 px-2 py-1 text-[11px] font-medium text-stone-500 transition hover:bg-stone-200 hover:text-stone-700"
-            title={showFilters ? "收起筛选" : "展开筛选"}
-          >
-            <svg
-              className={`h-3 w-3 transition-transform ${showFilters ? "rotate-180" : ""}`}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-            </svg>
-            {showFilters ? "收起筛选" : "展开筛选"}
-          </button>
-          <span className="text-[11px] text-stone-500">{filteredCards.length} 张结果</span>
-          <span className="hidden text-[10px] text-stone-400 md:inline">点击卡牌查看详情与其他稀有度</span>
-          <div className="ml-auto">
-            <ColumnSelector columns={columns} onChange={setColumns} />
-          </div>
-        </div>
+      <section className="grid flex-shrink-0 grid-cols-[minmax(220px,2fr)_repeat(6,minmax(90px,1fr))_auto] gap-2 border-b border-[var(--msa-border)] bg-white/80 p-3 max-[1050px]:grid-cols-4">
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="卡名、编号、效果或特性" className={`${selectClass} text-sm`} />
+        <select value={type} onChange={(event) => setType(event.target.value === "all" ? "all" : Number(event.target.value))} className={selectClass}><option value="all">全部类型</option><option value="1">角色卡</option><option value="2">冲击卡</option></select>
+        <select value={attribute} onChange={(event) => setAttribute(event.target.value === "all" ? "all" : Number(event.target.value))} className={selectClass}><option value="all">全部颜色</option>{Object.entries(db.attributes).map(([id, value]) => <option key={id} value={id}>{value.name}</option>)}</select>
+        <select value={cardPackage} onChange={(event) => setCardPackage(event.target.value)} className={selectClass}><option value="all">全部系列</option>{packageOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>
+        <select value={cost} onChange={(event) => setCost(event.target.value === "all" ? "all" : Number(event.target.value))} className={selectClass}><option value="all">全部等级</option>{costOptions.map((value) => <option key={value} value={value}>Lv{value}</option>)}</select>
+        <select value={rarity} onChange={(event) => setRarity(event.target.value === "all" ? "all" : Number(event.target.value))} className={selectClass}><option value="all">全部稀有度</option>{Object.entries(db.rarities).map(([id, value]) => <option key={id} value={id}>{value.code}</option>)}</select>
+        <select value={distance} onChange={(event) => setDistance(event.target.value === "all" ? "all" : Number(event.target.value))} className={selectClass}><option value="all">全部距离</option>{[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>R {value}</option>)}</select>
+        <select value={sort} onChange={(event) => setSort(event.target.value as SortMode)} className={selectClass}><option value="card_no">按编号</option><option value="cost">按等级</option><option value="power">按战力</option><option value="name">按名称</option></select>
+        <button onClick={reset} className="rounded-lg border border-[var(--msa-border-strong)] bg-[var(--msa-surface)] px-3 py-2 text-xs font-medium text-[var(--msa-text-muted)] transition hover:border-red-300 hover:text-red-600">重置</button>
+        <label className="col-span-full flex items-center gap-2 text-[10px] text-[var(--msa-text-muted)]"><span>最低战力</span><input type="number" step={500} value={powerMin} onChange={(event) => setPowerMin(event.target.value)} placeholder="不限" className="w-24 rounded border border-[var(--msa-border)] bg-white px-2 py-1 text-xs" /><span>点击卡牌后在右侧保持详情；切换筛选会自动回到第一页。</span></label>
+      </section>
 
-        <main className="flex-1 overflow-y-auto p-1.5 scrollbar-thin">
-          {filteredCards.length === 0 ? (
-            <div className="py-20 text-center text-stone-400">
-              <p className="text-sm">没有匹配的卡牌</p>
-              <button
-                type="button"
-                onClick={onReset}
-                className="mt-3 rounded border border-stone-200 px-3 py-1.5 text-xs text-stone-500 transition hover:text-red-600"
-              >
-                清除筛选
-              </button>
-            </div>
-          ) : (
-            <CardGrid
-              cards={filteredCards}
-              onHover={handleHover}
-              onSelect={setSelectedCard}
-              columns={columns}
-            />
-          )}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <main className="min-w-0 flex-1 overflow-y-auto p-3 scrollbar-thin">
+          {pagination.items.length ? <><div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6" role="list" aria-label="卡牌搜索结果">
+            {pagination.items.map((group) => { const card = group.lowest; return <article key={group.cardNo} role="listitem" onClick={() => setSelectedCard(card)} className={`min-w-0 cursor-pointer overflow-hidden rounded-lg border bg-[var(--msa-surface)] text-left transition ${detailCard?.card_no === group.cardNo ? "border-red-400 shadow-md" : "border-[var(--msa-border)] hover:border-red-300 hover:shadow-md"}`}>
+              <div className="relative aspect-[746/1041] overflow-hidden bg-stone-100"><CardVariantImage variants={group.variants} onVariantChange={setSelectedCard} /></div><div className="p-2"><b className="block truncate text-xs text-[var(--msa-text-primary)]">{card.name}</b><span className="mt-0.5 block truncate text-[9px] text-[var(--msa-text-muted)]">{card.card_no} · {card.card_type_name}</span></div>
+            </article>; })}
+          </div><PaginationControls page={pagination.page} pageCount={pagination.pageCount} total={pagination.total} pageSize={CARD_PAGE_SIZE} onPageChange={setPage} /></> : <div className="py-24 text-center text-sm text-[var(--msa-text-muted)]">没有符合条件的卡牌。</div>}
         </main>
+        <aside className="flex w-[320px] flex-shrink-0 flex-col overflow-hidden border-l border-[var(--msa-border)] bg-[var(--msa-surface)] max-[900px]:w-[260px] max-[650px]:hidden 2xl:w-[360px]"><div className="border-b border-[var(--msa-border)] px-3 py-2"><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--msa-text-muted)]">Card Detail</p><h2 className="text-sm font-bold text-[var(--msa-text-primary)]">卡牌详情</h2></div><CardDetailSidebar card={detailCard} db={db} showAddButton={false} /></aside>
       </div>
-
-      {selectedCard && (
-        <CardDetailModal card={selectedCard} db={db} onClose={() => setSelectedCard(null)} />
-      )}
     </div>
   );
 }

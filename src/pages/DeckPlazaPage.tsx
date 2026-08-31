@@ -1,21 +1,28 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import type { CardDatabase, Card, Deck, DeckEntry } from "../types/card";
 import {
   getLocalDecks,
+  saveDeckToLocal,
   deleteLocalDeck,
   decodeDeck,
   encodeDeck,
   extractDeckCode,
   preconToDeck,
+  ensureStarterDecks,
+  STARTER_PRECON_PATHS,
   type PreconDeckData,
 } from "../utils/deckCode";
 import { useAuth } from "../hooks/useAuth";
 import { useDecks } from "../hooks/useDecks";
 import { useFavorites } from "../hooks/useFavorites";
 import AuthModal from "../components/AuthModal";
+import PublishDeckModal from "../components/PublishDeckModal";
 import CardDetailSidebar from "../components/CardDetailSidebar";
 import PaginationControls from "../components/PaginationControls";
+import CardImage from "../components/CardImage";
 import { CARD_PAGE_SIZE, paginateItems } from "../utils/pagination";
+import { downloadDeckImage } from "../utils/deckImage";
 
 interface DeckPlazaPageProps {
   db: CardDatabase;
@@ -24,6 +31,8 @@ interface DeckPlazaPageProps {
 }
 
 type DeckCategory = "precon" | "cloud" | "local" | "imported";
+type LibraryTab = "plaza" | "mine";
+type LibrarySort = "featured" | "newest" | "name";
 
 interface DeckDisplayItem {
   deck: Deck;
@@ -61,6 +70,7 @@ const SORT_LABELS: Record<DeckSortMode, string> = {
 
 
 export default function DeckPlazaPage({ db, cardMap, onLoadDeck }: DeckPlazaPageProps) {
+  const navigate = useNavigate();
   const [preconItems, setPreconItems] = useState<DeckDisplayItem[]>([]);
   const [localItems, setLocalItems] = useState<DeckDisplayItem[]>([]);
   const [cloudItems, setCloudItems] = useState<DeckDisplayItem[]>([]);
@@ -69,10 +79,17 @@ export default function DeckPlazaPage({ db, cardMap, onLoadDeck }: DeckPlazaPage
   const [importError, setImportError] = useState<string | null>(null);
   const [selectedDeck, setSelectedDeck] = useState<Deck | null>(null);
   const [preconLoading, setPreconLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<LibraryTab>("plaza");
+  const [query, setQuery] = useState("");
+  const [attributeFilter, setAttributeFilter] = useState<number | "all">("all");
+  const [librarySort, setLibrarySort] = useState<LibrarySort>("featured");
+  const [libraryPage, setLibraryPage] = useState(1);
+  const [publishDeckName, setPublishDeckName] = useState("");
+  const [showPublish, setShowPublish] = useState(false);
 
   // ── Auth, cloud decks & favorites ──
   const { isAuthenticated } = useAuth();
-  const { publishedDecks, isLoading: cloudLoading } = useDecks();
+  const { publishedDecks, isLoading: cloudLoading, createDeck } = useDecks();
   const { isFavorited, toggleFavorite } = useFavorites();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [pendingFavoriteDeckId, setPendingFavoriteDeckId] = useState<string | null>(null);
@@ -127,18 +144,24 @@ export default function DeckPlazaPage({ db, cardMap, onLoadDeck }: DeckPlazaPage
   // ── Load precon decks from JSON ──
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      fetch("./precon_sd01.json").then((r) => r.json() as Promise<PreconDeckData>),
-      fetch("./precon_sd02.json").then((r) => r.json() as Promise<PreconDeckData>),
-    ])
-      .then(([sd01, sd02]) => {
+    Promise.all(STARTER_PRECON_PATHS.map((path) => fetch(path).then((response) => {
+      if (!response.ok) throw new Error(`Failed to load ${path}`);
+      return response.json() as Promise<PreconDeckData>;
+    })))
+      .then((precons) => {
         if (cancelled) return;
-        const items: DeckDisplayItem[] = [sd01, sd02].map((precon) => ({
+        const items: DeckDisplayItem[] = precons.map((precon) => ({
           deck: preconToDeck(precon, db),
           category: "precon" as const,
           cardType: precon.card_type,
         }));
+        const localDecks = ensureStarterDecks(precons, db);
         setPreconItems(items);
+        setLocalItems(localDecks.map((deck) => ({
+          deck,
+          category: "local" as const,
+          cardType: inferCardType(deck, cardMap),
+        })));
         setPreconLoading(false);
       })
       .catch((err) => {
@@ -147,7 +170,7 @@ export default function DeckPlazaPage({ db, cardMap, onLoadDeck }: DeckPlazaPage
         setPreconLoading(false);
       });
     return () => { cancelled = true; };
-  }, [db]);
+  }, [db, cardMap]);
 
   // ── Local decks from localStorage ──
   const refreshLocalDecks = useCallback(() => {
@@ -162,6 +185,10 @@ export default function DeckPlazaPage({ db, cardMap, onLoadDeck }: DeckPlazaPage
 
   useEffect(() => { refreshLocalDecks(); }, [refreshLocalDecks]);
 
+  useEffect(() => {
+    if (!publishDeckName && localItems[0]) setPublishDeckName(localItems[0].deck.name);
+  }, [localItems, publishDeckName]);
+
   // ── Deck code import ──
   const handleImport = useCallback(() => {
     const code = extractDeckCode(codeInput);
@@ -169,10 +196,18 @@ export default function DeckPlazaPage({ db, cardMap, onLoadDeck }: DeckPlazaPage
     const deck = decodeDeck(code);
     if (!deck) { setImportError("卡组码无效，无法解码。请检查输入是否正确。"); setImportedItem(null); return; }
     if (deck.main_deck.length === 0) { setImportError("解码成功，但卡组为空。"); setImportedItem(null); return; }
+    let uniqueName = deck.name || "导入卡组";
+    let suffix = 2;
+    const existingNames = new Set(getLocalDecks().map((item) => item.name));
+    while (existingNames.has(uniqueName)) uniqueName = `${deck.name || "导入卡组"} ${suffix++}`;
+    const imported = { ...deck, name: uniqueName, created_at: new Date().toISOString() };
+    saveDeckToLocal(imported);
+    refreshLocalDecks();
     setImportError(null);
-    setImportedItem({ deck, category: "imported", cardType: inferCardType(deck, cardMap) });
-    setSelectedDeck(deck);
-  }, [codeInput, cardMap]);
+    setImportedItem({ deck: imported, category: "imported", cardType: inferCardType(imported, cardMap) });
+    setCodeInput("");
+    setSelectedDeck(imported);
+  }, [codeInput, cardMap, refreshLocalDecks]);
 
   const handleDeleteLocal = useCallback((deckName: string) => {
     if (!confirm(`确定要删除卡组「${deckName}」吗？`)) return;
@@ -205,119 +240,107 @@ export default function DeckPlazaPage({ db, cardMap, onLoadDeck }: DeckPlazaPage
     ? localItems.some((item) => item.deck.name === selectedDeck.name)
     : false;
 
+  const libraryAttributeOptions = useMemo(() => {
+    const ids = new Set<number>();
+    for (const item of [...preconItems, ...cloudItems]) {
+      for (const entry of item.deck.main_deck) {
+        const card = cardMap.get(entry.card_no);
+        if (card) ids.add(card.attribute);
+      }
+    }
+    return [...ids].sort((a, b) => a - b);
+  }, [preconItems, cloudItems, cardMap]);
+
+  const visibleLibraryItems = useMemo(() => {
+    if (activeTab === "mine") {
+      return [...localItems].sort((left, right) => (right.deck.created_at || "").localeCompare(left.deck.created_at || ""));
+    }
+    const source = [...preconItems, ...cloudItems];
+    const keyword = query.trim().toLocaleLowerCase("zh-CN");
+    const result = source.filter((item) => {
+      const deckCards = item.deck.main_deck
+        .map((entry) => cardMap.get(entry.card_no))
+        .filter((card): card is Card => card !== undefined);
+      const matchesAttribute = attributeFilter === "all"
+        || deckCards.some((card) => card.attribute === attributeFilter);
+      const matchesQuery = !keyword || [
+        item.deck.name,
+        item.deck.author_nickname,
+        item.deck.description,
+        ...deckCards.map((card) => card.name),
+      ].some((value) => value?.toLocaleLowerCase("zh-CN").includes(keyword));
+      return matchesAttribute && matchesQuery;
+    });
+    return [...result].sort((left, right) => {
+      if (librarySort === "name") return left.deck.name.localeCompare(right.deck.name, "zh-CN");
+      if (librarySort === "newest") {
+        return (right.deck.created_at || "").localeCompare(left.deck.created_at || "");
+      }
+      if (left.category === "precon" && right.category === "precon") {
+        return left.deck.name.localeCompare(right.deck.name, "zh-CN");
+      }
+      if (left.category === "precon" && right.category !== "precon") return -1;
+      if (right.category === "precon" && left.category !== "precon") return 1;
+      return (right.deck.created_at || "").localeCompare(left.deck.created_at || "");
+    });
+  }, [activeTab, localItems, preconItems, cloudItems, query, attributeFilter, librarySort, cardMap]);
+
+  const libraryPagination = useMemo(
+    () => paginateItems(visibleLibraryItems, libraryPage, CARD_PAGE_SIZE),
+    [visibleLibraryItems, libraryPage],
+  );
+
+  useEffect(() => { setLibraryPage(1); }, [activeTab, query, attributeFilter, librarySort]);
+
+  const openPublish = useCallback(() => {
+    if (!isAuthenticated) {
+      setShowAuthModal(true);
+      return;
+    }
+    if (!localItems.length) {
+      navigate("/builder");
+      return;
+    }
+    setPublishDeckName((current) => current || localItems[0].deck.name);
+    setShowPublish(true);
+  }, [isAuthenticated, localItems, navigate]);
+
+  const handlePublish = useCallback(async (title: string, description: string) => {
+    const item = localItems.find((candidate) => candidate.deck.name === publishDeckName);
+    if (!item) return;
+    const created = await createDeck(title, description, JSON.stringify(item.deck.main_deck), true);
+    if (created) setShowPublish(false);
+  }, [localItems, publishDeckName, createDeck]);
+
   return (
     <div className="h-full overflow-y-auto scrollbar-thin bg-[var(--msa-bg)]">
-      {selectedDeck && detailStats ? (
-        <DeckDetailView
-          deck={selectedDeck}
-          stats={detailStats}
-          cardMap={cardMap}
-          db={db}
-          onBack={() => setSelectedDeck(null)}
-          onLoad={() => handleLoadDeck(selectedDeck)}
-          onDelete={isSelectedLocal ? () => handleDeleteLocal(selectedDeck.name) : undefined}
-          onCopyCode={() => handleCopyCode(selectedDeck)}
-        />
-      ) : (
-        <div className="p-4 space-y-6">
-          {/* ── Section 1: 官方预组 ── */}
-          <section>
-            <SectionHeader icon="pack" title="官方预组" subtitle="开箱即用的官方预设卡组" />
-            {preconLoading ? (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {[0, 1].map((i) => (
-                  <div key={i} className="bg-[var(--msa-surface)] rounded-xl border border-[var(--msa-border)] p-4 animate-pulse">
-                    <div className="h-2 bg-[var(--msa-border-strong)] rounded mb-3" />
-                    <div className="h-4 bg-[var(--msa-border-strong)] rounded w-2/3 mb-2" />
-                    <div className="h-3 bg-[var(--msa-border)] rounded w-1/2" />
-                  </div>
-                ))}
-              </div>
-            ) : preconItems.length === 0 ? (
-              <EmptyState message="暂无预组卡组数据" />
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {preconItems.map((item) => (
-                  <DeckCard key={`precon-${item.deck.name}`} item={item} db={db} cardMap={cardMap}
-                    onClick={() => setSelectedDeck(item.deck)} onLoad={() => handleLoadDeck(item.deck)}
-                    onFavoriteClick={handleFavoriteClick} />
-                ))}
-              </div>
-            )}
-          </section>
+      <div className="space-y-4 p-4">
+        <header className="flex flex-wrap items-end justify-between gap-3">
+          <div><p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--msa-text-muted)]">HERO RUSH DECKS</p><h1 className="text-xl font-bold text-[var(--msa-text-primary)]">卡组</h1><p className="text-xs text-[var(--msa-text-muted)]">查看官方预组，管理并分享自己的卡组。</p></div>
+          <button onClick={() => navigate("/builder")} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-500">＋ 新建卡组</button>
+        </header>
 
-          {/* ── Section 2: 云端广场 ── */}
-          <section>
-            <SectionHeader icon="globe" title="云端广场" subtitle="玩家发布的公开卡组" />
-            {cloudLoading ? (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {[0, 1, 2, 3].map((i) => (
-                  <div key={i} className="bg-[var(--msa-surface)] rounded-xl border border-[var(--msa-border)] p-4 animate-pulse">
-                    <div className="h-2 bg-[var(--msa-border-strong)] rounded mb-3" />
-                    <div className="h-4 bg-[var(--msa-border-strong)] rounded w-2/3 mb-2" />
-                    <div className="h-3 bg-[var(--msa-border)] rounded w-1/2" />
-                  </div>
-                ))}
-              </div>
-            ) : cloudItems.length === 0 ? (
-              <EmptyState message="还没有玩家分享卡组，成为第一个吧！" />
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {cloudItems.map((item) => (
-                  <DeckCard key={`cloud-${item.deck.id || item.deck.name}`} item={item} db={db} cardMap={cardMap}
-                    onClick={() => setSelectedDeck(item.deck)} onLoad={() => handleLoadDeck(item.deck)}
-                    onFavoriteClick={handleFavoriteClick} />
-                ))}
-              </div>
-            )}
-          </section>
+        <div className="grid grid-cols-2 rounded-xl border border-[var(--msa-border)] bg-[var(--msa-surface)] p-1">{(["plaza", "mine"] as LibraryTab[]).map((tab) => <button key={tab} onClick={() => setActiveTab(tab)} className={`rounded-lg px-4 py-2 text-sm font-medium transition ${activeTab === tab ? "bg-red-600 text-white shadow-sm" : "text-[var(--msa-text-muted)] hover:bg-[var(--msa-bg-alt)] hover:text-[var(--msa-text-primary)]"}`}>{tab === "mine" ? `我的卡组 (${localItems.length})` : "卡组广场"}</button>)}</div>
 
-          {/* ── Section 3: 我的卡组 ── */}
-          <section>
-            <SectionHeader icon="bookmark" title="我的卡组" subtitle="从组卡器保存的卡组" />
-            {localItems.length === 0 ? (
-              <EmptyState message="还没有保存的卡组，去组卡器创建一个吧！" />
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {localItems.map((item) => (
-                  <DeckCard key={`local-${item.deck.name}-${item.deck.created_at}`} item={item} db={db} cardMap={cardMap}
-                    onClick={() => setSelectedDeck(item.deck)} onLoad={() => handleLoadDeck(item.deck)}
-                    onDelete={() => handleDeleteLocal(item.deck.name)} />
-                ))}
-              </div>
-            )}
-          </section>
+        {activeTab === "mine" ? <section className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--msa-border)] bg-[var(--msa-surface)] p-3">
+          <input type="text" value={codeInput} onChange={(event) => setCodeInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") handleImport(); }} placeholder="粘贴卡组码或分享链接" className="min-w-[260px] flex-1 rounded-lg border border-[var(--msa-border-strong)] bg-[var(--msa-bg)] px-3 py-2 text-sm text-[var(--msa-text-secondary)] focus:border-red-500 focus:outline-none" />
+          <button onClick={handleImport} disabled={!codeInput.trim()} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-40">导入卡组码</button>
+          <select value={publishDeckName} onChange={(event) => setPublishDeckName(event.target.value)} disabled={!localItems.length} className="max-w-[200px] rounded-lg border border-[var(--msa-border-strong)] bg-[var(--msa-bg)] px-3 py-2 text-sm text-[var(--msa-text-secondary)] disabled:opacity-40"><option value="">选择要发布的卡组</option>{localItems.map((item) => <option key={item.deck.name} value={item.deck.name}>{item.deck.name}</option>)}</select>
+          <button onClick={openPublish} className="rounded-lg border border-[var(--msa-border-strong)] bg-[var(--msa-bg-alt)] px-3 py-2 text-sm font-medium text-[var(--msa-text-secondary)]">发布卡组</button>
+          {importError && <p className="w-full text-xs text-red-500">{importError}</p>}{importedItem && <p className="w-full text-xs text-emerald-600">已导入「{importedItem.deck.name}」并保存到我的卡组。</p>}
+        </section> : <section className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--msa-border)] bg-[var(--msa-surface)] p-3">
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索卡组名称、作者或代表卡牌" className="min-w-[260px] flex-1 rounded-lg border border-[var(--msa-border-strong)] bg-[var(--msa-bg)] px-3 py-2 text-sm text-[var(--msa-text-secondary)] focus:border-red-500 focus:outline-none" />
+          <select value={attributeFilter} onChange={(event) => setAttributeFilter(event.target.value === "all" ? "all" : Number(event.target.value))} className="rounded-lg border border-[var(--msa-border-strong)] bg-[var(--msa-bg)] px-3 py-2 text-sm text-[var(--msa-text-secondary)]"><option value="all">全部颜色</option>{libraryAttributeOptions.map((attribute) => <option key={attribute} value={attribute}>{db.attributes[String(attribute)]?.name || `颜色 ${attribute}`}</option>)}</select>
+          <select value={librarySort} onChange={(event) => setLibrarySort(event.target.value as LibrarySort)} className="rounded-lg border border-[var(--msa-border-strong)] bg-[var(--msa-bg)] px-3 py-2 text-sm text-[var(--msa-text-secondary)]"><option value="featured">热门推荐</option><option value="newest">最新发布</option><option value="name">按名称</option></select>
+          <button onClick={openPublish} className="rounded-lg border border-[var(--msa-border-strong)] bg-[var(--msa-bg-alt)] px-3 py-2 text-sm font-medium text-[var(--msa-text-secondary)]">发布我的卡组</button><span className="text-xs text-[var(--msa-text-muted)]">{visibleLibraryItems.length} 副</span>
+        </section>}
 
-          {/* ── Section 4: 卡组码导入 ── */}
-          <section>
-            <SectionHeader icon="link" title="卡组码导入" subtitle="粘贴分享码或链接，导入他人卡组" />
-            <div className="bg-[var(--msa-surface)] rounded-xl border border-[var(--msa-border)] p-4 space-y-3">
-              <div className="flex gap-2">
-                <input type="text" value={codeInput} onChange={(e) => setCodeInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleImport(); }}
-                  placeholder="粘贴卡组码或分享链接（如 https://...#deck=xxx）"
-                  className="flex-1 px-3 py-2 text-sm rounded-lg bg-[var(--msa-bg)] border border-[var(--msa-border-strong)] text-[var(--msa-text-secondary)] placeholder-[var(--msa-text-placeholder)] focus:outline-none focus:border-red-500 transition" />
-                <button onClick={handleImport}
-                  className="px-4 py-2 rounded-lg text-sm font-medium bg-red-600 text-white hover:bg-red-500 transition whitespace-nowrap">
-                  导入
-                </button>
-              </div>
-              {importError && <p className="text-sm text-red-500">{importError}</p>}
-              {importedItem && !selectedDeck && (
-                <div className="pt-2">
-                  <p className="text-xs text-[var(--msa-text-muted)] mb-2">导入成功！点击下方卡片查看详情：</p>
-                  <div className="max-w-xs">
-                    <DeckCard item={importedItem} db={db} cardMap={cardMap}
-                      onClick={() => setSelectedDeck(importedItem.deck)} onLoad={() => handleLoadDeck(importedItem.deck)} />
-                  </div>
-                </div>
-              )}
-            </div>
-          </section>
-        </div>
-      )}
-      {/* ── Auth modal ── */}
+        {(preconLoading || cloudLoading) && activeTab === "plaza" && visibleLibraryItems.length === 0 ? <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">{[0, 1, 2, 3].map((index) => <div key={index} className="h-52 animate-pulse rounded-xl border border-[var(--msa-border)] bg-[var(--msa-surface)]" />)}</div> : libraryPagination.items.length === 0 ? <EmptyState message={activeTab === "mine" ? "还没有自定义卡组，可新建或粘贴卡组码导入。" : "没有符合条件的公开卡组。"} /> : <><div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">{libraryPagination.items.map((item) => <DeckCard key={`${item.category}-${item.deck.id || item.deck.name}-${item.deck.created_at || "preset"}`} item={item} db={db} cardMap={cardMap} onClick={() => setSelectedDeck(item.deck)} onLoad={() => handleLoadDeck(item.deck)} onDelete={item.category === "local" ? () => handleDeleteLocal(item.deck.name) : undefined} onFavoriteClick={handleFavoriteClick} favorited={item.deck.id ? isFavorited(item.deck.id) : false} onCopyCode={item.category === "local" ? () => handleCopyCode(item.deck) : undefined} onDeckImage={item.category === "local" ? () => downloadDeckImage(item.deck, cardMap) : undefined} />)}</div><PaginationControls page={libraryPagination.page} pageCount={libraryPagination.pageCount} total={libraryPagination.total} pageSize={CARD_PAGE_SIZE} onPageChange={setLibraryPage} /></>}
+      </div>
+
+      {selectedDeck && detailStats && <div className="fixed inset-0 z-40 grid place-items-center bg-black/45 p-4 backdrop-blur-sm" onClick={() => setSelectedDeck(null)}><section className="h-[min(90vh,900px)] w-[min(1180px,96vw)] overflow-hidden rounded-xl border border-[var(--msa-border-strong)] bg-[var(--msa-bg)] shadow-2xl" onClick={(event) => event.stopPropagation()}><DeckDetailView deck={selectedDeck} stats={detailStats} cardMap={cardMap} db={db} onBack={() => setSelectedDeck(null)} onLoad={() => handleLoadDeck(selectedDeck)} onDelete={isSelectedLocal ? () => handleDeleteLocal(selectedDeck.name) : undefined} onCopyCode={() => handleCopyCode(selectedDeck)} /></section></div>}
       <AuthModal open={showAuthModal} onClose={() => setShowAuthModal(false)} />
+      <PublishDeckModal open={showPublish} deckName={publishDeckName} onPublish={handlePublish} onClose={() => setShowPublish(false)} />
     </div>
   );
 }
@@ -511,10 +534,11 @@ function EmptyState({ message }: { message: string }) {
   return <div className="text-center py-10 text-[var(--msa-text-muted)] bg-[var(--msa-bg-alt)] rounded-xl border border-dashed border-[var(--msa-border)]"><p className="text-sm">{message}</p></div>;
 }
 
-function DeckCard({ item, db, cardMap, onClick, onLoad, onDelete, onFavoriteClick }: {
+function DeckCard({ item, db, cardMap, onClick, onLoad, onDelete, onFavoriteClick, favorited, onCopyCode, onDeckImage }: {
   item: DeckDisplayItem; db: CardDatabase; cardMap: Map<string, Card>;
   onClick: () => void; onLoad: () => void; onDelete?: () => void;
   onFavoriteClick?: (deckId: string | undefined) => void;
+  favorited?: boolean; onCopyCode?: () => void; onDeckImage?: () => void;
 }) {
   const { deck, category, cardType } = item;
   const mainCount = deck.main_deck.reduce((s, e) => s + e.count, 0);
@@ -526,10 +550,15 @@ function DeckCard({ item, db, cardMap, onClick, onLoad, onDelete, onFavoriteClic
   const categoryColor: Record<DeckCategory, string> = { precon: "bg-red-50 text-red-600", cloud: "bg-purple-50 text-purple-600", local: "bg-blue-50 text-blue-600", imported: "bg-amber-50 text-amber-600" };
   const typeLabel = cardType === 2 ? "冲击卡组" : "角色卡组";
   const deckId = deck.id;
+  const bannerCards = [...new Set(deck.main_deck.map((entry) => entry.card_no))]
+    .map((cardNo) => cardMap.get(cardNo))
+    .filter((card): card is Card => card !== undefined)
+    .slice(0, 5);
 
   return (
     <div onClick={onClick} className="group relative cursor-pointer bg-[var(--msa-surface)] rounded-xl border border-[var(--msa-border)] overflow-hidden hover:shadow-lg hover:border-[var(--msa-border-strong)] transition animate-fadeIn">
       <div className="h-1.5" style={{ background: attrColors.length > 0 ? `linear-gradient(to right, ${attrColors.map(a => a.color).join(", ")})` : "var(--msa-border-strong)" }} />
+      <div className="flex h-28 overflow-hidden bg-stone-100">{bannerCards.length ? bannerCards.map((card) => <CardImage key={card.card_no} cardId={card.id} legacyUrl={card.image_url} intent="thumb" alt={card.name} className="min-w-0 flex-1 object-cover object-top" loading="lazy" />) : <div className="grid flex-1 place-items-center text-xs text-stone-400">暂无卡图</div>}</div>
       <div className="p-3.5 space-y-2">
         <div className="flex items-start justify-between gap-1">
           <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium whitespace-nowrap ${categoryColor[category]}`}>{categoryLabel[category]}</span>
@@ -537,7 +566,7 @@ function DeckCard({ item, db, cardMap, onClick, onLoad, onDelete, onFavoriteClic
             {/* Favorite star button — only on cloud decks */}
             {category === "cloud" && onFavoriteClick && (
               <button onClick={(e) => { e.stopPropagation(); onFavoriteClick(deckId); }} className="text-amber-400 hover:text-amber-500 transition" title="收藏">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <svg className="w-4 h-4" fill={favorited ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
                 </svg>
               </button>
@@ -559,7 +588,11 @@ function DeckCard({ item, db, cardMap, onClick, onLoad, onDelete, onFavoriteClic
         <div className="flex items-center gap-1.5 text-xs text-[var(--msa-text-muted)]"><span>{mainCount}张</span><span className="text-gray-400">·</span><span>{typeLabel}</span></div>
         {attrColors.length > 0 && <div className="flex items-center gap-1">{attrColors.map((a, i) => <span key={i} className="w-3 h-3 rounded-full border border-[var(--msa-bg)] shadow-sm" style={{ backgroundColor: a.color }} title={a.name} />)}</div>}
         {category === "local" && deck.created_at && <p className="text-[10px] text-[var(--msa-text-muted)]">{new Date(deck.created_at).toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" })}</p>}
-        <button onClick={(e) => { e.stopPropagation(); onLoad(); }} className="w-full mt-1 px-2 py-1.5 rounded-lg text-xs font-medium bg-[var(--msa-bg-alt)] text-[var(--msa-text-muted)] hover:bg-red-50 hover:text-[var(--msa-red)] transition border border-[var(--msa-border)]">导入到组卡器</button>
+        <div className="grid grid-cols-3 gap-1">
+          <button onClick={(e) => { e.stopPropagation(); onLoad(); }} className="rounded-lg border border-[var(--msa-border)] bg-[var(--msa-bg-alt)] px-2 py-1.5 text-[10px] font-medium text-[var(--msa-text-muted)] hover:bg-red-50 hover:text-[var(--msa-red)]">{category === "local" ? "编辑" : "复制构筑"}</button>
+          {onCopyCode ? <button onClick={(e) => { e.stopPropagation(); onCopyCode(); }} className="rounded-lg border border-[var(--msa-border)] bg-[var(--msa-bg-alt)] px-2 py-1.5 text-[10px] font-medium text-[var(--msa-text-muted)]">复制卡组码</button> : <button onClick={(e) => { e.stopPropagation(); onClick(); }} className="rounded-lg border border-[var(--msa-border)] bg-[var(--msa-bg-alt)] px-2 py-1.5 text-[10px] font-medium text-[var(--msa-text-muted)]">查看构筑</button>}
+          {onDeckImage ? <button onClick={(e) => { e.stopPropagation(); void onDeckImage(); }} className="rounded-lg border border-[var(--msa-border)] bg-[var(--msa-bg-alt)] px-2 py-1.5 text-[10px] font-medium text-[var(--msa-text-muted)]">生成卡组图</button> : category === "cloud" ? <button onClick={(e) => { e.stopPropagation(); onFavoriteClick?.(deckId); }} className="rounded-lg border border-[var(--msa-border)] bg-[var(--msa-bg-alt)] px-2 py-1.5 text-[10px] font-medium text-[var(--msa-text-muted)]">{favorited ? "已收藏" : "收藏"}</button> : <button onClick={(e) => { e.stopPropagation(); onClick(); }} className="rounded-lg border border-[var(--msa-border)] bg-[var(--msa-bg-alt)] px-2 py-1.5 text-[10px] font-medium text-[var(--msa-text-muted)]">查看详情</button>}
+        </div>
       </div>
     </div>
   );
@@ -581,13 +614,7 @@ function DeckDetailView({ deck, stats, cardMap, db, onBack, onLoad, onDelete, on
 
   const handleCopy = () => { onCopyCode(); setCopyLabel("已复制!"); setTimeout(() => setCopyLabel("复制卡组码"), 2000); };
 
-  const handleDownload = () => {
-    const json = JSON.stringify(deck, null, 2);
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = `${deck.name || "卡组"}.json`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-  };
+  const handleDownload = () => { void downloadDeckImage(deck, cardMap); };
 
   const handleShare = () => {
     const code = encodeDeck(deck);
@@ -675,7 +702,7 @@ function DeckDetailView({ deck, stats, cardMap, db, onBack, onLoad, onDelete, on
             <button onClick={onLoad} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-600 text-white hover:bg-red-500 transition whitespace-nowrap">加入组卡器</button>
             <button onClick={handleShare} className="px-3 py-1.5 rounded-lg text-xs font-medium border border-stone-200 text-stone-500 hover:text-stone-700 hover:bg-stone-50 transition whitespace-nowrap">分享</button>
             <button onClick={handleCopy} className="px-3 py-1.5 rounded-lg text-xs font-medium border border-stone-200 text-stone-500 hover:text-stone-700 hover:bg-stone-50 transition whitespace-nowrap">{copyLabel}</button>
-            <button onClick={handleDownload} className="px-3 py-1.5 rounded-lg text-xs font-medium border border-stone-200 text-stone-500 hover:text-stone-700 hover:bg-stone-50 transition whitespace-nowrap">下载</button>
+            <button onClick={handleDownload} className="px-3 py-1.5 rounded-lg text-xs font-medium border border-stone-200 text-stone-500 hover:text-stone-700 hover:bg-stone-50 transition whitespace-nowrap">卡组图</button>
             {onDelete && (
               <button onClick={onDelete} className="px-3 py-1.5 rounded-lg text-xs font-medium border border-red-300 text-red-500 hover:bg-red-50 transition whitespace-nowrap">删除</button>
             )}
@@ -730,8 +757,14 @@ function DeckDetailView({ deck, stats, cardMap, db, onBack, onLoad, onDelete, on
                       <div className="w-full">
                         <div className={`w-full aspect-[3/4] rounded overflow-hidden bg-gray-100 border-2 transition ${selectedCardDetail?.card_no === card.card_no ? "border-red-500 shadow-md" : "border-stone-200 group-hover:border-red-400 group-hover:shadow-md"}`}>
                           {card.image_url ? (
-                            <img src={card.image_url} alt={card.name} className="w-full h-full object-cover" loading="lazy"
-                              onError={(e) => { (e.target as HTMLImageElement).style.opacity = "0.15"; }} />
+                            <CardImage
+                              cardId={card.id}
+                              legacyUrl={card.image_url}
+                              intent="thumb"
+                              alt={card.name}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                            />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-400">暂无</div>
                           )}

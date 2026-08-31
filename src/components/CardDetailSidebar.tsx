@@ -1,178 +1,80 @@
-/**
- * CardDetailSidebar — right-side resident detail panel (MSA Light Theme)
- *
- * Displays the hovered card's large image + stats + effect text.
- * Updates in real-time on hover. Shows empty state when no card is hovered.
- * Impact cards (card_type === 2) do not show an "add to deck" button.
- */
-
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Card, CardDatabase } from "../types/card";
+import { sortCardVariantsLowestFirst } from "../utils/cardVariants";
+import CardImage from "./CardImage";
 
 interface Props {
   card: Card | null;
   db: CardDatabase;
   onAddToDeck?: (card: Card) => void;
   showAddButton?: boolean;
+  compact?: boolean;
+  effectiveStats?: { level: number; power: number; range: number } | null;
 }
 
-export default function CardDetailSidebar({ card, db, onAddToDeck, showAddButton = true }: Props) {
+export default function CardDetailSidebar({ card, db, onAddToDeck, showAddButton = true, compact = false, effectiveStats = null }: Props) {
   const [selectedVariantIdx, setSelectedVariantIdx] = useState(0);
+  const variants = useMemo(() => {
+    if (!card) return [];
+    if (compact) return [card];
+    const variantIds = db.card_groups[card.card_no] || [card.id];
+    return sortCardVariantsLowestFirst(variantIds
+      .map((id) => db.cards.find((candidate) => candidate.id === id))
+      .filter((candidate): candidate is Card => candidate !== undefined));
+  }, [card, compact, db.card_groups, db.cards]);
 
   useEffect(() => {
-    setSelectedVariantIdx(0);
-  }, [card?.card_no]);
+    const requestedIndex = variants.findIndex((variant) => variant.id === card?.id);
+    setSelectedVariantIdx(requestedIndex >= 0 ? requestedIndex : 0);
+  }, [card?.id, variants]);
 
   if (!card) {
-    return (
-      <div className="flex-1 flex items-center justify-center p-6 min-h-0">
-        <div className="text-center space-y-3">
-          <div className="text-4xl opacity-10">🃏</div>
-          <p className="text-xs text-stone-400">将鼠标悬停在卡牌上</p>
-          <p className="text-xs text-stone-400">查看详情</p>
-        </div>
-      </div>
-    );
+    return <div className="grid min-h-0 flex-1 place-items-center p-6 text-center text-xs leading-6 text-stone-400">选择或悬停卡牌<br />查看详细信息</div>;
   }
 
-  const variantIds = db.card_groups[card.card_no] || [card.id];
-  const variants = variantIds
-    .map((id) => db.cards.find((c) => c.id === id))
-    .filter((c): c is Card => c !== undefined);
-
   const currentCard = variants[selectedVariantIdx] || card;
+  const level = effectiveStats?.level ?? currentCard.cost;
+  const power = effectiveStats?.power ?? Number(currentCard.power || 0);
+  const range = effectiveStats?.range ?? currentCard.r ?? 1;
+  const sectionClass = "rounded-lg border border-stone-200 bg-stone-50/85 p-2.5";
 
   return (
-    <div className="flex-1 overflow-y-auto scrollbar-thin p-3 space-y-3 min-h-0">
-      {/* ── Large card image ─────────────────── */}
-      <div className="mx-auto" style={{ maxWidth: "260px" }}>
-        <div
-          className="relative w-full rounded-lg overflow-hidden border border-stone-200 shadow-md bg-stone-100"
-          style={{ paddingBottom: `${(1041 / 746) * 100}%` }}
-        >
-          <img
-            src={currentCard.image_url}
-            alt={currentCard.name}
-            className="absolute inset-0 w-full h-full object-cover"
-            onError={(e) => {
-              const img = e.target as HTMLImageElement;
-              img.style.opacity = "0.2";
-            }}
-          />
-          {/* Rarity badge */}
-          <div
-            className="absolute top-1 right-1 px-1.5 py-0.5 rounded text-[10px] font-bold text-white shadow"
-            style={{ backgroundColor: currentCard.rarity_color }}
-          >
-            {currentCard.rarity_code}
+    <div className={`min-h-0 flex-1 space-y-2.5 overflow-y-auto p-3 scrollbar-thin ${compact ? "text-[10px]" : "text-xs"}`} data-ui-contract="hero-rush-unified-card-detail">
+      <section className={sectionClass}>
+        <div className="mx-auto" style={{ maxWidth: compact ? "148px" : "236px" }}>
+          <div className="relative aspect-[746/1041] w-full overflow-hidden rounded-lg bg-stone-100 shadow-md ring-1 ring-stone-200">
+            <CardImage cardId={currentCard.id} legacyUrl={currentCard.image_url} intent="detail" alt={currentCard.name} className="absolute inset-0 h-full w-full object-contain" />
+            <span className="absolute right-1 top-1 rounded px-1.5 py-0.5 text-[9px] font-bold text-white shadow" style={{ backgroundColor: currentCard.rarity_color }}>{currentCard.rarity_code}</span>
           </div>
+          {!compact && variants.length > 1 && <div className="mt-2 flex flex-wrap justify-center gap-1" aria-label="罕贵卡图切换">{variants.map((variant, index) => <button key={variant.id} type="button" onClick={() => setSelectedVariantIdx(index)} className={`rounded border px-1.5 py-0.5 text-[9px] font-bold transition ${index === selectedVariantIdx ? "border-transparent text-white" : "border-stone-200 bg-white text-stone-500 hover:border-stone-400"}`} style={index === selectedVariantIdx ? { backgroundColor: variant.rarity_color } : undefined}>{variant.rarity_code}</button>)}</div>}
         </div>
+        <div className="mt-2.5 text-center"><h3 className={`${compact ? "text-sm" : "text-base"} font-bold leading-tight text-stone-800`}>{currentCard.name}</h3><p className="mt-0.5 font-mono text-[9px] text-stone-400">{currentCard.card_no}</p></div>
+      </section>
 
-        {/* Variant selector */}
-        {variants.length > 1 && (
-          <div className="flex gap-1 mt-1.5 justify-center flex-wrap">
-            {variants.map((v, i) => (
-              <button
-                key={v.id}
-                onClick={() => setSelectedVariantIdx(i)}
-                className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition border ${
-                  i === selectedVariantIdx
-                    ? "text-white border-transparent"
-                    : "bg-stone-50 text-stone-500 border-stone-200 hover:text-stone-700"
-                }`}
-                style={i === selectedVariantIdx ? { backgroundColor: v.rarity_color } : {}}
-                title={v.rarity_cn}
-              >
-                {v.rarity_code}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* ── Card name ────────────────────────────────────────── */}
-      <div className="text-center">
-        <h3 className="text-base font-bold text-stone-800 leading-tight">{currentCard.name}</h3>
-        <p className="text-xs text-stone-400 mt-0.5">{currentCard.card_no}</p>
-      </div>
-
-      {/* ── Stat badges ──────────────────────────────────────── */}
-      <div className="flex flex-wrap gap-1.5 justify-center">
-        <span
-          className="px-2 py-0.5 rounded text-[11px] font-medium text-white"
-          style={{ backgroundColor: currentCard.attribute_color }}
-        >
-          {currentCard.attribute_name}
-        </span>
-        <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-stone-100 text-stone-600 border border-stone-200">
-          {currentCard.card_type_name}
-        </span>
-        {currentCard.card_type === 1 && (
-          <>
-            <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
-              Lv {currentCard.cost}
-            </span>
-            {currentCard.pp_value != null && (
-              <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-purple-50 text-purple-700 border border-purple-200">
-                R {currentCard.r ?? 1}
-              </span>
-            )}
-            {currentCard.power && (
-              <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-red-50 text-red-700 border border-red-200">
-                战力 {currentCard.power}
-              </span>
-            )}
-          </>
-        )}
-        <span
-          className="px-2 py-0.5 rounded text-[11px] font-medium text-white"
-          style={{ backgroundColor: currentCard.rarity_color }}
-        >
-          {currentCard.rarity_code}
-        </span>
-        <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-stone-100 text-stone-500 border border-stone-200">
-          {currentCard.package_short}
-        </span>
-      </div>
-
-      {/* ── Feature tags ─────────────────────────────────────── */}
-      {currentCard.feature_text && (
-        <div>
-          <h4 className="text-[11px] text-stone-500 font-semibold mb-1">特性</h4>
-          <div className="flex flex-wrap gap-1">
-            {currentCard.feature_text.split("/").map((f, idx) => (
-              <span
-                key={idx}
-                className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-50 text-indigo-600 border border-indigo-200"
-              >
-                {f}
-              </span>
-            ))}
-          </div>
+      <section className={sectionClass}>
+        <h4 className="mb-2 text-[9px] font-bold uppercase tracking-[.14em] text-stone-400">卡牌信息</h4>
+        <div className="grid grid-cols-3 gap-1.5 text-center font-bold">
+          {currentCard.card_type === 1 ? <><span className="rounded-md bg-stone-900 px-1 py-1.5 text-white">{level}</span><span className="rounded-md bg-stone-900 px-1 py-1.5 text-white">{power}</span><span className="rounded-md bg-stone-900 px-1 py-1.5 text-white">R{range}</span></> : <span className="col-span-3 rounded-md bg-stone-200 px-2 py-1.5 text-stone-600">冲击卡</span>}
         </div>
-      )}
+        <dl className="mt-2 grid grid-cols-[40px_1fr] gap-x-2 gap-y-1.5 leading-4">
+          <dt className="text-stone-400">颜色</dt><dd className="flex min-w-0 items-center gap-1.5 font-bold text-stone-700"><span className="h-2.5 w-2.5 shrink-0 rounded-full border border-black/10" style={{ backgroundColor: currentCard.attribute_color }} />{currentCard.attribute_name || "未标注"}</dd>
+          <dt className="text-stone-400">类型</dt><dd className="font-medium text-stone-700">{currentCard.card_type_name}</dd>
+          <dt className="text-stone-400">系列</dt><dd className="font-medium text-stone-700">{currentCard.package_short || currentCard.package}</dd>
+          <dt className="text-stone-400">罕贵</dt><dd className="font-medium text-stone-700">{currentCard.rarity_code} · {currentCard.rarity_cn}</dd>
+        </dl>
+      </section>
 
-      {/* ── Effect text ──────────────────────────────────────── */}
-      {currentCard.effect && (
-        <div>
-          <h4 className="text-[11px] text-stone-500 font-semibold mb-1">效果</h4>
-          <div className="text-xs text-stone-600 bg-stone-50 rounded-lg p-2.5 leading-relaxed whitespace-pre-wrap border border-stone-100">
-            {currentCard.effect}
-          </div>
-        </div>
-      )}
+      <section className={sectionClass}>
+        <h4 className="mb-2 text-[9px] font-bold uppercase tracking-[.14em] text-stone-400">特性</h4>
+        {currentCard.feature_text || currentCard.feature ? <div className="flex flex-wrap gap-1">{(currentCard.feature_text || currentCard.feature || "").split("/").filter(Boolean).map((feature, index) => <span key={`${feature}-${index}`} className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[9px] font-medium text-indigo-700">{feature}</span>)}</div> : <p className="text-stone-400">无特性</p>}
+      </section>
 
-      {/* ── Add to deck button ──────────────────────────────── */}
-      {showAddButton && onAddToDeck && currentCard.card_type === 1 && (
-        <div className="pt-2">
-          <button
-            onClick={() => onAddToDeck(currentCard)}
-            className="w-full px-3 py-2 rounded-lg text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition"
-          >
-            + 加入主卡组
-          </button>
-        </div>
-      )}
+      <section className={sectionClass}>
+        <h4 className="mb-2 text-[9px] font-bold uppercase tracking-[.14em] text-stone-400">效果</h4>
+        <p className="whitespace-pre-wrap leading-[1.65] text-stone-600">{currentCard.effect || "无效果文字"}</p>
+      </section>
+
+      {showAddButton && onAddToDeck && currentCard.card_type === 1 && <button type="button" onClick={() => onAddToDeck(currentCard)} className="w-full rounded-lg bg-red-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-red-700">＋ 加入主卡组</button>}
     </div>
   );
 }

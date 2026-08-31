@@ -1,1 +1,1 @@
-export * from "./messages";
+export * from "./v2/messages";

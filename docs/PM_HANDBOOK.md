@@ -1,8 +1,8 @@
 # 超英击战 Marvel TCG — 项目经理手册
 
-> **目标读者：** 产品经理 / 项目经理 / 项目决策者  
-> **版本：** v1.0  
-> **编写日期：** 2026-07-02  
+> **目标读者：** 产品经理 / 项目经理 / 项目决策者
+> **版本：** v1.0
+> **编写日期：** 2026-07-02
 > **配套文档：** [项目编辑指南](./EDITOR_GUIDE.md) · [对战模块开发指南](./BATTLE_DEV_GUIDE.md) · [对战引擎编辑手册](./BATTLE_ENGINE_EDITOR_MANUAL.md)
 
 ---
@@ -119,7 +119,9 @@ Phase 1（已完成）    Phase 2（当前）        Phase 3（规划中）
 |------|------|------|
 | 卡牌图鉴 | ✅ 已交付 | 282 变体，多维筛选 |
 | 组卡器 | ✅ 已交付 | 双栏布局，起手模拟，闪卡效果 |
-| 对战引擎 | ✅ 已交付 | SD01/SD02 全量卡效，31 项测试 100% 通过 |
+| 旧版对战引擎 | ⚠️ 兼容保留 | 继续服务当前 `/battle`，不再作为 1.02 新规则扩展基础 |
+| 对战框架 V2 | 🟦 自动化验收通过，待 PM 签收 | M0-M4 框架闭环，M5/M6 准入与工程门禁完成；111 个核心测试、180 个全量测试、13/13 规则编号、8/8 切换门禁通过；线上开关关闭 |
+| V2 生产卡池 | 🔴 No-Go | 有效果角色卡覆盖 0/290；服务端白名单和生产强制门禁已启用，迁移前不得发布 V2 线上卡池 |
 | 用户系统 | ✅ 已交付 | Supabase Auth + 卡组发布 + 收藏 |
 | 卡效修正 | ✅ 已交付 | 37 张卡效修正 |
 
@@ -304,6 +306,7 @@ docs/
 ├── EDITOR_GUIDE.md                   ← 非技术编辑指南（卡牌数据、页面内容编辑）
 ├── BATTLE_DEV_GUIDE.md               ← 对战模块开发者指南（30分钟上手）
 ├── BATTLE_ENGINE_EDITOR_MANUAL.md    ← 对战引擎编辑手册（参数配置、规则调优）
+├── BATTLE_FRAMEWORK_GRANDUMI_V1.02_PLAN.md ← GrandUMI 基本型 V2 重构总方案
 ├── PROJECT_STATUS.md                 ← 项目状态报告
 ├── system_design.md                  ← 用户系统架构设计
 ├── incremental_prd.md                ← 增量 PRD 存档
@@ -311,7 +314,10 @@ docs/
 ├── class-diagram.mermaid             ← 类图
 ├── sequence-diagram.mermaid          ← 时序图
 ├── rules/
-│   └── rulebook.md                   ← 综合规则书（来自官方规则书）
+│   ├── rulebook.md                   ← 当前官方 1.02 工程规则基线
+│   ├── official-source-v1.02.md      ← 官方来源、原图位置与 SHA-256
+│   ├── battle-framework-remediation-v1.02.md ← 对战 P0 整改与验收
+│   └── rulebook-v1.00-archive.md     ← 旧版 OCR 历史档案
 └── planning/
     └── 超英击战对战网站_PRD.md        ← 原始 PRD 存档
 ```
@@ -324,8 +330,11 @@ docs/
 | EDITOR_GUIDE.md | PM | 新增可编辑文件、编辑方式变更 |
 | BATTLE_DEV_GUIDE.md | 开发 | 引擎架构变更、新增效果类型 |
 | BATTLE_ENGINE_EDITOR_MANUAL.md | PM+开发 | 引擎参数调整、对战规则变更 |
+| BATTLE_FRAMEWORK_GRANDUMI_V1.02_PLAN.md | PM+开发+测试 | V2 架构、里程碑或发布门禁变化 |
 | PROJECT_STATUS.md | PM | 每次发布后 |
 | rulebook.md | PM | 官方规则书更新 |
+| official-source-v1.02.md | PM | 官方来源或归档变化 |
+| battle-framework-remediation-v1.02.md | PM+开发+测试 | 对战规则、实现或验收状态变化 |
 
 ### 8.3 文档编写规范
 

@@ -11,6 +11,29 @@ SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 CADDY_FILE="/etc/caddy/Caddyfile"
 PORT=8082
 
+# ── 静态卡图缓存策略 ──
+# 内容哈希对象可以永久缓存；活动 manifest 必须短缓存并重新验证。
+if ! grep -q "Hero Rush card asset cache" "$CADDY_FILE" 2>/dev/null; then
+  echo "添加 Hero Rush 卡图缓存策略"
+  backup="${CADDY_FILE}.hero-rush-backup-$$"
+  cp "$CADDY_FILE" "$backup"
+  sed -i '/hero.grand-umi.com {/a\
+    # Hero Rush card asset cache\
+    @heroCardAssetManifest path /card-assets/card-assets.manifest.json /card-assets/card-assets.preload.json\
+    header @heroCardAssetManifest Cache-Control "public, max-age=300, must-revalidate"\
+    @heroCardAssetObjects path_regexp heroCardAssetObjects "^/card-assets/objects/[0-9a-f]{2}/[0-9a-f]{64}/(thumb-240|board-480|detail-960)\\.webp$"\
+    header @heroCardAssetObjects Cache-Control "public, max-age=31536000, immutable"' "$CADDY_FILE"
+  if caddy validate --config "$CADDY_FILE" >/dev/null 2>&1; then
+    rm -f -- "$backup"
+    systemctl reload caddy
+    echo "卡图缓存策略已接入"
+  else
+    mv -f -- "$backup" "$CADDY_FILE"
+    echo "Caddy 卡图缓存配置校验失败，已恢复原配置" >&2
+    exit 1
+  fi
+fi
+
 # ── 1. systemd 服务 ──
 if [ ! -f "$SERVICE_FILE" ]; then
   echo "创建 systemd 服务: $SERVICE_NAME (端口 $PORT)"

@@ -74,6 +74,8 @@ RARITY_MAP = {
     9:  {"code": "UR",  "cn": "超稀",  "color": "#9D4EDD"},
     10: {"code": "MR",  "cn": "特秀",  "color": "#D4537E"},
     11: {"code": "SEC", "cn": "秘稀",  "color": "#A32D2D"},
+    12: {"code": "HRS", "cn": "HR银",  "color": "#A7B0BA"},
+    13: {"code": "HRG", "cn": "HR金",  "color": "#D4A017"},
 }
 
 ATTR_MAP = {
@@ -86,12 +88,14 @@ ATTR_MAP = {
 
 PKG_MAP = {
     "BP01": "BP01 基础包",
-    "SD01": "SD01 英雄",
-    "SD02": "SD02 复仇",
-    "SD03": "SD03 集结",
-    "SD04": "SD04 时空",
-    "PB01": "PB01 促销包",
-    "TB01": "TB01 预组包",
+    "SD01": "SD01 现实",
+    "SD02": "SD02 心灵",
+    "SD03": "SD03 空间",
+    "SD04": "SD04 时间",
+    "PB01": "PB01 推广包",
+    "TB01": "TB01 宝藏包",
+    "SP01": "SP01 蜘蛛纪元",
+    "EB01": "EB01 赛事包",
 }
 
 # ---------- feature / signal_color OCR ----------
@@ -212,6 +216,17 @@ def get_pkg_short(card_no):
     prefix = card_no[:4]
     return PKG_MAP.get(prefix, prefix)
 
+
+def get_image_url(card_id):
+    """Prefer compact WebP assets while keeping legacy PNG compatibility."""
+    public_dir = os.path.join(_project_root, "public")
+    for extension in ("webp", "png"):
+        candidate = os.path.join(public_dir, "cards", "%s.%s" % (card_id, extension))
+        if os.path.exists(candidate):
+            return "/cards/%s.%s" % (card_id, extension)
+    return "/cards/%s.webp" % card_id
+
+
 def build_maps_from_files():
     """Load pre-built feature / signal_color maps from JSON files."""
     feature_map = load_map(FEATURE_MAP_FILE)
@@ -234,19 +249,22 @@ def main():
 
     for c in raw:
         no = c["card_no"]
-        rarity = c["rarity"]
-        rarity_info = RARITY_MAP.get(rarity, {"code": "?", "cn": "未知", "color": "#888780"})
+        rarity = safe_int(c["rarity"])
+        if rarity not in RARITY_MAP:
+            raise ValueError("Unsupported rarity %r for %s" % (rarity, no))
+        rarity_info = RARITY_MAP[rarity]
         rarity_code = rarity_info["code"]
         card_id = "%s-%s" % (no, rarity_code)
 
-        image_url = "/cards/%s-%s.png" % (no, rarity_code)
+        image_id = card_id
         # Handle 金/银 variant image suffixes
         if "（金）" in no:
             base_no = no.replace("（金）", "")
-            image_url = "/cards/%s-%s(G).png" % (base_no, rarity_code)
+            image_id = "%s-%s(G)" % (base_no, rarity_code)
         elif "（银）" in no:
             base_no = no.replace("（银）", "")
-            image_url = "/cards/%s-%s(S).png" % (base_no, rarity_code)
+            image_id = "%s-%s(S)" % (base_no, rarity_code)
+        image_url = get_image_url(image_id)
 
         dp = safe_int(c.get("dp_value"))
         if dp is not None:
@@ -298,6 +316,11 @@ def main():
             card_groups[no] = []
         card_groups[no].append(card_id)
 
+    ids = [card["id"] for card in cards]
+    if len(ids) != len(set(ids)):
+        duplicates = sorted({card_id for card_id in ids if ids.count(card_id) > 1})
+        raise ValueError("Duplicate generated card ids: %s" % ", ".join(duplicates))
+
     cards.sort(key=lambda c: (c["card_no"], -c["rarity"]))
     for no in card_groups:
         card_groups[no].sort(
@@ -309,7 +332,7 @@ def main():
     output = {
         "total_cards": unique_nos,
         "total_variants": len(cards),
-        "packages": list(PKG_MAP.values()),
+        "packages": sorted({card["package"] for card in cards}),
         "attributes": {str(k): v for k, v in ATTR_MAP.items()},
         "rarities": {str(k): v for k, v in RARITY_MAP.items()},
         "feature_map": feature_map,

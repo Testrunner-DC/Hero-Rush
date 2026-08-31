@@ -98,7 +98,7 @@ export default function UserMenu() {
           {/* User info header */}
           <div className="px-3 py-2 border-b border-stone-100">
             <p className="text-xs font-medium text-stone-800 truncate">{user.nickname}</p>
-            <p className="text-[10px] text-stone-400 truncate">{user.email}</p>
+            <p className="text-[10px] text-stone-400 truncate">@{user.username}</p>
           </div>
 
           {/* Menu items */}

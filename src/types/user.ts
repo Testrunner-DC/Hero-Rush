@@ -17,6 +17,7 @@ export interface Session {
 export interface AuthUser {
   id: string;
   email: string;
+  username: string;
   nickname: string;
   avatar_url: string | null;
   bio: string;
