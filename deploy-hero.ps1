@@ -61,6 +61,7 @@ if ($LASTEXITCODE -ne 0) { Die "服务端构建报错。" }
 # 确保 systemd 服务和 Nginx 代理已配置
 Write-Host "  --> 检查联机服务..." -ForegroundColor Yellow
 ssh $SRV "bash /opt/hero-rush/server/deploy-server.sh" 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) { Die "联机服务或 Nginx 配置失败。" }
 
 # 用 curl.exe --noproxy 绕过本机代理，直接验证正式服。
 $code = & curl.exe -s --noproxy '*' -o NUL -w "%{http_code}" -L "https://hero.grand-umi.com/"

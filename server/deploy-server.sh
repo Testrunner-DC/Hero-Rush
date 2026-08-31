@@ -116,6 +116,8 @@ User=root
 WorkingDirectory=${REPO_DIR}/server
 EnvironmentFile=-${REPO_DIR}/.env
 Environment=PORT=${PORT}
+Environment=HOST=127.0.0.1
+Environment=NODE_ENV=production
 ExecStart=${NODE_BIN} ${REPO_DIR}/server/dist/index.js
 Restart=always
 RestartSec=5
