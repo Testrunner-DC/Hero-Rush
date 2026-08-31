@@ -253,6 +253,8 @@ describe("SD03/SD04 规则 1.02 卡效", () => {
     place(s, actor, "vanguard", "SD03-018");
     const retreatRole = place(s, actor, "retreat", "RETREAT-ROLE");
     const mover = place(s, actor, "base", "MOVER");
+    const opponent: PlayerIndex = actor === 0 ? 1 : 0;
+    expect(collectTriggeredEffectsV2(s, [{ type: "END_TRIGGERS_PROCESSED", actor: opponent }]).map((item) => item.effectId)).not.toContain("void-exile-banish");
     const candidates = collectTriggeredEffectsV2(s, [{ type: "END_TRIGGERS_PROCESSED", actor }]);
     expect(candidates.map((item) => item.effectId)).toEqual(["void-exile-banish"]);
     let current = prepareEffectResolutionV2(s, candidates).state;

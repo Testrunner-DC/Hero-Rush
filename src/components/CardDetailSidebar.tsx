@@ -39,16 +39,16 @@ export default function CardDetailSidebar({ card, db, onAddToDeck, showAddButton
   const sectionClass = "rounded-lg border border-stone-200 bg-stone-50/85 p-2.5";
 
   return (
-    <div className={`min-h-0 flex-1 space-y-2.5 overflow-y-auto p-3 scrollbar-thin ${compact ? "text-[10px]" : "text-xs"}`} data-ui-contract="hero-rush-unified-card-detail">
+    <div className={`min-h-0 flex-1 space-y-3 overflow-y-auto p-3 scrollbar-thin ${compact ? "text-[11px]" : "text-[13px]"}`} data-ui-contract="hero-rush-unified-card-detail">
       <section className={sectionClass}>
-        <div className="mx-auto" style={{ maxWidth: compact ? "148px" : "236px" }}>
+        <div className="mx-auto" style={{ maxWidth: compact ? "176px" : "260px" }}>
           <div className="relative aspect-[746/1041] w-full overflow-hidden rounded-lg bg-stone-100 shadow-md ring-1 ring-stone-200">
             <CardImage cardId={currentCard.id} legacyUrl={currentCard.image_url} intent="detail" alt={currentCard.name} className="absolute inset-0 h-full w-full object-contain" />
             <span className="absolute right-1 top-1 rounded px-1.5 py-0.5 text-[9px] font-bold text-white shadow" style={{ backgroundColor: currentCard.rarity_color }}>{currentCard.rarity_code}</span>
           </div>
           {!compact && variants.length > 1 && <div className="mt-2 flex flex-wrap justify-center gap-1" aria-label="罕贵卡图切换">{variants.map((variant, index) => <button key={variant.id} type="button" onClick={() => setSelectedVariantIdx(index)} className={`rounded border px-1.5 py-0.5 text-[9px] font-bold transition ${index === selectedVariantIdx ? "border-transparent text-white" : "border-stone-200 bg-white text-stone-500 hover:border-stone-400"}`} style={index === selectedVariantIdx ? { backgroundColor: variant.rarity_color } : undefined}>{variant.rarity_code}</button>)}</div>}
         </div>
-        <div className="mt-2.5 text-center"><h3 className={`${compact ? "text-sm" : "text-base"} font-bold leading-tight text-stone-800`}>{currentCard.name}</h3><p className="mt-0.5 font-mono text-[9px] text-stone-400">{currentCard.card_no}</p></div>
+        <div className="mt-2.5 text-center"><h3 className={`${compact ? "text-base" : "text-lg"} font-bold leading-tight text-stone-800`}>{currentCard.name}</h3><p className="mt-0.5 font-mono text-[10px] text-stone-400">{currentCard.card_no}</p></div>
       </section>
 
       <section className={sectionClass}>

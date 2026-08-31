@@ -1,6 +1,9 @@
 import { applyAtomicOperationsV2 } from "./atomicOps";
-import { getEffectV2, implementedEffectDefinitionsV2 } from "./registry";
+import { getEffectForCardInstanceV2, implementedEffectDefinitionsV2 } from "./registry";
+import { effectCardNosForInstanceV2 } from "./copying";
 import { otherPlayerV2 } from "../invariants";
+import { cardControllerV2, effectSourceZoneV2 } from "../control";
+import { isCardEffectSuppressedV2 } from "./suppression";
 import type { GameEventV2, GameStateV2, PlayerIndex, QueuedEffectV2 } from "../model";
 
 export function queueActivatedEffectV2(
@@ -12,7 +15,8 @@ export function queueActivatedEffectV2(
 ): { state: GameStateV2; event: GameEventV2 } | null {
   const card = state.cards[sourceCardId];
   if (!card) return null;
-  const definition = getEffectV2(card.cardNo, effectId);
+  if (isCardEffectSuppressedV2(state, sourceCardId)) return null;
+  const definition = getEffectForCardInstanceV2(state, sourceCardId, effectId);
   if (!definition) return null;
   const queued: QueuedEffectV2 = {
     id: `effect:${state.revision + 1}:${state.effects.queue.length}`,
@@ -37,7 +41,7 @@ export function resolveEffectQueueV2(
   while (state.effects.queue.length > 0 && state.status === "playing") {
     const [effect, ...remaining] = state.effects.queue;
     state = { ...state, effects: { ...state.effects, queue: remaining } };
-    const applied = applyAtomicOperationsV2(state, effect.operations);
+    const applied = applyAtomicOperationsV2(state, effect.operations, effect.sourceCardId);
     state = applied.state;
     events.push(...applied.events, { type: "EFFECT_RESOLVED", effectInstanceId: effect.id });
     state = {
@@ -52,17 +56,6 @@ export function resolveEffectQueueV2(
   return { state, events };
 }
 
-function sourceZoneV2(state: GameStateV2, actor: PlayerIndex, cardId: string): "hand" | "field" | "base" | "retreat" | "timeline" | "attachment" | null {
-  const player = state.players[actor];
-  if (player.hand.includes(cardId)) return "hand";
-  if (Object.values(player.field).flat().includes(cardId)) return "field";
-  if (player.baseCards.includes(cardId)) return "base";
-  if (player.retreat.includes(cardId)) return "retreat";
-  if (player.timeline.includes(cardId)) return "timeline";
-  if (Object.values(state.attachments).flat().includes(cardId)) return "attachment";
-  return null;
-}
-
 export function collectTriggeredEffectsV2(
   state: GameStateV2,
   events: readonly GameEventV2[],
@@ -71,12 +64,13 @@ export function collectTriggeredEffectsV2(
   for (const [eventIndex, triggerEvent] of events.entries()) {
     const definitions = implementedEffectDefinitionsV2().filter((definition) => definition.trigger === triggerEvent.type);
     for (const controller of [state.activePlayer, otherPlayerV2(state.activePlayer)] as const) {
-      for (const card of Object.values(state.cards).filter((item) => item.owner === controller)) {
-        const zone = sourceZoneV2(state, controller, card.instanceId);
+      for (const card of Object.values(state.cards).filter((item) => cardControllerV2(state, item.instanceId) === controller)) {
+        if (isCardEffectSuppressedV2(state, card.instanceId)) continue;
+        const zone = effectSourceZoneV2(state, controller, card.instanceId);
         if (!zone) continue;
         for (const definition of definitions) {
           const context = { triggerEvent };
-          if (definition.cardNo !== card.cardNo) continue;
+          if (!effectCardNosForInstanceV2(state, card.instanceId).includes(definition.cardNo)) continue;
           if (definition.sourceZones && !definition.sourceZones.includes(zone)) continue;
           if (definition.eventFilter && !definition.eventFilter(state, controller, card.instanceId, context)) continue;
           if (definition.condition && !definition.condition(state, controller, card.instanceId, context)) continue;
@@ -96,6 +90,7 @@ export function collectTriggeredEffectsV2(
             effectId: definition.effectId,
             trigger: definition.trigger as QueuedEffectV2["trigger"],
             optional: definition.optional ?? false,
+            targetingActor: definition.targetingActor === "opponent" ? otherPlayerV2(controller) : controller,
             triggerEvent,
             operations: targeting ? [] : definition.buildOperations(state, controller, card.instanceId, [], context),
             ...(targeting ? { targeting: {
@@ -168,7 +163,7 @@ export function prepareEffectResolutionV2(
   const [queuedEffect, ...remainingEffects] = effects;
   let effect = queuedEffect;
   if (queuedEffect.targeting) {
-    const definition = getEffectV2(state.cards[queuedEffect.sourceCardId]?.cardNo ?? "", queuedEffect.effectId);
+    const definition = getEffectForCardInstanceV2(state, queuedEffect.sourceCardId, queuedEffect.effectId);
     const refreshed = definition?.targeting?.(state, queuedEffect.controller, queuedEffect.sourceCardId, { triggerEvent: queuedEffect.triggerEvent });
     if (!definition || !refreshed) return prepareEffectResolutionV2(state, remainingEffects);
     const choices = [...new Set(refreshed.choices)].filter((id) => refreshed.choiceKind && refreshed.choiceKind !== "card" ? true : Boolean(state.cards[id]));
@@ -210,7 +205,7 @@ export function prepareEffectResolutionV2(
         decision: {
           id: `trigger-targets:${effect.controller}:${state.revision}:${effect.id}`,
           kind: "EFFECT_TARGETS",
-          actor: effect.controller,
+          actor: effect.targetingActor ?? effect.controller,
           choices: effect.targeting.choices,
           min: effect.targeting.min,
           max: effect.targeting.max,
@@ -221,7 +216,7 @@ export function prepareEffectResolutionV2(
       },
       events: [{
         type: "EFFECT_TARGETS_REQUESTED",
-        actor: effect.controller,
+        actor: effect.targetingActor ?? effect.controller,
         sourceCardId: effect.sourceCardId,
         effectId: effect.effectId,
         min: effect.targeting.min,

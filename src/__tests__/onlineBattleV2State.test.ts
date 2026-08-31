@@ -58,6 +58,7 @@ function view(revision = 0): BattleViewV2 {
       max: 6,
       continuation: { kind: "AFTER_MULLIGAN", nextActor: 1 },
     },
+    decisionCards: [],
     battle: null,
     turnResponse: null,
     attachments: {},

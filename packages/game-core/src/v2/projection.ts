@@ -12,11 +12,13 @@ import type {
   FieldZoneV2,
   OfficialKeywordV2,
 } from "./model";
-import { implementedEffectIdsForCardV2 } from "./effects/registry";
+import { implementedEffectIdsForCardInstanceV2 } from "./effects/registry";
 import { effectiveValueV2 } from "./effects/atomicOps";
 import { attackOpportunityLimitV2, effectiveKeywordsV2, hasKeywordV2 } from "./effects/keywords";
+import { isCardEffectSuppressedV2 } from "./effects/suppression";
 import { allowedCommandTypesV2 } from "./commandPolicy";
 import { battleDistanceV2, executeCommandV2 } from "./kernel";
+import { cardControllerV2 } from "./control";
 
 export type LegalActionV2 =
   | { type: "DEPLOY_BASE"; cardId: CardInstanceIdV2 }
@@ -103,6 +105,8 @@ export interface BattleViewV2 {
   flow: FlowStateV2;
   players: [PlayerViewV2, PlayerViewV2];
   pendingDecision: PendingDecisionV2 | null;
+  /** Full card snapshots for hidden-zone choices, exposed only to the decision actor. */
+  decisionCards: VisibleCardV2[];
   battle: BattleContextV2 | null;
   turnResponse: TurnResponseContextV2 | null;
   attachments: Record<CardInstanceIdV2, CardInstanceIdV2[]>;
@@ -163,11 +167,12 @@ function projectLegalActions(state: GameStateV2, actor: PlayerIndex): LegalActio
       ...player.hand,
       ...player.baseCards,
       ...fieldZones.flatMap((zone) => player.field[zone]),
-      ...Object.values(state.attachments).flat().filter((cardId) => state.cards[cardId]?.owner === actor),
+      ...player.void,
+      ...Object.values(state.attachments).flat().filter((cardId) => cardControllerV2(state, cardId) === actor),
     ];
     for (const sourceCardId of sources) {
       const card = state.cards[sourceCardId];
-      const effectIds = card ? implementedEffectIdsForCardV2(card.cardNo).filter((effectId) => (
+      const effectIds = card && !isCardEffectSuppressedV2(state, sourceCardId) ? implementedEffectIdsForCardInstanceV2(state, sourceCardId).filter((effectId) => (
         isLegalCommand(state, actor, { type: "ACTIVATE_EFFECT", sourceCardId, effectId })
       )) : [];
       if (effectIds.length) actions.push({ type: "ACTIVATE_EFFECT", sourceCardId, effectIds });
@@ -211,7 +216,7 @@ function visibleCard(state: GameStateV2, id: CardInstanceIdV2): VisibleCardV2 {
     effectivePower: effectiveValueV2(state, id, "power"),
     keywords,
     gainedKeywords: keywords.filter((keyword) => !printedKeywords.has(keyword)),
-    effectIds: implementedEffectIdsForCardV2(card.cardNo),
+    effectIds: isCardEffectSuppressedV2(state, id) ? [] : implementedEffectIdsForCardInstanceV2(state, id),
   };
 }
 
@@ -326,6 +331,9 @@ export function projectBattleViewV2(
       projectPlayer(state, 1, viewer),
     ],
     pendingDecision: ownsDecision ? structuredClone(state.decision) : null,
+    decisionCards: ownsDecision && state.decision
+      ? state.decision.choices.filter((id) => Boolean(state.cards[id])).map((id) => visibleCard(state, id))
+      : [],
     battle: structuredClone(state.battle),
     turnResponse: structuredClone(state.turnResponse),
     attachments: structuredClone(state.attachments),

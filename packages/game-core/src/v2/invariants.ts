@@ -1,5 +1,6 @@
 import type { CardInstanceIdV2, GameStateV2, PlayerIndex } from "./model";
 import { hasKeywordV2 } from "./effects/keywords";
+import { cardControllerV2 } from "./control";
 
 function allZoneCards(state: GameStateV2): CardInstanceIdV2[] {
   return state.players.flatMap((player, seat) => [
@@ -106,11 +107,16 @@ export function validateStateInvariantsV2(state: GameStateV2): string[] {
       if (new Set(state.decision.choices).size !== state.decision.choices.length) errors.push("效果目标候选不能重复");
       if ((state.decision.choiceKind ?? "card") === "card" && state.decision.choices.some((id) => !state.cards[id])) errors.push("卡牌效果目标候选必须是已知实体卡");
       if (state.decision.choiceKind === "field_location" && state.decision.choices.some((id) => !/^zone:(vanguard|flankLeft|flankRight|rear|base)$/.test(id))) errors.push("效果位置候选必须是合法场上区域");
+      if (state.decision.choiceKind === "deck_reorder") {
+        const cards = state.decision.choices.filter((id) => Boolean(state.cards[id]));
+        const splits = state.decision.choices.filter((id) => /^split:\d+$/.test(id));
+        if (cards.length === 0 || splits.length !== cards.length + 1 || splits.some((id, index) => id !== `split:${index}`)) errors.push("卡组重排必须提供完整卡牌和分界选项");
+      }
       const sourceCardId = state.decision.continuation.kind === "RESUME_EFFECT_TARGETS"
         ? state.decision.continuation.sourceCardId
         : state.decision.continuation.effect.sourceCardId;
       const source = state.cards[sourceCardId];
-      if (!source || source.owner !== state.decision.actor) errors.push("效果目标决策来源必须由决策者控制");
+      if (!source || cardControllerV2(state, sourceCardId) !== state.decision.actor) errors.push("效果目标决策来源必须由决策者控制");
     }
 
     const battleFlows = new Set(["BATTLE_ADJUST", "BATTLE_NEXT", "BATTLE_FLANK_CHOICE", "BATTLE_ATTACK", "BATTLE_TARGET", "BATTLE_RESPONSE"]);
@@ -126,7 +132,7 @@ export function validateStateInvariantsV2(state: GameStateV2): string[] {
     const onField = [
       ...player.baseCards,
       ...Object.values(player.field).flat(),
-      ...Object.values(state.attachments).flat().filter((id) => state.cards[id]?.owner === seat),
+      ...Object.values(state.attachments).flat().filter((id) => cardControllerV2(state, id) === seat),
     ];
     const uniqueNames = new Set(onField.filter((id) => hasKeywordV2(state, id, "unique")).map((id) => state.cards[id]?.cardNo));
     if ([...uniqueNames].some((cardNo) => onField.filter((id) => state.cards[id]?.cardNo === cardNo).length > 1)) {
@@ -135,8 +141,13 @@ export function validateStateInvariantsV2(state: GameStateV2): string[] {
   }
   for (const [seat, attackedIds] of (state.usage.attackedCardIdsByPlayer ?? [[], []]).entries()) {
     if (new Set(attackedIds).size !== attackedIds.length) errors.push(`玩家 ${seat} 的已攻击角色记录重复`);
-    if (attackedIds.some((id) => !state.cards[id] || state.cards[id].owner !== seat)) errors.push(`玩家 ${seat} 的已攻击角色记录包含无效卡牌`);
+    if (attackedIds.some((id) => !state.cards[id] || cardControllerV2(state, id) !== seat)) errors.push(`玩家 ${seat} 的已攻击角色记录包含无效卡牌`);
   }
+  if ((state.usage.attackedTargetCardIdsThisTurn ?? []).some((id) => !state.cards[id])) errors.push("本回合被攻击目标记录包含无效卡牌");
+  if ((state.usage.characterOnlyAdditionalAttackCardIds ?? []).some((id) => !state.cards[id])) errors.push("限制为角色目标的额外攻击记录包含无效卡牌");
+  if ((state.usage.attackBlockedCardIds ?? []).some((id) => !state.cards[id])) errors.push("禁止攻击记录包含无效卡牌");
+  if ((state.usage.summonPaymentBlockedCardIds ?? []).some((id) => !state.cards[id])) errors.push("禁止作为号召素材的记录包含无效卡牌");
+  if (!Array.isArray(state.usage.minimumSummonPaymentLevelBlockedThisTurn) || state.usage.minimumSummonPaymentLevelBlockedThisTurn.length !== 2 || state.usage.minimumSummonPaymentLevelBlockedThisTurn.some((value) => value !== null && (!Number.isInteger(value) || value < 1))) errors.push("高等级号召素材限制记录非法");
 
   if (state.firstPlayer !== 0 && state.firstPlayer !== 1) errors.push("先攻玩家索引非法");
   if (state.status === "finished" && state.winner === null) errors.push("已结束对局必须有胜者");
@@ -146,6 +157,8 @@ export function validateStateInvariantsV2(state: GameStateV2): string[] {
   if (new Set(state.modifiers.map((modifier) => modifier.id)).size !== state.modifiers.length) {
     errors.push("修改器 ID 不能重复");
   }
+  if (new Set((state.effectCopies ?? []).map((copy) => copy.id)).size !== (state.effectCopies ?? []).length) errors.push("效果复制记录 ID 不能重复");
+  if ((state.effectCopies ?? []).some((copy) => !state.cards[copy.sourceCardId] || !state.cards[copy.targetCardId] || !state.cards[copy.copiedFromCardId])) errors.push("效果复制记录包含无效卡牌");
   for (const modifier of state.modifiers) {
     if (!state.cards[modifier.sourceCardId] || !state.cards[modifier.targetCardId]) errors.push(`修改器引用未知卡牌：${modifier.id}`);
   }

@@ -145,10 +145,17 @@ describe("V2 M2 行动阶段", () => {
       summonsThisTurn: [0, 0],
       baseDeployedThisTurn: false,
       movedCardIds: [],
+      movementBlockedCardIds: [],
       enteredThisTurn: [],
       interceptUsedCardIds: [],
       attackedCardIdsByPlayer: [[], []],
+      attackedTargetCardIdsThisTurn: [],
+      characterOnlyAdditionalAttackCardIds: [],
+      summonPaymentBlockedCardIds: [],
+      minimumSummonPaymentLevelBlockedThisTurn: [null, null],
       effectUseKeysThisTurn: [],
+      battlePhaseSkippedThisTurn: false,
+      attackBlockedCardIds: [],
     });
     expect(result.events).toEqual([{ type: "TURN_CARDS_DRAWN", actor, count: 2 }]);
   });

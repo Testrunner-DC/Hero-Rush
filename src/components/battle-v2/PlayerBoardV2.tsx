@@ -2,7 +2,6 @@ import { useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { BattleBaseLocationV2, Card, CardDatabase, FieldZoneV2, OfficialKeywordV2, PlayerIndex, PlayerViewV2, VisibleCardV2 } from "@hero-rush/game-core";
 import CardImage from "../CardImage";
-import CardDetailSidebar from "../CardDetailSidebar";
 
 const MAIN_CARD_BACK_URL = "/assets/battle/card-back-main.png";
 const RUSH_CARD_BACK_URL = "/assets/battle/card-back-rush.png";
@@ -187,15 +186,14 @@ function InspectableZone({ label, cards, mirrored, cardByDefinitionId, onOpen, l
   );
 }
 
-function ZoneContentsModal({ label, cards, common, db, onClose }: { label: string; cards: VisibleCardV2[]; common: SharedCardProps; db: CardDatabase; onClose: () => void }) {
+function ZoneContentsModal({ label, cards, common, onClose }: { label: string; cards: VisibleCardV2[]; common: SharedCardProps; onClose: () => void }) {
   const [selectedCardId, setSelectedCardId] = useState(cards[cards.length - 1]?.instanceId ?? "");
   const selectedCard = cards.find((card) => card.instanceId === selectedCardId) ?? cards[cards.length - 1];
-  const selectedDefinition = selectedCard ? common.cardByDefinitionId.get(selectedCard.definitionId) : undefined;
   return createPortal(
     <div className="fixed inset-0 z-[107] grid place-items-center bg-stone-950/[.58] py-5 pr-5 backdrop-blur-sm" style={{ paddingLeft: "calc(var(--hero-rush-v2-detail-inset, 232px) + 16px)" }} role="dialog" aria-modal="true" aria-label={`${label}卡牌明细`} onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}>
       <section className="max-h-[82vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-white/15 bg-stone-950 p-5 text-white shadow-[0_24px_80px_rgba(0,0,0,.48)] scrollbar-thin">
         <div className="flex items-center justify-between gap-4"><div><p className="text-[9px] font-bold tracking-[.15em] text-red-300">公开区域</p><h2 className="mt-1 text-lg font-black">{label} · {cards.length} 张</h2></div><button type="button" onClick={onClose} className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white/70 hover:bg-white/10">关闭</button></div>
-        {cards.length ? <div className="mt-5 grid min-h-0 gap-4 md:grid-cols-[minmax(0,1fr)_250px]"><div className="grid content-start grid-cols-[repeat(auto-fill,minmax(92px,1fr))] gap-4">{cards.map((card) => { const definition = common.cardByDefinitionId.get(card.definitionId); return <article key={card.instanceId} className="flex min-w-0 flex-col items-center gap-2"><CardTile card={card} definition={definition} selected={card.instanceId === selectedCard?.instanceId} selectable onClick={() => setSelectedCardId(card.instanceId)} onFocus={() => common.onCardFocus?.(card)} /><span className="w-full truncate text-center text-[9px] text-white/65" title={definition?.name}>{definition?.name ?? card.definitionId}</span></article>; })}</div><aside className="min-h-0 overflow-hidden rounded-xl bg-white text-stone-900"><CardDetailSidebar card={selectedDefinition ?? null} db={db} compact showAddButton={false} effectiveStats={selectedCard ? { level: selectedCard.effectiveLevel, power: selectedCard.effectivePower, range: selectedCard.effectiveRange } : null} /></aside></div> : <p className="mt-8 text-center text-sm text-white/40">当前区域为空</p>}
+        {cards.length ? <div className="mt-5 grid content-start grid-cols-[repeat(auto-fill,minmax(92px,1fr))] gap-4">{cards.map((card) => { const definition = common.cardByDefinitionId.get(card.definitionId); return <article key={card.instanceId} className="flex min-w-0 flex-col items-center gap-2"><CardTile card={card} definition={definition} selected={card.instanceId === selectedCard?.instanceId} selectable onClick={() => { setSelectedCardId(card.instanceId); common.onCardFocus?.(card); }} onFocus={() => common.onCardFocus?.(card)} /><span className="w-full truncate text-center text-[9px] text-white/65" title={definition?.name}>{definition?.name ?? card.definitionId}</span></article>; })}</div> : <p className="mt-8 text-center text-sm text-white/40">当前区域为空</p>}
       </section>
     </div>,
     document.body,
@@ -272,7 +270,7 @@ function HandArea({ player, hidden, edge, ...common }: SharedCardProps & { playe
   );
 }
 
-export default function PlayerBoardV2({ player, db, playerSeat, viewerOwnsBoard, perspective, activeTurn, cardByDefinitionId, attachments = {}, selectedCardIds = new Set(), selectableCardIds = new Set(), cardEmphasis = new Map(), onCardClick, onCardFocus, targetableDestinations = new Set(), targetableBreachZones = new Set(), onZoneClick, onBreachClick, cardActions, voidLeftControl }: PlayerBoardV2Props) {
+export default function PlayerBoardV2({ player, playerSeat, viewerOwnsBoard, perspective, activeTurn, cardByDefinitionId, attachments = {}, selectedCardIds = new Set(), selectableCardIds = new Set(), cardEmphasis = new Map(), onCardClick, onCardFocus, targetableDestinations = new Set(), targetableBreachZones = new Set(), onZoneClick, onBreachClick, cardActions, voidLeftControl }: PlayerBoardV2Props) {
   const common = { cardByDefinitionId, selectedCardIds, selectableCardIds, cardEmphasis, onCardClick, onCardFocus, exhaustedCardIds: new Set(player.exhaustedCardIds), cardActions };
   const [inspectedZone, setInspectedZone] = useState<"retreat" | "void" | null>(null);
   const attachedById = new Map(player.attached.map((card) => [card.instanceId, card]));
@@ -304,7 +302,7 @@ export default function PlayerBoardV2({ player, db, playerSeat, viewerOwnsBoard,
         </div>
       </div>
     </article>
-    {inspectedZone && <ZoneContentsModal label={inspectedLabel} cards={inspectedCards} common={common} db={db} onClose={() => setInspectedZone(null)} />}
+    {inspectedZone && <ZoneContentsModal label={inspectedLabel} cards={inspectedCards} common={common} onClose={() => setInspectedZone(null)} />}
     </>
   );
 }

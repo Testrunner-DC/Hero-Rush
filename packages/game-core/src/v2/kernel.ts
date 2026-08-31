@@ -15,8 +15,17 @@ import type {
 } from "./model";
 import { createMulliganDecisionV2 } from "./setup";
 import { preventsTieRetreatV2 } from "./cards/starterContinuous";
+import { promoAttackTargetRestrictionV2, promoSummonPaymentForbiddenV2 } from "./cards/promoContinuous";
 import { allowedCommandTypesV2 } from "./commandPolicy";
 import { hashStateV2 } from "./stateHash";
+import { cardControllerV2, effectSourceZoneV2 } from "./control";
+import {
+  attackTargetRuleIssueV2,
+  battleDistanceV2,
+  battleFieldZonesV2,
+  legalAttackTargetsV2,
+  locateBattleFieldCardV2 as locateFieldCardV2,
+} from "./battleTargetRules";
 import {
   collectTriggeredEffectsV2,
   attackOpportunityLimitV2,
@@ -24,7 +33,7 @@ import {
   consumedAttackOpportunitiesV2,
   detectValueChangeEventsV2,
   effectiveValueV2,
-  getEffectV2,
+  getEffectForCardInstanceV2,
   hasKeywordV2,
   prepareEffectResolutionV2,
   prepareTriggerResolutionV2,
@@ -32,7 +41,10 @@ import {
   retreatCardsV2,
   retreatClosureCardIdsV2,
   resolveEffectQueueV2,
+  isCardEffectSuppressedV2,
 } from "./effects/index";
+
+export { battleDistanceV2 } from "./battleTargetRules";
 
 function rejectV2(
   state: GameStateV2,
@@ -179,7 +191,8 @@ function removeFromAllFieldV2(player: PlayerStateV2, cardIds: Set<string>): Play
   };
 }
 
-function paymentCandidatesV2(player: PlayerStateV2): string[] {
+function paymentCandidatesV2(state: GameStateV2, actor: PlayerIndex): string[] {
+  const player = state.players[actor];
   return [
     ...player.baseCards,
     ...player.baseCovered,
@@ -187,7 +200,8 @@ function paymentCandidatesV2(player: PlayerStateV2): string[] {
     ...player.field.flankLeft,
     ...player.field.flankRight,
     ...player.field.rear,
-  ];
+  ].filter((id) => !(state.usage.summonPaymentBlockedCardIds ?? []).includes(id) && !promoSummonPaymentForbiddenV2(state, id, (cardId) => effectiveValueV2(state, cardId, "level")))
+    .filter((id) => state.usage.minimumSummonPaymentLevelBlockedThisTurn[actor] === null || effectiveValueV2(state, id, "level") < state.usage.minimumSummonPaymentLevelBlockedThisTurn[actor]!);
 }
 
 function paymentLevelV2(state: GameStateV2, actor: PlayerIndex, cardIds: readonly string[]): number {
@@ -254,13 +268,27 @@ function completeSummonV2(
   };
   if (summonKind === "battle_response" && nextState.battle) {
     const priority = otherPlayerV2(actor);
+    let battle = nextState.battle;
+    if (
+      actor === nextState.activePlayer
+      && (destination === "flankLeft" || destination === "flankRight")
+      && battle.attackerId
+      && battle.order.indexOf(destination) <= battle.cursor
+    ) {
+      const attackingZone = locateFieldCardV2(nextState.players[actor], battle.attackerId);
+      if (attackingZone && attackingZone !== destination) {
+        const order = [...battle.order];
+        order.splice(battle.cursor + 1, 0, destination);
+        battle = { ...battle, order };
+      }
+    }
     const responseSummoned: [boolean, boolean] = [...nextState.battle.responseSummoned];
     responseSummoned[actor] = true;
     nextState = {
       ...nextState,
       flow: { kind: "BATTLE_RESPONSE", actor: nextState.activePlayer, priority },
       battle: {
-        ...nextState.battle,
+        ...battle,
         priorityPlayer: priority,
         consecutivePasses: 0,
         responseSummoned,
@@ -285,7 +313,12 @@ function completeSummonV2(
   const checked = applyStateBasedActionsV2(nextState);
   nextState = checked.state;
   return successV2(nextState, [
-    ...(retreatedCardIds.length > 0 ? [{ type: "CARDS_RETREATED" as const, cardIds: retreatedCardIds, reason: "summon_payment" as const }] : []),
+    ...(retreatedCardIds.length > 0 ? [{
+      type: "CARDS_RETREATED" as const,
+      cardIds: retreatedCardIds,
+      reason: "summon_payment" as const,
+      followedAttachmentCardIds: retreatedCardIds.filter((id) => !paymentCardIds.includes(id)),
+    }] : []),
     {
       type: "CHARACTER_SUMMONED",
       actor,
@@ -338,7 +371,7 @@ function beginSummonV2(
   }
   const summonLevel = effectiveValueV2(state, command.cardId, "level");
   if (summonLevel >= 4) {
-    const candidates = paymentCandidatesV2(player);
+    const candidates = paymentCandidatesV2(state, actor);
     if (!hasExactPaymentV2(state, actor, candidates, summonLevel)) {
       return rejectV2(state, "COST_MISMATCH", "己方场上没有可精确支付该 Lv 的撤退组合");
     }
@@ -486,7 +519,7 @@ function executeDecisionCommandV2(
   if (decision.kind === "EFFECT_TARGETS") {
     if (decision.continuation.kind === "RESUME_TRIGGER_EFFECT_TARGETS") {
       const { effect, remainingEffects } = decision.continuation;
-      const definition = getEffectV2(state.cards[effect.sourceCardId]?.cardNo ?? "", effect.effectId);
+      const definition = getEffectForCardInstanceV2(state, effect.sourceCardId, effect.effectId);
       if (!definition) return rejectV2(state, "EFFECT_NOT_IMPLEMENTED", "触发效果定义不存在");
       const targetIssue = definition.validateTargets?.(state, envelope.actor, effect.sourceCardId, selected, { triggerEvent: effect.triggerEvent });
       if (targetIssue) return rejectV2(state, "INVALID_TARGET", targetIssue);
@@ -508,7 +541,7 @@ function executeDecisionCommandV2(
       }, ...prepared.events]);
     }
     const { sourceCardId, effectId, activationFlow } = decision.continuation;
-    const definition = getEffectV2(state.cards[sourceCardId]?.cardNo ?? "", effectId);
+    const definition = getEffectForCardInstanceV2(state, sourceCardId, effectId);
     if (!definition) return rejectV2(state, "EFFECT_NOT_IMPLEMENTED", "效果定义不存在");
     const targetIssue = definition.validateTargets?.(state, envelope.actor, sourceCardId, selected);
     if (targetIssue) return rejectV2(state, "INVALID_TARGET", targetIssue);
@@ -636,6 +669,7 @@ function executeActionCommandV2(state: GameStateV2, envelope: CommandEnvelopeV2)
     const fromBase = command.from === "base";
     const toBase = command.destination === "base";
     if (fromBase === toBase) return rejectV2(state, "INVALID_TARGET", "战基移动必须发生在战区与基地之间");
+    if (state.usage.movementBlockedCardIds.includes(command.cardId)) return rejectV2(state, "CARD_MOVE_FORBIDDEN", "该角色本回合不能战基移动");
     if (state.usage.movedCardIds.includes(command.cardId)) return rejectV2(state, "CARD_ALREADY_MOVED", "该角色本回合已经战基移动");
     const fromCovered = fromBase && player.baseCovered.includes(command.cardId);
     const sourceContains = fromBase
@@ -667,7 +701,7 @@ function executeActionCommandV2(state: GameStateV2, envelope: CommandEnvelopeV2)
   }
 
   if (command.type === "END_ACTION_PHASE") {
-    const skipBattle = actor === state.firstPlayer && state.turnNumber === 1;
+    const skipBattle = (actor === state.firstPlayer && state.turnNumber === 1) || state.usage.battlePhaseSkippedThisTurn;
     const next = skipBattle ? "TURN_RESPONSE_START" : "BATTLE_START";
     const nextState: GameStateV2 = {
       ...state,
@@ -680,35 +714,7 @@ function executeActionCommandV2(state: GameStateV2, envelope: CommandEnvelopeV2)
   return rejectV2(state, "INVALID_FLOW", "当前行动阶段不接受该命令");
 }
 
-const fieldZonesV2: FieldZoneV2[] = ["vanguard", "flankLeft", "flankRight", "rear"];
-
-function locateFieldCardV2(player: PlayerStateV2, cardId: string): FieldZoneV2 | null {
-  return fieldZonesV2.find((zone) => player.field[zone].includes(cardId)) ?? null;
-}
-
-function battleRankV2(owner: PlayerIndex, zone: FieldZoneV2, activePlayer: PlayerIndex): number {
-  const own = owner === activePlayer;
-  if (own) {
-    if (zone === "rear") return 0;
-    if (zone === "vanguard") return 2;
-    return 1;
-  }
-  if (zone === "vanguard") return 3;
-  if (zone === "rear") return 5;
-  return 4;
-}
-
-export function battleDistanceV2(
-  activePlayer: PlayerIndex,
-  attackerZone: FieldZoneV2,
-  targetOwner: PlayerIndex,
-  targetZone: FieldZoneV2,
-): number {
-  return Math.abs(
-    battleRankV2(activePlayer, attackerZone, activePlayer)
-      - battleRankV2(targetOwner, targetZone, activePlayer),
-  );
-}
+const fieldZonesV2: FieldZoneV2[] = [...battleFieldZonesV2];
 
 function validateAttackTargetV2(
   state: GameStateV2,
@@ -716,39 +722,12 @@ function validateAttackTargetV2(
   attackerId: string,
   target: AttackTargetV2,
 ): CommandResultV2 | null {
-  const attackerZone = locateFieldCardV2(state.players[actor], attackerId);
-  const attacker = state.cards[attackerId];
-  const attackerRange = effectiveValueV2(state, attackerId, "range");
-  if (!attackerZone || !attacker || attackerRange <= 0) {
-    return rejectV2(state, "CARD_CANNOT_ATTACK", "攻击角色不在战区或 R 为 0");
-  }
-  const defender = otherPlayerV2(actor);
-  let targetZone: FieldZoneV2;
-  if (target.kind === "character") {
-    targetZone = locateFieldCardV2(state.players[defender], target.cardId) as FieldZoneV2;
-    if (!targetZone) return rejectV2(state, "INVALID_TARGET", "目标角色不在敌方战区");
-  } else {
-    targetZone = target.zone;
-    if (state.players[defender].field[targetZone].length > 0 && !hasKeywordV2(state, attackerId, "airRaid")) {
-      return rejectV2(state, "INVALID_TARGET", "该战区不是破绽；只有【空袭】可以攻击有角色的战区破绽");
-    }
-  }
-  if (battleDistanceV2(actor, attackerZone, defender, targetZone) > attackerRange) {
-    return rejectV2(state, "ATTACK_OUT_OF_RANGE", "目标超出攻击者 R 范围");
-  }
-  return null;
+  const issue = attackTargetRuleIssueV2(state, actor, attackerId, target, (id) => effectiveValueV2(state, id, "range"), (id, keyword) => hasKeywordV2(state, id, keyword), (id, candidate) => promoAttackTargetRestrictionV2(state, id, candidate, (cardId) => effectiveValueV2(state, cardId, "level")));
+  return issue ? rejectV2(state, issue.code, issue.message) : null;
 }
 
 function hasLegalAttackTargetV2(state: GameStateV2, actor: PlayerIndex, attackerId: string): boolean {
-  const defender = otherPlayerV2(actor);
-  return fieldZonesV2.some((zone) => {
-    const targetId = state.players[defender].field[zone][0];
-    const targets: AttackTargetV2[] = [
-      ...(targetId ? [{ kind: "character" as const, cardId: targetId }] : []),
-      { kind: "breach", zone },
-    ];
-    return targets.some((target) => validateAttackTargetV2(state, actor, attackerId, target) === null);
-  });
+  return legalAttackTargetsV2(state, actor, attackerId, (id) => effectiveValueV2(state, id, "range"), (id, keyword) => hasKeywordV2(state, id, keyword), (id, candidate) => promoAttackTargetRestrictionV2(state, id, candidate, (cardId) => effectiveValueV2(state, cardId, "level"))).length > 0;
 }
 
 function cancelSummonPaymentV2(
@@ -818,7 +797,12 @@ function resolveBattleJudgmentV2(state: GameStateV2, actor: PlayerIndex): Comman
     const tied = attackerPower === targetPower;
     const winnerCardId = tied ? null : attackerPower > targetPower ? battle.attackerId : battle.target.cardId;
     const defeatedCardIds = tied ? [] : retreated;
-    if (allRetreated.length > 0) events.push({ type: "CARDS_RETREATED", cardIds: allRetreated, reason: "battle" });
+    if (allRetreated.length > 0) events.push({
+      type: "CARDS_RETREATED",
+      cardIds: allRetreated,
+      reason: "battle",
+      followedAttachmentCardIds: allRetreated.filter((id) => !retreated.includes(id)),
+    });
     events.push({ type: "CHARACTERS_RETREATED_BY_BATTLE", cardIds: allRetreated });
     events.push({ type: "CHARACTER_BATTLE_RESOLVED", attackerId: battle.attackerId, targetId: battle.target.cardId, winnerCardId, defeatedCardIds, tied });
     if (attackerWon && hasKeywordV2(state, battle.attackerId, "assault")) {
@@ -832,7 +816,7 @@ function resolveBattleJudgmentV2(state: GameStateV2, actor: PlayerIndex): Comman
         timeline: [...attackerState.timeline, rushCardId],
       };
       players = replacePlayerV2(players, actor, nextAttacker);
-      events.push({ type: "BREACH_HIT", attacker: actor, defender, rushCardId });
+      events.push({ type: "BREACH_HIT", attacker: actor, attackerCardId: battle.attackerId, defender, rushCardId });
       if (nextAttacker.timeline.length >= 9) winner = actor;
     }
   } else {
@@ -846,7 +830,7 @@ function resolveBattleJudgmentV2(state: GameStateV2, actor: PlayerIndex): Comman
       timeline: [...attackerState.timeline, rushCardId],
     };
     players = replacePlayerV2(state.players, actor, nextAttacker);
-    events.push({ type: "BREACH_HIT", attacker: actor, defender, rushCardId });
+    events.push({ type: "BREACH_HIT", attacker: actor, attackerCardId: battle.attackerId, defender, rushCardId });
     if (nextAttacker.timeline.length >= 9) winner = actor;
   }
 
@@ -1003,6 +987,9 @@ function executeBattleCommandV2(state: GameStateV2, envelope: CommandEnvelopeV2)
         usage: {
           ...state.usage,
           attackedCardIdsByPlayer: state.usage.attackedCardIdsByPlayer.map((ids, seat) => seat === actor && !ids.includes(attackerId) ? [...ids, attackerId] : [...ids]) as [string[], string[]],
+          attackedTargetCardIdsThisTurn: command.target.kind === "character"
+            ? [...(state.usage.attackedTargetCardIdsThisTurn ?? []), command.target.cardId]
+            : [...(state.usage.attackedTargetCardIdsThisTurn ?? [])],
         },
       };
       return successV2(nextState, [{ type: "ATTACK_DECLARED", actor, attackerId, target: command.target }]);
@@ -1027,6 +1014,12 @@ function executeBattleCommandV2(state: GameStateV2, envelope: CommandEnvelopeV2)
         priorityPlayer: priority,
         consecutivePasses: 0,
         responseSummoned: [false, false],
+      },
+      usage: {
+        ...state.usage,
+        attackedTargetCardIdsThisTurn: command.target.kind === "character"
+          ? [...(state.usage.attackedTargetCardIdsThisTurn ?? []), command.target.cardId]
+          : [...(state.usage.attackedTargetCardIdsThisTurn ?? [])],
       },
     };
     return successV2(nextState, [{ type: "ATTACK_DECLARED", actor, attackerId: command.attackerId, target: command.target }]);
@@ -1166,30 +1159,12 @@ function executeEffectCommandV2(state: GameStateV2, envelope: CommandEnvelopeV2)
   const actor = envelope.actor;
   const { sourceCardId, effectId } = envelope.command;
   const card = state.cards[sourceCardId];
-  if (!card || card.owner !== actor) return rejectV2(state, "INVALID_SOURCE", "效果来源不属于该玩家");
-  const player = state.players[actor];
-  const controlled = new Set([
-    ...player.hand,
-    ...player.baseCards,
-    ...Object.values(player.field).flat(),
-    ...player.retreat,
-    ...player.timeline,
-    ...Object.values(state.attachments).flat().filter((id) => state.cards[id]?.owner === actor),
-  ]);
-  if (!controlled.has(sourceCardId)) return rejectV2(state, "INVALID_SOURCE", "效果来源不在可起动区域");
-  const definition = getEffectV2(card.cardNo, effectId);
+  if (!card || cardControllerV2(state, sourceCardId) !== actor) return rejectV2(state, "INVALID_SOURCE", "效果来源不由该玩家控制");
+  if (isCardEffectSuppressedV2(state, sourceCardId)) return rejectV2(state, "EFFECT_NOT_AVAILABLE", "该卡当前已失去效果");
+  const definition = getEffectForCardInstanceV2(state, sourceCardId, effectId);
   if (!definition) return rejectV2(state, "EFFECT_NOT_IMPLEMENTED", "该卡效果尚未进入 V2 可用卡池");
-  const sourceZone = player.hand.includes(sourceCardId)
-    ? "hand"
-    : Object.values(player.field).flat().includes(sourceCardId)
-      ? "field"
-      : player.baseCards.includes(sourceCardId)
-        ? "base"
-        : player.retreat.includes(sourceCardId)
-          ? "retreat"
-          : player.timeline.includes(sourceCardId)
-            ? "timeline"
-            : "attachment";
+  const sourceZone = effectSourceZoneV2(state, actor, sourceCardId);
+  if (!sourceZone) return rejectV2(state, "INVALID_SOURCE", "效果来源不在可起动区域");
   if (definition.sourceZones && !definition.sourceZones.includes(sourceZone)) {
     return rejectV2(state, "EFFECT_NOT_AVAILABLE", "效果来源不在允许的区域");
   }
@@ -1221,30 +1196,32 @@ function executeEffectCommandV2(state: GameStateV2, envelope: CommandEnvelopeV2)
     if (targeting.min < 0 || targeting.max < targeting.min || targeting.max > choices.length) {
       return rejectV2(state, "EFFECT_NOT_AVAILABLE", "效果目标配置无效或没有足够的合法目标");
     }
-    const activationFlow = inAction ? "action" : inBattleResponse ? "battle_response" : "turn_response";
-    const nextState: GameStateV2 = {
-      ...state,
-      revision: state.revision + 1,
-      decision: {
-        id: `effect-targets:${actor}:${state.revision + 1}:${sourceCardId}:${effectId}`,
-        kind: "EFFECT_TARGETS",
+    if (targeting.max > 0) {
+      const activationFlow = inAction ? "action" : inBattleResponse ? "battle_response" : "turn_response";
+      const nextState: GameStateV2 = {
+        ...state,
+        revision: state.revision + 1,
+        decision: {
+          id: `effect-targets:${actor}:${state.revision + 1}:${sourceCardId}:${effectId}`,
+          kind: "EFFECT_TARGETS",
+          actor,
+          choices,
+          min: targeting.min,
+          max: targeting.max,
+          prompt: targeting.prompt,
+          choiceKind: targeting.choiceKind ?? "card",
+          continuation: { kind: "RESUME_EFFECT_TARGETS", sourceCardId, effectId, activationFlow },
+        },
+      };
+      return successV2(nextState, [{
+        type: "EFFECT_TARGETS_REQUESTED",
         actor,
-        choices,
+        sourceCardId,
+        effectId,
         min: targeting.min,
         max: targeting.max,
-        prompt: targeting.prompt,
-        choiceKind: targeting.choiceKind ?? "card",
-        continuation: { kind: "RESUME_EFFECT_TARGETS", sourceCardId, effectId, activationFlow },
-      },
-    };
-    return successV2(nextState, [{
-      type: "EFFECT_TARGETS_REQUESTED",
-      actor,
-      sourceCardId,
-      effectId,
-      min: targeting.min,
-      max: targeting.max,
-    }]);
+      }]);
+    }
   }
   const queued = queueActivatedEffectV2(state, actor, sourceCardId, effectId);
   if (!queued) return rejectV2(state, "EFFECT_NOT_IMPLEMENTED", "效果定义不存在");
@@ -1301,10 +1278,17 @@ export function advanceAutomaticFlowV2(state: GameStateV2): CommandResultV2 {
         summonsThisTurn: [0, 0],
         baseDeployedThisTurn: false,
         movedCardIds: [],
+        movementBlockedCardIds: [],
         enteredThisTurn: [],
         interceptUsedCardIds: [],
         attackedCardIdsByPlayer: (state.usage.attackedCardIdsByPlayer ?? [[], []]).map((ids, seat) => seat === actor ? [] : [...ids]) as [string[], string[]],
+        attackedTargetCardIdsThisTurn: [],
+        characterOnlyAdditionalAttackCardIds: [],
+        summonPaymentBlockedCardIds: [],
+        minimumSummonPaymentLevelBlockedThisTurn: [null, null],
         effectUseKeysThisTurn: [],
+        battlePhaseSkippedThisTurn: false,
+        attackBlockedCardIds: [],
       },
     };
     return successV2(nextState, events);
@@ -1338,6 +1322,7 @@ export function advanceAutomaticFlowV2(state: GameStateV2): CommandResultV2 {
         const choices = (["flankLeft", "flankRight"] as const).filter((zone) => {
           const candidateId = state.players[actor].field[zone][0];
           return Boolean(candidateId)
+            && !state.usage.attackBlockedCardIds.includes(candidateId)
             && consumedAttackOpportunitiesV2(state, candidateId) < attackOpportunityLimitV2(state, candidateId)
             && effectiveValueV2(state, candidateId, "range") > 0;
         });
@@ -1355,6 +1340,7 @@ export function advanceAutomaticFlowV2(state: GameStateV2): CommandResultV2 {
       const attackerId = state.players[actor].field[zone][0];
       if (
         attackerId
+        && !state.usage.attackBlockedCardIds.includes(attackerId)
         && consumedAttackOpportunitiesV2(state, attackerId) < attackOpportunityLimitV2(state, attackerId)
         && effectiveValueV2(state, attackerId, "range") > 0
       ) {
@@ -1398,12 +1384,14 @@ export function advanceAutomaticFlowV2(state: GameStateV2): CommandResultV2 {
     const events: GameEventV2[] = [{ type: "TURN_EFFECTS_EXPIRED", actor }];
     const modifiers = state.modifiers.filter((modifier) => modifier.duration !== "turn");
     const keywordGrants = (state.keywordGrants ?? []).filter((grant) => grant.duration !== "turn");
+    const effectCopies = (state.effectCopies ?? []).filter((copy) => copy.duration !== "turn");
     if (excess > 0) {
       const nextState: GameStateV2 = {
         ...state,
         revision: state.revision + 1,
         modifiers,
         keywordGrants,
+        effectCopies,
         flow: { kind: "END_DISCARD", actor },
         decision: {
           id: `discard-to-limit:${actor}:${state.revision + 1}`,
@@ -1419,7 +1407,7 @@ export function advanceAutomaticFlowV2(state: GameStateV2): CommandResultV2 {
       events.push({ type: "DISCARD_TO_LIMIT_REQUESTED", actor, count: excess });
       return successV2(nextState, events);
     }
-    const nextState: GameStateV2 = { ...state, revision: state.revision + 1, modifiers, keywordGrants, flow: { kind: "TURN_SWITCH", actor } };
+    const nextState: GameStateV2 = { ...state, revision: state.revision + 1, modifiers, keywordGrants, effectCopies, flow: { kind: "TURN_SWITCH", actor } };
     return successV2(nextState, events);
   }
 

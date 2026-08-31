@@ -11,6 +11,7 @@ export interface CardInstanceV2 {
   instanceId: CardInstanceIdV2;
   definitionId: string;
   cardNo: string;
+  name: string;
   owner: PlayerIndex;
   deckKind: DeckKindV2;
   level: number;
@@ -19,6 +20,7 @@ export interface CardInstanceV2 {
   attribute: number;
   features: string[];
   hasEffectText: boolean;
+  effectText: string;
   printedKeywords: OfficialKeywordV2[];
 }
 
@@ -62,29 +64,53 @@ export interface KeywordGrantStateV2 {
   duration: "turn" | "permanent" | "while_source_present";
 }
 
+export interface EffectCopyGrantStateV2 {
+  id: string;
+  sourceCardId: CardInstanceIdV2;
+  targetCardId: CardInstanceIdV2;
+  copiedFromCardId: CardInstanceIdV2;
+  copiedCardNo: string;
+  duration: "turn" | "permanent";
+}
+
 export type AtomicOperationV2 = (
-  | { kind: "DRAW"; actor: PlayerIndex; count: number; sourceCardId?: CardInstanceIdV2 }
+  | { kind: "DRAW"; actor: PlayerIndex; count: number; sourceCardId?: CardInstanceIdV2; contextValue?: number }
   | { kind: "DISCARD"; cardIds: CardInstanceIdV2[] }
   | { kind: "DISCARD_DECK_TOP"; actor: PlayerIndex; count: number }
-  | { kind: "RETREAT"; cardIds: CardInstanceIdV2[] }
+  | { kind: "BANISH_DECK_TOP"; actor: PlayerIndex; count: number; sourceCardId?: CardInstanceIdV2 }
+  | { kind: "REVEAL_RANDOM_HAND"; actor: PlayerIndex; count: number; sourceCardId?: CardInstanceIdV2 }
+  | { kind: "RETREAT_RANDOM_BASE_COVERED"; actor: PlayerIndex; sourceCardId?: CardInstanceIdV2 }
+  | { kind: "COVER_RANDOM_HAND"; actor: PlayerIndex; sourceCardId?: CardInstanceIdV2 }
+  | { kind: "RETREAT"; cardIds: CardInstanceIdV2[]; sourceCardId?: CardInstanceIdV2 }
   | { kind: "BANISH"; cardIds: CardInstanceIdV2[]; sourceCardId?: CardInstanceIdV2 }
-  | { kind: "MOVE_TO_BASE"; cardId: CardInstanceIdV2; face: "up" | "down" }
-  | { kind: "PLACE_FIELD"; cardId: CardInstanceIdV2; destination: FieldZoneV2 }
+  | { kind: "MOVE_TO_BASE"; cardId: CardInstanceIdV2; face: "up" | "down"; controller?: PlayerIndex; sourceCardId?: CardInstanceIdV2 }
+  | { kind: "PLACE_FIELD"; cardId: CardInstanceIdV2; destination: FieldZoneV2; controller?: PlayerIndex; sourceCardId?: CardInstanceIdV2 }
   | { kind: "COVER"; cardId: CardInstanceIdV2 }
   | { kind: "REVEAL"; cardIds: CardInstanceIdV2[]; sourceCardId?: CardInstanceIdV2 }
   | { kind: "FLIP_BASE_FACE_UP"; cardId: CardInstanceIdV2 }
   | { kind: "MOVE_TO_DECK_BOTTOM"; cardId: CardInstanceIdV2 }
-  | { kind: "MOVE_FIELD"; cardId: CardInstanceIdV2; destination: FieldZoneV2 }
+  | { kind: "MOVE_TO_DECK_TOP"; cardId: CardInstanceIdV2; sourceCardId?: CardInstanceIdV2 }
+  | { kind: "MOVE_FIELD"; cardId: CardInstanceIdV2; destination: FieldZoneV2; sourceCardId?: CardInstanceIdV2 }
   | { kind: "MOVE_BATTLE_BASE"; cardId: CardInstanceIdV2; destination: BattleBaseLocationV2 }
   | { kind: "RETURN_TO_HAND"; cardIds: CardInstanceIdV2[] }
-  | { kind: "SWAP_POSITIONS"; cardIds: [CardInstanceIdV2, CardInstanceIdV2] }
+  | { kind: "MOVE_TO_HAND"; cardIds: CardInstanceIdV2[]; sourceCardId?: CardInstanceIdV2 }
+  | { kind: "SWAP_POSITIONS"; cardIds: [CardInstanceIdV2, CardInstanceIdV2]; sourceCardId?: CardInstanceIdV2 }
   | { kind: "ADD_MODIFIER"; modifier: ModifierStateV2 }
   | { kind: "REMOVE_MODIFIER"; modifierId: string }
   | { kind: "GRANT_KEYWORD"; grant: KeywordGrantStateV2 }
   | { kind: "REMOVE_KEYWORD"; grantId: string }
-  | { kind: "ATTACH"; cardId: CardInstanceIdV2; hostCardId: CardInstanceIdV2 }
-  | { kind: "DETACH"; cardId: CardInstanceIdV2; destination: "hand" | "retreat" | "base" }
+  | { kind: "ATTACH"; cardId: CardInstanceIdV2; hostCardId: CardInstanceIdV2; sourceCardId?: CardInstanceIdV2 }
+  | { kind: "DETACH"; cardId: CardInstanceIdV2; destination: "hand" | "retreat" | "base" | FieldZoneV2 }
   | { kind: "MARK_EFFECT_USED"; key: string }
+  | { kind: "FORBID_SUMMON_PAYMENT"; cardId: CardInstanceIdV2 }
+  | { kind: "FORBID_HIGH_LEVEL_SUMMON_PAYMENT"; actor: PlayerIndex; minimumLevel: number }
+  | { kind: "FORBID_MOVE"; cardId: CardInstanceIdV2; sourceCardId?: CardInstanceIdV2 }
+  | { kind: "REORDER_DECK_CARDS"; actor: PlayerIndex; inspectedCardIds: CardInstanceIdV2[]; topCardIds: CardInstanceIdV2[]; bottomCardIds: CardInstanceIdV2[]; sourceCardId?: CardInstanceIdV2 }
+  | { kind: "GRANT_COPIED_EFFECTS"; grant: EffectCopyGrantStateV2 }
+  | { kind: "GRANT_ADDITIONAL_CHARACTER_ATTACK"; cardId: CardInstanceIdV2 }
+  | { kind: "REDIRECT_ATTACK_TARGET"; target: AttackTargetV2; sourceCardId: CardInstanceIdV2 }
+  | { kind: "SKIP_BATTLE_PHASE"; actor: PlayerIndex; sourceCardId: CardInstanceIdV2 }
+  | { kind: "FORBID_ATTACK"; cardId: CardInstanceIdV2; sourceCardId?: CardInstanceIdV2 }
 ) & {
   /** “如此做后”：只有前一个原子完整成功时才继续处理本原子。 */
   requiresPreviousSuccess?: boolean;
@@ -99,6 +125,7 @@ export interface QueuedEffectV2 {
   effectId: string;
   trigger: string;
   optional: boolean;
+  targetingActor?: PlayerIndex;
   operations: AtomicOperationV2[];
   triggerEvent?: GameEventV2;
   targeting?: {
@@ -106,7 +133,7 @@ export interface QueuedEffectV2 {
     min: number;
     max: number;
     prompt: string;
-    choiceKind?: "card" | "field_location" | "mixed";
+    choiceKind?: "card" | "field_location" | "mixed" | "deck_reorder";
   };
 }
 
@@ -212,7 +239,7 @@ export interface EffectTargetsDecisionV2 {
   min: number;
   max: number;
   prompt: string;
-  choiceKind?: "card" | "field_location" | "mixed";
+  choiceKind?: "card" | "field_location" | "mixed" | "deck_reorder";
   continuation: {
     kind: "RESUME_EFFECT_TARGETS";
     sourceCardId: CardInstanceIdV2;
@@ -345,6 +372,7 @@ export interface GameStateV2 {
   effects: EffectRuntimeStateV2;
   modifiers: ModifierStateV2[];
   keywordGrants: KeywordGrantStateV2[];
+  effectCopies: EffectCopyGrantStateV2[];
   attachments: Record<CardInstanceIdV2, CardInstanceIdV2[]>;
   players: [PlayerStateV2, PlayerStateV2];
   cards: Record<CardInstanceIdV2, CardInstanceV2>;
@@ -353,6 +381,7 @@ export interface GameStateV2 {
     summonsThisTurn: [number, number];
     baseDeployedThisTurn: boolean;
     movedCardIds: CardInstanceIdV2[];
+    movementBlockedCardIds: CardInstanceIdV2[];
     /**
      * 本回合作为正面角色放置进场、仍保有该角色身份的卡牌。
      * 结附不会清除此状态；盖放会清除；翻开盖卡和解除结附不会新建此状态。
@@ -360,7 +389,14 @@ export interface GameStateV2 {
     enteredThisTurn: CardInstanceIdV2[];
     interceptUsedCardIds: CardInstanceIdV2[];
     attackedCardIdsByPlayer: [CardInstanceIdV2[], CardInstanceIdV2[]];
+    /** 本回合已被声明为角色攻击目标的实例；重复项表示被攻击多次。 */
+    attackedTargetCardIdsThisTurn: CardInstanceIdV2[];
+    characterOnlyAdditionalAttackCardIds: CardInstanceIdV2[];
+    summonPaymentBlockedCardIds: CardInstanceIdV2[];
+    minimumSummonPaymentLevelBlockedThisTurn: [number | null, number | null];
     effectUseKeysThisTurn: string[];
+    battlePhaseSkippedThisTurn: boolean;
+    attackBlockedCardIds: CardInstanceIdV2[];
   };
   winner: PlayerIndex | null;
 }
@@ -404,19 +440,27 @@ export interface CommandEnvelopeV2 {
 
 export type GameEventV2 =
   | { type: "MULLIGAN_SUBMITTED"; actor: PlayerIndex; replacedCount: number }
-  | { type: "TURN_CARDS_DRAWN"; actor: PlayerIndex; count: number; sourceCardId?: CardInstanceIdV2 }
+  | { type: "TURN_CARDS_DRAWN"; actor: PlayerIndex; count: number; sourceCardId?: CardInstanceIdV2; contextValue?: number }
   | { type: "CARDS_DISCARDED"; cardIds: CardInstanceIdV2[] }
-  | { type: "CARDS_RETREATED"; cardIds: CardInstanceIdV2[]; reason: "effect" | "state" | "battle" | "summon_payment"; fromFieldCardIds?: CardInstanceIdV2[] }
-  | { type: "CARDS_BANISHED"; cardIds: CardInstanceIdV2[]; sourceCardId?: CardInstanceIdV2 }
+  | { type: "CARDS_RETREATED"; cardIds: CardInstanceIdV2[]; reason: "effect" | "state" | "battle" | "summon_payment"; fromFieldCardIds?: CardInstanceIdV2[]; followedAttachmentCardIds?: CardInstanceIdV2[]; sourceCardId?: CardInstanceIdV2 }
+  | { type: "CARDS_BANISHED"; cardIds: CardInstanceIdV2[]; sourceCardId?: CardInstanceIdV2; fromRetreatCardIds?: CardInstanceIdV2[] }
   | { type: "CARDS_REVEALED"; cards: Array<{ instanceId: CardInstanceIdV2; definitionId: string }>; sourceCardId?: CardInstanceIdV2 }
   | { type: "CARDS_COVERED"; cardIds: CardInstanceIdV2[] }
   | { type: "BASE_CARD_FLIPPED"; actor: PlayerIndex; cardId: CardInstanceIdV2 }
-  | { type: "CARDS_PLACED_IN_BASE"; actor: PlayerIndex; cardIds: CardInstanceIdV2[]; face: "up" | "down" }
-  | { type: "CARD_PLACED_FIELD_BY_EFFECT"; actor: PlayerIndex; cardId: CardInstanceIdV2; destination: FieldZoneV2 }
+  | { type: "CARDS_PLACED_IN_BASE"; actor: PlayerIndex; cardIds: CardInstanceIdV2[]; face: "up" | "down"; sourceCardId?: CardInstanceIdV2 }
+  | { type: "CARD_PLACED_FIELD_BY_EFFECT"; actor: PlayerIndex; cardId: CardInstanceIdV2; destination: FieldZoneV2; fromZone: "hand" | "field" | "base" | "retreat" | "void" | "deck" | "attachment" | "unknown"; sourceCardId?: CardInstanceIdV2 }
   | { type: "CARD_MOVED_TO_DECK_BOTTOM"; actor: PlayerIndex; cardId: CardInstanceIdV2 }
+  | { type: "CARD_MOVED_TO_DECK_TOP"; actor: PlayerIndex; cardId: CardInstanceIdV2; sourceCardId?: CardInstanceIdV2 }
   | { type: "CARDS_RETURNED_TO_HAND"; cardIds: CardInstanceIdV2[] }
   | { type: "CARD_VALUE_CHANGED"; sourceCardId: CardInstanceIdV2; targetCardId: CardInstanceIdV2; valueType: "power" | "range" | "level"; delta: number }
   | { type: "EFFECT_USE_MARKED"; key: string }
+  | { type: "SUMMON_PAYMENT_FORBIDDEN"; cardId: CardInstanceIdV2 }
+  | { type: "HIGH_LEVEL_SUMMON_PAYMENT_FORBIDDEN"; actor: PlayerIndex; minimumLevel: number }
+  | { type: "CARD_EFFECTS_COPIED"; sourceCardId: CardInstanceIdV2; targetCardId: CardInstanceIdV2; copiedFromCardId: CardInstanceIdV2; copiedCardNo: string; grantId: string }
+  | { type: "ADDITIONAL_CHARACTER_ATTACK_GRANTED"; cardId: CardInstanceIdV2 }
+  | { type: "ATTACK_TARGET_REDIRECTED"; sourceCardId: CardInstanceIdV2; attackerId: CardInstanceIdV2; previousTarget: AttackTargetV2; target: AttackTargetV2 }
+  | { type: "BATTLE_PHASE_SKIP_MARKED"; actor: PlayerIndex; sourceCardId: CardInstanceIdV2 }
+  | { type: "CARD_ATTACK_FORBIDDEN"; cardId: CardInstanceIdV2; sourceCardId?: CardInstanceIdV2 }
   | { type: "BASE_DEPLOYED"; actor: PlayerIndex; cardId: CardInstanceIdV2; drawnCount: number }
   | { type: "SUMMON_PAYMENT_REQUESTED"; actor: PlayerIndex; cardId: CardInstanceIdV2; requiredLevel: number; summonKind: "action" | "battle_response" | "turn_response" }
   | { type: "SUMMON_DESTINATION_REQUESTED"; actor: PlayerIndex; cardId: CardInstanceIdV2; choices: BattleBaseLocationV2[]; summonKind: "action" | "battle_response" | "turn_response" }
@@ -434,7 +478,7 @@ export type GameEventV2 =
   | { type: "PRIORITY_PASSED"; actor: PlayerIndex; scope: "battle" | "turn" }
   | { type: "CHARACTERS_RETREATED_BY_BATTLE"; cardIds: CardInstanceIdV2[] }
   | { type: "CHARACTER_BATTLE_RESOLVED"; attackerId: CardInstanceIdV2; targetId: CardInstanceIdV2; winnerCardId: CardInstanceIdV2 | null; defeatedCardIds: CardInstanceIdV2[]; tied: boolean }
-  | { type: "BREACH_HIT"; attacker: PlayerIndex; defender: PlayerIndex; rushCardId: CardInstanceIdV2 }
+  | { type: "BREACH_HIT"; attacker: PlayerIndex; attackerCardId: CardInstanceIdV2; defender: PlayerIndex; rushCardId: CardInstanceIdV2 }
   | { type: "BATTLE_PHASE_ENDED"; actor: PlayerIndex }
   | { type: "TURN_RESPONSE_STARTED"; actor: PlayerIndex; priority: PlayerIndex }
   | { type: "END_TRIGGERS_PROCESSED"; actor: PlayerIndex }
@@ -452,9 +496,11 @@ export type GameEventV2 =
   | { type: "OPTIONAL_EFFECT_REQUESTED"; actor: PlayerIndex; effectInstanceId: string }
   | { type: "OPTIONAL_EFFECT_CHOSEN"; actor: PlayerIndex; effectInstanceId: string; resolved: boolean }
   | { type: "STATE_BASED_RETREAT"; cardIds: CardInstanceIdV2[] }
-  | { type: "CARD_ATTACHED"; cardId: CardInstanceIdV2; hostCardId: CardInstanceIdV2 }
+  | { type: "CARD_ATTACHED"; cardId: CardInstanceIdV2; hostCardId: CardInstanceIdV2; sourceCardId?: CardInstanceIdV2 }
   | { type: "CARD_MOVED_BY_EFFECT"; actor: PlayerIndex; cardId: CardInstanceIdV2; from: FieldZoneV2; destination: FieldZoneV2 }
-  | { type: "CARD_DETACHED"; cardId: CardInstanceIdV2; destination: "hand" | "retreat" | "base" }
+  | { type: "CARD_DETACHED"; cardId: CardInstanceIdV2; destination: "hand" | "retreat" | "base" | FieldZoneV2 }
+  | { type: "CARD_MOVE_FORBIDDEN"; cardId: CardInstanceIdV2; sourceCardId?: CardInstanceIdV2 }
+  | { type: "DECK_CARDS_REORDERED"; actor: PlayerIndex; topCardIds: CardInstanceIdV2[]; bottomCardIds: CardInstanceIdV2[]; sourceCardId?: CardInstanceIdV2 }
   | { type: "KEYWORD_GRANTED"; sourceCardId: CardInstanceIdV2; targetCardId: CardInstanceIdV2; keyword: OfficialKeywordV2; grantId: string }
   | { type: "KEYWORD_REMOVED"; grantId: string; keyword: OfficialKeywordV2 }
   | { type: "KEYWORD_ACTIVATED"; actor: PlayerIndex; sourceCardId: CardInstanceIdV2; keyword: OfficialKeywordV2 }
@@ -475,6 +521,7 @@ export type CommandErrorCodeV2 =
   | "COST_MISMATCH"
   | "CARD_ENTERED_THIS_TURN"
   | "CARD_ALREADY_MOVED"
+  | "CARD_MOVE_FORBIDDEN"
   | "STALE_DECISION"
   | "INVALID_LAYOUT"
   | "ATTACK_OUT_OF_RANGE"

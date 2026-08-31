@@ -180,6 +180,40 @@ describe("V2 M3 战斗主流程", () => {
     expect(chosen.state.flow).toMatchObject({ kind: "BATTLE_ATTACK", zone: "flankRight", attackerId: right });
   });
 
+  it("一侧侧翼攻击期间应对号召到已跳过的另一侧翼时，新角色仍获得攻击机会", () => {
+    const state = structuredClone(actionState());
+    const actor = state.activePlayer;
+    const defender: PlayerIndex = actor === 0 ? 1 : 0;
+    const attackerId = placeFromHand(state, actor, "flankRight");
+    const targetId = placeFromHand(state, defender, "vanguard");
+    const responseSummonId = state.players[actor].hand[0];
+    state.cards[attackerId].power = 2000;
+    state.cards[attackerId].range = 3;
+    state.cards[responseSummonId].printedKeywords = ["counter"];
+
+    const entered = enterBattleAdjust(state);
+    if (!entered.ok) throw new Error(entered.message);
+    const layout = command(entered.state, actor, { type: "SUBMIT_BATTLE_LAYOUT", layout: currentLayout(entered.state, actor) });
+    if (!layout.ok) throw new Error(layout.message);
+    expect(layout.state.flow).toMatchObject({ kind: "BATTLE_ATTACK", zone: "flankRight", attackerId });
+
+    const declared = command(layout.state, actor, { type: "DECLARE_ATTACK", attackerId, target: { kind: "character", cardId: targetId } });
+    if (!declared.ok) throw new Error(declared.message);
+    const defenderPassed = command(declared.state, defender, { type: "PASS_PRIORITY" });
+    if (!defenderPassed.ok) throw new Error(defenderPassed.message);
+    const summoned = command(defenderPassed.state, actor, { type: "SUMMON_CHARACTER", cardId: responseSummonId, destination: "flankLeft" });
+    expect(summoned.ok).toBe(true);
+    if (!summoned.ok) return;
+    expect(summoned.state.battle?.order.slice(summoned.state.battle.cursor + 1)).toContain("flankLeft");
+
+    const passBack = command(summoned.state, defender, { type: "PASS_PRIORITY" });
+    if (!passBack.ok) throw new Error(passBack.message);
+    const resolved = command(passBack.state, actor, { type: "PASS_PRIORITY" });
+    expect(resolved.ok).toBe(true);
+    if (!resolved.ok) return;
+    expect(resolved.state.flow).toEqual({ kind: "BATTLE_ATTACK", actor, zone: "flankLeft", attackerId: responseSummonId });
+  });
+
   it("声明角色攻击后由非回合玩家先应对，双方连续放弃后按战力判定", () => {
     const state = structuredClone(actionState());
     const actor = state.activePlayer;

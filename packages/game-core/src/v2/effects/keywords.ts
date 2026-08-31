@@ -1,5 +1,7 @@
 import type { CardInstanceIdV2, GameStateV2, OfficialKeywordV2 } from "../model";
 import { starterContinuousKeywordsV2 } from "../cards/starterContinuous";
+import { promoContinuousKeywordsV2 } from "../cards/promoContinuous";
+import { isCardEffectSuppressedV2 } from "./suppression";
 
 export type KeywordRuleAtomV2 =
   | { kind: "PERMIT_RESPONSE_SUMMON" }
@@ -58,11 +60,16 @@ function continuousSourcePresentV2(state: GameStateV2, sourceCardId: CardInstanc
 
 export function effectiveKeywordsV2(state: GameStateV2, cardId: CardInstanceIdV2): OfficialKeywordV2[] {
   const printed = state.cards[cardId]?.printedKeywords ?? [];
+  // 【唯一】按 1.02 规则不能失去；其余印刷能力随“失去效果”停止。
+  const activePrinted = isCardEffectSuppressedV2(state, cardId) ? printed.filter((keyword) => keyword === "unique") : printed;
   const granted = (state.keywordGrants ?? [])
     .filter((grant) => grant.targetCardId === cardId)
     .filter((grant) => grant.duration !== "while_source_present" || continuousSourcePresentV2(state, grant.sourceCardId))
     .map((grant) => grant.keyword);
-  const effective = new Set<OfficialKeywordV2>([...printed, ...granted, ...starterContinuousKeywordsV2(state, cardId)]);
+  const copiedPrinted = isCardEffectSuppressedV2(state, cardId) ? [] : (state.effectCopies ?? [])
+    .filter((copy) => copy.targetCardId === cardId)
+    .flatMap((copy) => state.cards[copy.copiedFromCardId]?.printedKeywords ?? []);
+  const effective = new Set<OfficialKeywordV2>([...activePrinted, ...copiedPrinted, ...granted, ...starterContinuousKeywordsV2(state, cardId), ...promoContinuousKeywordsV2(state, cardId)]);
   return keywordOrder.filter((keyword) => effective.has(keyword));
 }
 
@@ -76,7 +83,7 @@ export function keywordRuleAtomsForCardV2(state: GameStateV2, cardId: CardInstan
 }
 
 export function attackOpportunityLimitV2(state: GameStateV2, cardId: CardInstanceIdV2): 1 | 2 {
-  return hasKeywordV2(state, cardId, "combo") ? 2 : 1;
+  return hasKeywordV2(state, cardId, "combo") || (state.usage.characterOnlyAdditionalAttackCardIds ?? []).includes(cardId) ? 2 : 1;
 }
 
 export function consumedAttackOpportunitiesV2(state: GameStateV2, cardId: CardInstanceIdV2): number {

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { BattleBaseLocationV2, BattleViewV2, CardDatabase, FieldZoneV2, PlayerIndex, PlayerViewV2, VisibleCardV2 } from "@hero-rush/game-core";
+import { getEffectV2, type BattleBaseLocationV2, type BattleViewV2, type CardDatabase, type FieldZoneV2, type GameEventV2, type OfficialKeywordV2, type PlayerIndex, type PlayerViewV2, type VisibleCardV2 } from "@hero-rush/game-core";
 import type { GameCommandV2Message } from "@hero-rush/protocol";
 import CardDetailSidebar from "../CardDetailSidebar";
 import ActionPanelV2 from "./ActionPanelV2";
@@ -23,56 +23,109 @@ interface BattleScreenV2Props {
   onSubmitGameCommand: (command: GameCommandV2Message) => void;
 }
 
-const eventLabels: Record<string, string> = {
-  MULLIGAN_SUBMITTED: "完成起始调度",
-  TURN_CARDS_DRAWN: "完成回合抽牌",
-  CARDS_DISCARDED: "舍弃卡牌",
-  CARDS_RETREATED: "卡牌撤退",
-  CARDS_BANISHED: "裁剪卡牌",
-  CARDS_REVEALED: "展示卡牌",
-  CARDS_COVERED: "盖伏卡牌",
-  BASE_CARD_FLIPPED: "翻开基地盖卡",
-  CARDS_PLACED_IN_BASE: "效果放置基地",
-  CARD_PLACED_FIELD_BY_EFFECT: "效果放置战区",
-  CARD_MOVED_TO_DECK_BOTTOM: "卡牌移至主卡组底",
-  CARD_VALUE_CHANGED: "角色数值变化",
-  EFFECT_USE_MARKED: "记录回合一次",
-  BASE_DEPLOYED: "背面部署基地卡",
-  CHARACTER_SUMMONED: "号召角色",
-  SUMMON_PAYMENT_CANCELLED: "取消高等级号召",
-  EFFECT_TARGETS_CANCELLED: "取消效果发动",
-  SUMMON_DESTINATION_REQUESTED: "高等级号召支付完成，选择位置",
-  BATTLE_BASE_MOVED: "移动角色",
-  ACTION_PHASE_ENDED: "结束行动阶段",
-  BATTLE_PHASE_STARTED: "进入战斗阶段",
-  BATTLE_LAYOUT_SUBMITTED: "完成战区调整",
-  FLANK_ATTACKER_CHOSEN: "选择先攻击的侧翼",
-  ATTACK_DECLARED: "宣告攻击",
-  ATTACK_OPPORTUNITY_PASSED: "放弃攻击机会",
-  PRIORITY_PASSED: "放弃应对",
-  BREACH_HIT: "破绽命中",
-  CHARACTERS_RETREATED_BY_BATTLE: "角色因战斗撤退",
-  CHARACTER_BATTLE_RESOLVED: "角色战斗判定完成",
-  TURN_ENDED: "结束回合",
-  EFFECT_QUEUED: "卡牌效果进入处理",
-  EFFECT_RESOLVED: "卡牌效果处理完成",
-  STATE_BASED_RETREAT: "角色因状态撤退",
-  GAME_WON: "对局结束",
-};
+const zoneNames: Record<BattleBaseLocationV2, string> = { base: "基地区", vanguard: "先锋区", flankLeft: "侧翼区", flankRight: "侧翼区", rear: "后卫区" };
+const keywordNames: Record<OfficialKeywordV2, string> = { counter: "应对", intercept: "拦截", combo: "连击", assault: "强袭", airRaid: "空袭", unique: "唯一" };
 
-function battleEventText(event: unknown, view: BattleViewV2, db: CardDatabase): string {
-  if (!event || typeof event !== "object") return "收到对局更新";
-  const value = event as Record<string, unknown>;
-  const type = typeof value.type === "string" ? value.type : "UNKNOWN";
-  const actor = value.actor === 0 || value.actor === 1 ? view.players[value.actor].name : "系统";
-  const count = typeof value.count === "number" ? ` · ${value.count} 张` : "";
-  const revealed = type === "CARDS_REVEALED" && Array.isArray(value.cards)
-    ? ` · ${value.cards.map((item) => {
-        const definitionId = item && typeof item === "object" ? (item as Record<string, unknown>).definitionId : null;
-        return typeof definitionId === "string" ? db.cards.find((card) => card.id === definitionId)?.name ?? definitionId : "未知卡牌";
-      }).join("、")}`
-    : "";
-  return `${actor} · ${eventLabels[type] ?? type}${count}${revealed}`;
+function visibleCards(view: BattleViewV2): VisibleCardV2[] {
+  return view.players.flatMap((player) => [
+    ...player.hand,
+    ...player.baseCards,
+    ...player.baseCovered,
+    ...Object.values(player.field).flat(),
+    ...player.timeline,
+    ...player.retreat,
+    ...player.void,
+    ...player.attached,
+  ]);
+}
+
+function cardDefinitionForInstance(instanceId: string, view: BattleViewV2, db: CardDatabase) {
+  const visible = visibleCards(view).find((card) => card.instanceId === instanceId);
+  return visible ? db.cards.find((card) => card.id === visible.definitionId) : undefined;
+}
+
+function cardName(instanceId: string, view: BattleViewV2, db: CardDatabase): string {
+  return cardDefinitionForInstance(instanceId, view, db)?.name ?? "一张卡牌";
+}
+
+function cardList(cardIds: readonly string[], view: BattleViewV2, db: CardDatabase): string {
+  if (cardIds.length === 0) return "卡牌";
+  const names = cardIds.map((cardId) => cardName(cardId, view, db));
+  return names.every((name) => name === "一张卡牌") ? `${cardIds.length} 张卡牌` : names.join("、");
+}
+
+function effectName(sourceCardId: string, effectId: string, view: BattleViewV2, db: CardDatabase): string {
+  const source = cardDefinitionForInstance(sourceCardId, view, db);
+  const label = source ? getEffectV2(source.card_no, effectId)?.label : undefined;
+  return label ? `「${label}」` : `${source?.name ?? "该卡牌"}的效果`;
+}
+
+function battleEventText(input: unknown, view: BattleViewV2, db: CardDatabase): string {
+  if (!input || typeof input !== "object" || typeof (input as { type?: unknown }).type !== "string") return "对局状态已更新";
+  const event = input as GameEventV2;
+  const actorName = (actor: PlayerIndex) => view.players[actor].name;
+  switch (event.type) {
+    case "MULLIGAN_SUBMITTED": return `${actorName(event.actor)}完成起始手牌调度，换回 ${event.replacedCount} 张卡牌`;
+    case "TURN_CARDS_DRAWN": return `${actorName(event.actor)}抽取 ${event.count} 张卡牌`;
+    case "CARDS_DISCARDED": return `${cardList(event.cardIds, view, db)}被舍弃`;
+    case "CARDS_RETREATED": return `${cardList(event.cardIds, view, db)}进入撤退区`;
+    case "CARDS_BANISHED": return `${cardList(event.cardIds, view, db)}被裁剪至虚空区`;
+    case "CARDS_REVEALED": return `展示了${event.cards.map((item) => db.cards.find((card) => card.id === item.definitionId)?.name ?? "一张卡牌").join("、")}`;
+    case "CARDS_COVERED": return `${cardList(event.cardIds, view, db)}被盖伏`;
+    case "BASE_CARD_FLIPPED": return `${actorName(event.actor)}翻开基地中的${cardName(event.cardId, view, db)}`;
+    case "CARDS_PLACED_IN_BASE": return `${actorName(event.actor)}将${cardList(event.cardIds, view, db)}${event.face === "down" ? "背面" : "正面"}放入基地区`;
+    case "CARD_PLACED_FIELD_BY_EFFECT": return `${actorName(event.actor)}通过效果将${cardName(event.cardId, view, db)}放入${zoneNames[event.destination]}`;
+    case "CARD_MOVED_TO_DECK_BOTTOM": return `${actorName(event.actor)}将${cardName(event.cardId, view, db)}移至主卡组底`;
+    case "CARDS_RETURNED_TO_HAND": return `${cardList(event.cardIds, view, db)}返回手牌`;
+    case "CARD_VALUE_CHANGED": {
+      const valueName = event.valueType === "power" ? "战力" : event.valueType === "range" ? "距离" : "等级";
+      return `${cardName(event.targetCardId, view, db)}的${valueName}${event.delta >= 0 ? "提高" : "降低"} ${Math.abs(event.delta)}`;
+    }
+    case "EFFECT_USE_MARKED": return "已记录该效果本回合的使用次数";
+    case "BASE_DEPLOYED": return `${actorName(event.actor)}背面部署 1 张基地卡，并抽取 ${event.drawnCount} 张卡牌`;
+    case "SUMMON_PAYMENT_REQUESTED": return `${actorName(event.actor)}准备号召${cardName(event.cardId, view, db)}，需要选择合计 Lv${event.requiredLevel} 的撤退素材`;
+    case "SUMMON_DESTINATION_REQUESTED": return `${actorName(event.actor)}已完成高等级号召支付，正在选择${cardName(event.cardId, view, db)}的入场位置`;
+    case "SUMMON_PAYMENT_CANCELLED": return `${actorName(event.actor)}取消号召${cardName(event.cardId, view, db)}`;
+    case "CHARACTER_SUMMONED": return `${actorName(event.actor)}将${cardName(event.cardId, view, db)}号召至${zoneNames[event.destination]}`;
+    case "CHARACTER_PLACED": return `${cardName(event.cardId, view, db)}进入${zoneNames[event.destination]}`;
+    case "BATTLE_BASE_MOVED": return `${actorName(event.actor)}将${cardName(event.cardId, view, db)}从${zoneNames[event.from]}移动至${zoneNames[event.destination]}`;
+    case "ACTION_PHASE_ENDED": return `${actorName(event.actor)}结束行动阶段`;
+    case "BATTLE_PHASE_STARTED": return `${actorName(event.actor)}进入战斗阶段`;
+    case "BATTLE_LAYOUT_SUBMITTED": return `${actorName(event.actor)}完成战区调整`;
+    case "FLANK_ATTACKER_CHOSEN": return `${actorName(event.actor)}选择当前侧翼角色先攻击`;
+    case "ATTACK_OPPORTUNITY_PASSED": return `${actorName(event.actor)}让${cardName(event.attackerId, view, db)}放弃本次攻击机会`;
+    case "ATTACK_DECLARED": return `${actorName(event.actor)}令${cardName(event.attackerId, view, db)}攻击${event.target.kind === "character" ? cardName(event.target.cardId, view, db) : `${zoneNames[event.target.zone]}的破绽`}`;
+    case "ATTACK_TARGET_INVALIDATED": return `${cardName(event.attackerId, view, db)}原本的攻击目标已经无效${event.canReselect ? "，请重新选择目标" : "，本次攻击结束"}`;
+    case "PRIORITY_PASSED": return `${actorName(event.actor)}放弃${event.scope === "battle" ? "本次战斗" : "回合结束前"}的应对`;
+    case "CHARACTERS_RETREATED_BY_BATTLE": return `${cardList(event.cardIds, view, db)}因战斗进入撤退区`;
+    case "CHARACTER_BATTLE_RESOLVED": return event.tied ? `${cardName(event.attackerId, view, db)}与${cardName(event.targetId, view, db)}战力相同，战斗结算完毕` : `${cardName(event.winnerCardId ?? event.attackerId, view, db)}赢得本次角色战斗`;
+    case "BREACH_HIT": return `${actorName(event.attacker)}进攻破绽成功，获得 1 张冲击卡`;
+    case "BATTLE_PHASE_ENDED": return `${actorName(event.actor)}结束战斗阶段`;
+    case "TURN_RESPONSE_STARTED": return `进入${actorName(event.actor)}的回合结束应对，${actorName(event.priority)}先获得应对机会`;
+    case "END_TRIGGERS_PROCESSED": return `${actorName(event.actor)}正在处理己方回合结束时效果`;
+    case "TURN_EFFECTS_EXPIRED": return `${actorName(event.actor)}本回合的临时效果结束`;
+    case "DISCARD_TO_LIMIT_REQUESTED": return `${actorName(event.actor)}手牌超过上限，需要舍弃 ${event.count} 张卡牌`;
+    case "CARDS_DISCARDED_TO_LIMIT": return `${actorName(event.actor)}将手牌调整至上限，舍弃了${cardList(event.cardIds, view, db)}`;
+    case "TURN_ENDED": return `${actorName(event.actor)}结束回合，轮到${actorName(event.nextActor)}`;
+    case "EFFECT_QUEUED": return `${actorName(event.actor)}发动${effectName(event.sourceCardId, event.effectId, view, db)}`;
+    case "EFFECT_TARGETS_REQUESTED": return `${actorName(event.actor)}正在为${effectName(event.sourceCardId, event.effectId, view, db)}选择目标`;
+    case "EFFECT_TARGETS_SELECTED": return `${actorName(event.actor)}为${effectName(event.sourceCardId, event.effectId, view, db)}选定目标`;
+    case "EFFECT_TARGETS_CANCELLED": return `${actorName(event.actor)}取消发动${effectName(event.sourceCardId, event.effectId, view, db)}`;
+    case "EFFECT_RESOLVED": return "卡牌效果处理完毕";
+    case "TRIGGER_ORDER_REQUESTED": return `${actorName(event.actor)}有多个效果同时触发，正在选择处理顺序`;
+    case "TRIGGERS_ORDERED": return `${actorName(event.actor)}确定了同时触发效果的处理顺序`;
+    case "OPTIONAL_EFFECT_REQUESTED": return `${actorName(event.actor)}正在决定是否发动触发效果`;
+    case "OPTIONAL_EFFECT_CHOSEN": return `${actorName(event.actor)}${event.resolved ? "选择发动" : "选择不发动"}触发效果`;
+    case "STATE_BASED_RETREAT": return `${cardList(event.cardIds, view, db)}因战力归零进入撤退区`;
+    case "CARD_ATTACHED": return `${cardName(event.cardId, view, db)}结附到${cardName(event.hostCardId, view, db)}`;
+    case "CARD_MOVED_BY_EFFECT": return `${actorName(event.actor)}通过效果将${cardName(event.cardId, view, db)}从${zoneNames[event.from]}移动至${zoneNames[event.destination]}`;
+    case "CARD_DETACHED": return `${cardName(event.cardId, view, db)}解除结附并进入${event.destination === "hand" ? "手牌" : event.destination === "retreat" ? "撤退区" : "基地区"}`;
+    case "KEYWORD_GRANTED": return `${cardName(event.targetCardId, view, db)}获得【${keywordNames[event.keyword]}】`;
+    case "KEYWORD_REMOVED": return `角色失去【${keywordNames[event.keyword]}】`;
+    case "KEYWORD_ACTIVATED": return `${actorName(event.actor)}令${cardName(event.sourceCardId, view, db)}发动【${keywordNames[event.keyword]}】`;
+    case "GAME_WON": return `${actorName(event.winner)}获得胜利`;
+    default: return "对局状态已更新";
+  }
 }
 
 function flowLabel(kind: BattleViewV2["flow"]["kind"]): string {

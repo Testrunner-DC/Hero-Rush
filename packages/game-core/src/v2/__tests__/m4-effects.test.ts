@@ -74,6 +74,7 @@ function expectDecisionReconnectStable(state: GameStateV2, actor: PlayerIndex): 
     ? ["ANSWER_DECISION", "CANCEL_EFFECT_TARGETS"]
     : ["ANSWER_DECISION"]);
   expect(otherView.pendingDecision).toBeNull();
+  expect(otherView.decisionCards).toEqual([]);
   expect(otherView.availableActions).toEqual([]);
   expect(actorView.players[other].hand).toEqual([]);
   expect(otherView.players[actor].hand).toEqual([]);
@@ -85,7 +86,7 @@ describe("V2 M4 效果运行时骨架", () => {
   it("公开稳定的原子目录、参数校验和逐步执行轨迹", () => {
     const state = actionState();
     expect(ATOMIC_OPERATION_CATALOG_V2.map((atom) => atom.kind)).toEqual([
-      "DRAW", "DISCARD", "DISCARD_DECK_TOP", "RETREAT", "BANISH", "MOVE_TO_BASE", "PLACE_FIELD", "COVER", "REVEAL", "FLIP_BASE_FACE_UP", "MOVE_TO_DECK_BOTTOM", "MOVE_FIELD", "MOVE_BATTLE_BASE", "RETURN_TO_HAND", "SWAP_POSITIONS", "ADD_MODIFIER", "REMOVE_MODIFIER", "GRANT_KEYWORD", "REMOVE_KEYWORD", "ATTACH", "DETACH", "MARK_EFFECT_USED",
+      "DRAW", "DISCARD", "DISCARD_DECK_TOP", "BANISH_DECK_TOP", "REVEAL_RANDOM_HAND", "RETREAT_RANDOM_BASE_COVERED", "COVER_RANDOM_HAND", "RETREAT", "BANISH", "MOVE_TO_BASE", "PLACE_FIELD", "COVER", "REVEAL", "FLIP_BASE_FACE_UP", "MOVE_TO_DECK_BOTTOM", "MOVE_TO_DECK_TOP", "MOVE_FIELD", "MOVE_BATTLE_BASE", "RETURN_TO_HAND", "MOVE_TO_HAND", "SWAP_POSITIONS", "ADD_MODIFIER", "REMOVE_MODIFIER", "GRANT_KEYWORD", "REMOVE_KEYWORD", "ATTACH", "DETACH", "MARK_EFFECT_USED", "FORBID_SUMMON_PAYMENT", "FORBID_HIGH_LEVEL_SUMMON_PAYMENT", "FORBID_MOVE", "REORDER_DECK_CARDS", "GRANT_COPIED_EFFECTS", "GRANT_ADDITIONAL_CHARACTER_ATTACK", "REDIRECT_ATTACK_TARGET", "SKIP_BATTLE_PHASE", "FORBID_ATTACK",
     ]);
     expect(validateAtomicOperationsV2(state, [{ kind: "DRAW", actor: state.activePlayer, count: 0 }])).toContain(
       "原子 1（DRAW）：抽牌数量必须是正整数",
@@ -423,6 +424,31 @@ describe("V2 M4 效果运行时骨架", () => {
     const retreated = applyAtomicOperationsV2(attachedResult.state, [{ kind: "RETREAT", cardIds: [host] }]);
     expect(retreated.state.players[actor].retreat).toEqual(expect.arrayContaining([host, attached]));
     expect(retreated.state.attachments).toEqual({});
+  });
+
+  it("隐藏区效果候选只向决策者投影完整卡牌，卡组重排分界不会泄露给对手", () => {
+    const state = structuredClone(actionState());
+    const actor = state.activePlayer; const other: PlayerIndex = actor === 0 ? 1 : 0;
+    const sourceCardId = state.players[actor].hand[0];
+    const top = state.players[actor].deck.slice(0, 3);
+    registerEffectV2({
+      cardNo: state.cards[sourceCardId].cardNo,
+      effectId: "hidden-deck-reorder",
+      activation: "action",
+      sourceZones: ["hand"],
+      targeting: () => ({ choices: [...top, "split:0", "split:1", "split:2", "split:3"], min: 4, max: 4, prompt: "重排卡组顶", choiceKind: "deck_reorder" }),
+      buildOperations: () => [],
+    });
+    const requested = submit(state, actor, { type: "ACTIVATE_EFFECT", sourceCardId, effectId: "hidden-deck-reorder" });
+    expect(requested.ok).toBe(true);
+    if (!requested.ok) return;
+    const actorView = projectBattleViewV2(requested.state, actor, hashStateV2(requested.state));
+    const otherView = projectBattleViewV2(requested.state, other, hashStateV2(requested.state));
+    expect(actorView.pendingDecision?.kind).toBe("EFFECT_TARGETS");
+    expect(actorView.decisionCards.map((card) => card.instanceId)).toEqual(top);
+    expect(otherView.pendingDecision).toBeNull();
+    expect(otherView.decisionCards).toEqual([]);
+    expect(validateStateInvariantsV2(requested.state)).toEqual([]);
   });
 
   it("官方裁定：角色当回合进场后结附，解除结附恢复角色时仍不能战基移动", () => {

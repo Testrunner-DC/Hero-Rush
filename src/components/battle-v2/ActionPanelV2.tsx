@@ -13,7 +13,7 @@ interface ActionPanelV2Props {
   onSubmit: (command: GameCommandV2Message) => void;
 }
 
-type EffectChoiceZoneV2 = "手牌" | "基地区" | "战区" | "时间线" | "撤退区" | "虚空区" | "结附区";
+type EffectChoiceZoneV2 = "手牌" | "基地区" | "战区" | "时间线" | "撤退区" | "虚空区" | "结附区" | "卡组顶";
 
 interface EffectChoiceCardV2 {
   card: VisibleCardV2;
@@ -37,6 +37,7 @@ function locateEffectChoiceCards(view: BattleViewV2, choices: readonly string[])
     add(player.void, "虚空区");
     add(player.attached, "结附区");
   }
+  add(view.decisionCards, "卡组顶");
   return choices.flatMap((id) => located.get(id) ?? []);
 }
 
@@ -79,6 +80,52 @@ function DecisionModalV2({ label, tone = "border-white/15", boardInteractive = f
       <section className={`pointer-events-auto max-h-[min(680px,86vh)] w-full ${widthClass} overflow-y-auto rounded-2xl border bg-stone-950/[.97] p-4 text-white shadow-[0_24px_80px_rgba(0,0,0,.46)] scrollbar-thin ${tone}`}><div className="mb-3 flex items-center justify-between gap-3 border-b border-white/10 pb-2"><span className="text-[10px] font-bold tracking-[.12em] text-white/55">{label}</span><button type="button" onClick={() => setMinimized(true)} className="rounded border border-white/15 px-2.5 py-1 text-[10px] text-white/70 hover:bg-white/10">最小化</button></div>{children}</section>
     </div>,
     document.body,
+  );
+}
+
+function DeckReorderPanelV2({ decision, view, cardByDefinitionId, onSubmit }: {
+  decision: Extract<NonNullable<BattleViewV2["pendingDecision"]>, { kind: "EFFECT_TARGETS" }>;
+  view: BattleViewV2;
+  cardByDefinitionId: ReadonlyMap<string, Card>;
+  onSubmit: ActionPanelV2Props["onSubmit"];
+}) {
+  const available = new Map(view.decisionCards.map((card) => [card.instanceId, card]));
+  const initialOrder = decision.choices.filter((id) => available.has(id));
+  const [order, setOrder] = useState<string[]>(initialOrder);
+  const [split, setSplit] = useState(initialOrder.length);
+  useEffect(() => { setOrder(initialOrder); setSplit(initialOrder.length); }, [decision.id]);
+  const move = (index: number, delta: -1 | 1) => {
+    const destination = index + delta;
+    if (destination < 0 || destination >= order.length) return;
+    setOrder((current) => {
+      const next = [...current];
+      [next[index], next[destination]] = [next[destination], next[index]];
+      return next;
+    });
+  };
+  return (
+    <DecisionModalV2 label="卡组顶排序" tone="border-violet-300/35">
+      <strong className="text-sm text-violet-100">决定展示卡放回卡组顶与卡组底的顺序</strong>
+      <p className="mt-1 text-xs text-white/55">先调整卡牌先后，再选择分界。左侧靠前的卡更接近卡组顶；卡组底区域同样按左至右顺序放置。</p>
+      <div className="mt-4 grid grid-cols-3 gap-3">
+        {order.map((cardId, index) => {
+          const card = available.get(cardId)!;
+          const definition = cardByDefinitionId.get(card.definitionId);
+          return (
+            <div key={cardId} className={`rounded-xl border p-2 ${index < split ? "border-violet-300/55 bg-violet-300/10" : "border-amber-300/45 bg-amber-300/10"}`}>
+              <div className="mb-1 flex items-center justify-between text-[9px] font-bold"><span>{index < split ? `卡组顶 ${index + 1}` : `卡组底 ${index - split + 1}`}</span><span className="font-mono text-white/45">#{index + 1}</span></div>
+              <span className="relative mx-auto block aspect-[746/1041] w-[82px] overflow-hidden rounded-[6px] bg-stone-900">
+                {definition ? <CardImage cardId={definition.id} legacyUrl={definition.image_url} intent="board" alt={definition.name} className="h-full w-full object-contain" /> : null}
+              </span>
+              <p className="mt-1 truncate text-center text-[9px] font-bold" title={definition?.name}>{definition?.name ?? card.definitionId}</p>
+              <div className="mt-2 flex justify-center gap-1"><button type="button" disabled={index === 0} onClick={() => move(index, -1)} className="rounded border border-white/15 px-2 py-1 text-[9px] disabled:opacity-25">←</button><button type="button" disabled={index === order.length - 1} onClick={() => move(index, 1)} className="rounded border border-white/15 px-2 py-1 text-[9px] disabled:opacity-25">→</button></div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-4 flex flex-wrap items-center gap-2"><span className="text-[10px] text-white/55">放回卡组顶：</span>{Array.from({ length: order.length + 1 }, (_, count) => <button key={count} type="button" onClick={() => setSplit(count)} className={`rounded-lg px-3 py-1.5 text-[10px] font-bold ${split === count ? "bg-violet-300 text-slate-950" : "border border-white/15 text-white/70"}`}>{count} 张</button>)}</div>
+      <div className="mt-4 flex justify-end gap-2"><button type="button" onClick={() => onSubmit({ type: "CANCEL_EFFECT_TARGETS", decisionId: decision.id })} className="rounded-lg border border-rose-300/45 px-3 py-2 text-xs text-rose-100">取消发动</button><button type="button" onClick={() => onSubmit({ type: "ANSWER_DECISION", decisionId: decision.id, cardIds: [...order, `split:${split}`] })} className="rounded-lg bg-violet-300 px-4 py-2 text-xs font-bold text-slate-950">确认排序</button></div>
+    </DecisionModalV2>
   );
 }
 
@@ -215,6 +262,7 @@ export default function ActionPanelV2({
       ? decision.continuation.sourceCardId
       : decision.continuation.effect.sourceCardId;
     const presentation = effectPresentation(view, cardByDefinitionId, sourceCardId);
+    if (decision.choiceKind === "deck_reorder") return <DeckReorderPanelV2 decision={decision} view={view} cardByDefinitionId={cardByDefinitionId} onSubmit={onSubmit} />;
     if (decision.choiceKind === "field_location") {
       return (
         <div className="border-t border-cyan-200/45 bg-cyan-50/65 p-3" data-ui-contract="hero-rush-v2-direct-location-choice">

@@ -250,7 +250,8 @@ describe("V2 battle workspace contracts", () => {
     expect(board).toContain('aria-label={`查看${label}`}');
     expect(board).toContain('role="dialog" aria-modal="true" aria-label={`${label}卡牌明细`}');
     expect(board).toContain("const lastCard = cards[cards.length - 1]");
-    expect(board).toContain("<CardDetailSidebar card={selectedDefinition ?? null}");
+    expect(board).not.toContain("<CardDetailSidebar card={selectedDefinition ?? null}");
+    expect(board).toContain("common.onCardFocus?.(card)");
     expect(board).toContain("createPortal(");
     expect(board).toContain('data-ui-contract="hero-rush-v2-known-base-resource"');
     expect(board).toContain('data-ui-contract="hero-rush-v2-hidden-base-resource"');
@@ -306,6 +307,10 @@ describe("V2 battle workspace contracts", () => {
     expect(detail).toContain("currentCard.card_type_name");
     expect(detail).toContain("currentCard.package_short");
     expect(detail).toContain("if (compact) return [card]");
+    expect(detail).toContain('compact ? "176px" : "260px"');
+    expect(detail).toContain('compact ? "text-[11px]" : "text-[13px]"');
+    expect(screen).not.toContain("eventLabels[type] ?? type");
+    expect(screen).toContain('default: return "对局状态已更新"');
   });
 
   it("routes effect battle/base movement destinations through the pending decision", () => {
