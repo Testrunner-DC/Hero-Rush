@@ -4,7 +4,17 @@
 
 正式验收地址：<https://hero-v2.grand-umi.com/battle>
 
-## 日常发布
+## 项目内部署命令
+
+项目经理在本项目下达“部署”或“发布正式服”后，执行者完成门禁、提交并推送 `main`，再将同一个提交快进推送到专用发布分支：
+
+```bash
+git push origin HEAD:refs/heads/deploy-production
+```
+
+该分支只承担 GitHub Actions 触发信号，不接受独立开发；工作流和服务器发布器都会再次确认目标提交属于 `origin/main`。这样项目内命令不依赖浏览器登录态，也不会让普通 `main` 推送自动上线。
+
+## GitHub 页面手动发布
 
 1. 确认待发布代码已经合并并推送到 `main`。
 2. 打开 GitHub 仓库的 **Actions** 页面。

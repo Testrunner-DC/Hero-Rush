@@ -1,6 +1,6 @@
 name: 一键发布正式服 V2
 
-run-name: 发布 ${{ inputs.revision }} 到 hero-v2.grand-umi.com
+run-name: 发布 ${{ github.event_name == 'workflow_dispatch' && inputs.revision || github.sha }} 到 hero-v2.grand-umi.com
 
 on:
   workflow_dispatch:
@@ -10,6 +10,9 @@ on:
         required: true
         default: main
         type: string
+  push:
+    branches:
+      - deploy-production
 
 permissions:
   contents: read
@@ -29,7 +32,7 @@ jobs:
       - name: 检出待发布版本
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          ref: ${{ inputs.revision }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.revision || github.sha }}
           fetch-depth: 0
           filter: blob:none
 

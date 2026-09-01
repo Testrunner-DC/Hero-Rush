@@ -14,7 +14,8 @@ const files = Object.fromEntries(await Promise.all([
 ].map(async ([key, path]) => [key, await readFile(resolve(root, path), "utf8")])));
 
 const checks = [
-  ["工作流只允许手动触发", files.workflow.includes("workflow_dispatch:") && !files.workflow.includes("push:\n")],
+  ["工作流支持手动和专用发布分支触发", files.workflow.includes("workflow_dispatch:") && files.workflow.includes("push:\n") && files.workflow.includes("- deploy-production")],
+  ["专用发布分支仍以当前提交作为发布目标", files.workflow.includes("github.event_name == 'workflow_dispatch' && inputs.revision || github.sha")],
   ["工作流禁止并发发布", files.workflow.includes("hero-rush-v2-production") && files.workflow.includes("cancel-in-progress: false")],
   ["工作流使用 production 环境", files.workflow.includes("name: production")],
   ["工作流要求四个部署 Secret", ["PROD_HOST", "PROD_USER", "PROD_SSH_KEY", "PROD_SSH_KNOWN_HOSTS"].every((name) => files.workflow.includes(`secrets.${name}`))],
