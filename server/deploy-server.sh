@@ -11,6 +11,8 @@ REPO_DIR="${REPO_DIR:-/opt/hero-rush}"
 ACME_ROOT="${ACME_ROOT:-/var/www/certbot}"
 DOMAIN="${DOMAIN:-hero.grand-umi.com}"
 PORT="${PORT:-8092}"
+SERVICE_USER="${SERVICE_USER:-root}"
+SERVICE_GROUP="${SERVICE_GROUP:-${SERVICE_USER}}"
 NODE_BIN="$(command -v node)"
 
 install -d -m 0755 "$ACME_ROOT"
@@ -140,7 +142,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=root
+User=${SERVICE_USER}
+Group=${SERVICE_GROUP}
 WorkingDirectory=${REPO_DIR}/server
 EnvironmentFile=-${REPO_DIR}/.env
 Environment=PORT=${PORT}

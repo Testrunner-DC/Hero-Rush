@@ -127,6 +127,8 @@ npm run build      # 生产构建
 npm test           # 运行测试
 ```
 
+正式服发布由 GitHub Actions 一键完成，开发者无需直接登录服务器。操作与回滚说明见 [`docs/ONE_CLICK_DEPLOYMENT.md`](./docs/ONE_CLICK_DEPLOYMENT.md)。
+
 ## ⚔️ 对战引擎
 
 对战模块采用 **Command → Reducer → Checkpoint** 三层单向数据流架构：
