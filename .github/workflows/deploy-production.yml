@@ -27,7 +27,7 @@ jobs:
       sha: ${{ steps.revision.outputs.sha }}
     steps:
       - name: 检出待发布版本
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ inputs.revision }}
           fetch-depth: 1
@@ -38,7 +38,7 @@ jobs:
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: 安装 Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm

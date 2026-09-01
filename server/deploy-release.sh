@@ -113,7 +113,7 @@ while IFS= read -r candidate; do
   fi
 done < <(find "$RELEASES_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2-)
 
-git clone --quiet --no-checkout \
+git clone --quiet --depth 1 --branch main --no-checkout \
   --reference-if-able "$reference_repo" --dissociate \
   "$REPO_URL" "$release_dir"
 git -C "$release_dir" fetch --quiet --depth 1 origin "$TARGET_SHA"
