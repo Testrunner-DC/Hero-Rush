@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Hero Rush V2 正式服原子发布器。仅接受完整 Git 提交 SHA。
 set -Eeuo pipefail
-umask 027
+# Nginx 需要读取 release 下的 dist；正式环境文件仍单独固定为 0640。
+umask 022
 
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 

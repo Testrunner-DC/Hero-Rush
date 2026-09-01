@@ -151,7 +151,7 @@ Environment=HOST=127.0.0.1
 Environment=NODE_ENV=production
 Environment=BATTLE_V2_ENABLED=true
 Environment=BATTLE_V2_ENFORCE_CARD_POOL=true
-ExecStart=${NODE_BIN} ${REPO_DIR}/server/dist/index.js
+ExecStart=${NODE_BIN} --preserve-symlinks-main ${REPO_DIR}/server/dist/index.js
 Restart=always
 RestartSec=5
 

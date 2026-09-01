@@ -37,7 +37,7 @@ if ! id -u "$DEPLOY_USER" >/dev/null 2>&1; then
 fi
 usermod -a -G "$APP_GROUP" "$DEPLOY_USER"
 
-install -d -o "$DEPLOY_USER" -g "$APP_GROUP" -m 2770 "$DEPLOY_ROOT" "$RELEASES_DIR"
+install -d -o "$DEPLOY_USER" -g "$APP_GROUP" -m 2755 "$DEPLOY_ROOT" "$RELEASES_DIR"
 install -d -o "$DEPLOY_USER" -g "$APP_GROUP" -m 0750 "$SHARED_DIR"
 install -o "$DEPLOY_USER" -g "$APP_GROUP" -m 0640 "${LEGACY_REPO}/.env" "${SHARED_DIR}/.env"
 chgrp "$APP_GROUP" "${LEGACY_REPO}/.env"
