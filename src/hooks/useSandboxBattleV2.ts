@@ -15,7 +15,7 @@ import { supabase } from "../lib/supabase";
 
 function websocketUrl(): string {
   const host = window.location.hostname;
-  if (host === "hero.grand-umi.com" || host === "grand-umi.com") return `wss://${host}/ws/`;
+  if (window.location.protocol === "https:") return `wss://${window.location.host}/ws/`;
   return `ws://${host || "localhost"}:8081`;
 }
 

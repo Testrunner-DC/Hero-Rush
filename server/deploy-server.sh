@@ -2,14 +2,15 @@
 # 在正式服务器上配置 Hero Rush V2 联机中继与 Nginx 站点。
 set -euo pipefail
 
-SERVICE_NAME="hero-rush-relay"
+SERVICE_NAME="${SERVICE_NAME:-hero-rush-relay}"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
-NGINX_SITE="/etc/nginx/sites-available/hero-rush"
-NGINX_LINK="/etc/nginx/sites-enabled/hero-rush"
-REPO_DIR="/opt/hero-rush"
-ACME_ROOT="/var/www/certbot"
-DOMAIN="hero.grand-umi.com"
-PORT="8092"
+NGINX_SITE_NAME="${NGINX_SITE_NAME:-hero-rush}"
+NGINX_SITE="/etc/nginx/sites-available/${NGINX_SITE_NAME}"
+NGINX_LINK="/etc/nginx/sites-enabled/${NGINX_SITE_NAME}"
+REPO_DIR="${REPO_DIR:-/opt/hero-rush}"
+ACME_ROOT="${ACME_ROOT:-/var/www/certbot}"
+DOMAIN="${DOMAIN:-hero.grand-umi.com}"
+PORT="${PORT:-8092}"
 NODE_BIN="$(command -v node)"
 
 install -d -m 0755 "$ACME_ROOT"

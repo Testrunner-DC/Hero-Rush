@@ -2,7 +2,7 @@ const tokenKey = "hero-rush:admin-session";
 
 function apiBase(): string {
   const host = window.location.hostname;
-  if (host === "hero.grand-umi.com" || host === "grand-umi.com") return window.location.origin;
+  if (window.location.protocol === "https:") return window.location.origin;
   return `${window.location.protocol}//${host || "127.0.0.1"}:8081`;
 }
 
