@@ -105,8 +105,17 @@ if [[ -e "$release_dir" ]]; then
 fi
 
 log "拉取提交 ${TARGET_SHA}"
-git init --quiet "$release_dir"
-git -C "$release_dir" remote add origin "$REPO_URL"
+reference_repo="$previous_target"
+while IFS= read -r candidate; do
+  if git -C "$candidate" rev-parse --git-dir >/dev/null 2>&1; then
+    reference_repo="$candidate"
+    break
+  fi
+done < <(find "$RELEASES_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2-)
+
+git clone --quiet --filter=blob:none --no-checkout \
+  --reference-if-able "$reference_repo" --dissociate \
+  "$REPO_URL" "$release_dir"
 git -C "$release_dir" fetch --quiet --depth 1 origin "$TARGET_SHA"
 git -C "$release_dir" checkout --quiet --detach FETCH_HEAD
 if [[ "$(git -C "$release_dir" rev-parse HEAD)" != "$TARGET_SHA" ]]; then
@@ -130,12 +139,13 @@ fi
 log "在隔离端口启动服务预检"
 (
   cd "${release_dir}/server"
-  PORT="$TEST_PORT" \
-  HOST="127.0.0.1" \
-  NODE_ENV="production" \
-  BATTLE_V2_ENABLED="true" \
-  BATTLE_V2_ENFORCE_CARD_POOL="true" \
-  node dist/index.js
+  env \
+    PORT="$TEST_PORT" \
+    HOST="127.0.0.1" \
+    NODE_ENV="production" \
+    BATTLE_V2_ENABLED="true" \
+    BATTLE_V2_ENFORCE_CARD_POOL="true" \
+    node dist/index.js
 ) > "${release_dir}/server-smoke.log" 2>&1 &
 test_pid=$!
 
