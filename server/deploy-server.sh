@@ -101,7 +101,7 @@ server {
         add_header Cache-Control "public, max-age=300, must-revalidate";
     }
 
-    location ~ ^/card-assets/objects/[0-9a-f]{2}/[0-9a-f]{64}/(thumb-240|board-480|detail-960)\.webp$ {
+    location ~ "^/card-assets/objects/[0-9a-f]{2}/[0-9a-f]{64}/(thumb-240|board-480|detail-960)\.webp$" {
         root ${REPO_DIR}/dist;
         try_files \$uri =404;
         expires 365d;
