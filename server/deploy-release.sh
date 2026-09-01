@@ -113,7 +113,7 @@ while IFS= read -r candidate; do
   fi
 done < <(find "$RELEASES_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2-)
 
-git clone --quiet --filter=blob:none --no-checkout \
+git clone --quiet --no-checkout \
   --reference-if-able "$reference_repo" --dissociate \
   "$REPO_URL" "$release_dir"
 git -C "$release_dir" fetch --quiet --depth 1 origin "$TARGET_SHA"
@@ -173,6 +173,20 @@ atomic_link "$release_dir" "$CURRENT_LINK"
 rollout_started="true"
 
 sudo /usr/bin/systemctl restart "${SERVICE_NAME}.service"
+
+service_ready="false"
+for _ in $(seq 1 30); do
+  if systemctl is-active --quiet "${SERVICE_NAME}.service" \
+    && ss -ltnH "sport = :${PORT}" | grep -q .; then
+    service_ready="true"
+    break
+  fi
+  sleep 0.5
+done
+if [[ "$service_ready" != "true" ]]; then
+  echo "正式服务未在预期时间内监听 127.0.0.1:${PORT}。" >&2
+  false
+fi
 
 log "验证 HTTPS 与 WSS"
 curl --fail --silent --show-error --retry 5 --retry-delay 2 \
