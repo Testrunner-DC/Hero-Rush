@@ -92,6 +92,7 @@ export interface BattleViewV2 {
   revision: number;
   stateHash: string;
   status: GameStateV2["status"];
+  winner: PlayerIndex | null;
   viewer: PlayerIndex;
   firstPlayer: PlayerIndex;
   activePlayer: PlayerIndex;
@@ -315,6 +316,7 @@ export function projectBattleViewV2(
     revision: state.revision,
     stateHash,
     status: state.status,
+    winner: state.winner,
     viewer,
     firstPlayer: state.firstPlayer,
     activePlayer: state.activePlayer,

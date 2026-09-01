@@ -804,17 +804,34 @@ describe("BP01-064～072 蓝色战术效果", () => {
     expect(resolved.players[actor].deck).not.toEqual(expect.arrayContaining(top));
   });
 
-  it("力挽狂澜响应我方低阶人类战败，裁剪自身后按所选位置直接返场", () => {
+  it("力挽狂澜响应我方低阶人类战败，确认发动后无需选择并直接返回原战区", () => {
     const game = state(); const actor = game.activePlayer;
     const captain = place(game, actor, "hand", "BP01-066");
     const human = place(game, actor, "retreat", "HUMAN", { level: 4, features: ["人类"] });
-    const event = { type: "CARDS_RETREATED" as const, cardIds: [human], reason: "battle" as const, fromFieldCardIds: [human] };
+    const event = { type: "CARDS_RETREATED" as const, cardIds: [human], reason: "battle" as const, fromFieldCardIds: [human], fromFieldZones: { [human]: "rear" as const } };
     const candidate = collectTriggeredEffectsV2(game, [event]).find((item) => item.effectId === "turn-the-tide-captain")!;
-    expect(candidate.targeting?.choices).toEqual(expect.arrayContaining([human, "zone:rear"]));
-    const effect = PROMO_EFFECT_DEFINITIONS_BP01_V2.find((item) => item.effectId === "turn-the-tide-captain")!;
-    const resolved = applyAtomicOperationsV2(game, effect.buildOperations(game, actor, captain, [human, "zone:rear"]), captain).state;
+    expect(candidate.targeting).toBeUndefined();
+    const resolved = applyAtomicOperationsV2(game, candidate.operations, captain).state;
     expect(resolved.players[actor].void).toContain(captain);
     expect(resolved.players[actor].field.rear).toEqual([human]);
+  });
+
+  it("力挽狂澜能从敌方效果原子自动识别刚撤退角色，不依赖每张卡重复填写目标或来源", () => {
+    const game = state(); const actor = game.activePlayer; const enemy = opponent(actor);
+    const captain = place(game, actor, "hand", "BP01-066");
+    const human = place(game, actor, "rear", "HUMAN", { level: 4, features: ["人类"] });
+    const enemySource = place(game, enemy, "vanguard", "ENEMY-SOURCE");
+    const retreated = applyAtomicOperationsV2(game, [{ kind: "RETREAT", cardIds: [human] }], enemySource);
+    expect(retreated.events).toContainEqual(expect.objectContaining({
+      type: "CARDS_RETREATED",
+      sourceCardId: enemySource,
+      fromFieldZones: { [human]: "rear" },
+    }));
+    const candidate = collectTriggeredEffectsV2(retreated.state, retreated.events).find((item) => item.effectId === "turn-the-tide-captain")!;
+    expect(candidate.targeting).toBeUndefined();
+    const resolved = applyAtomicOperationsV2(retreated.state, candidate.operations, captain).state;
+    expect(resolved.players[actor].field.rear).toEqual([human]);
+    expect(resolved.players[actor].void).toContain(captain);
   });
 
   it("敌意焦点复用统一攻击规则，在应对中把当前攻击变更为另一合法目标并记录回合次数", () => {

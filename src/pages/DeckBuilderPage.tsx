@@ -12,6 +12,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useDecks } from "../hooks/useDecks";
 import { decodeDeck, encodeDeck, extractDeckCode } from "../utils/deckCode";
 import { downloadDeckImage } from "../utils/deckImage";
+import { compareCardsByDefaultDeckOrder, countDeckCardsWithExactName } from "../utils/deckBuilding";
 import { deckEligibleVariant, groupCardVariants, ORDINARY_CARD_VARIANT_ACCESS } from "../utils/cardVariants";
 import { CARD_PAGE_SIZE, paginateItems } from "../utils/pagination";
 
@@ -44,8 +45,8 @@ interface Props {
 }
 
 type PickerTab = "all" | "main" | "impact";
-type DeckSort = "energy" | "power" | "name";
-const sortLabels: Record<DeckSort, string> = { energy: "等级", power: "战力", name: "名称" };
+type DeckSort = "deck_order" | "energy" | "power" | "name";
+const sortLabels: Record<DeckSort, string> = { deck_order: "构筑顺序", energy: "等级", power: "战力", name: "名称" };
 
 export default function DeckBuilderPage({ db, cardMap, deckName, setDeckName, mainDeck, stats, savedDecks, onAdd, onRemove, onClear, onSave, onSaveAs, onLoad, onDelete, onShare }: Props) {
   const navigate = useNavigate();
@@ -55,7 +56,7 @@ export default function DeckBuilderPage({ db, cardMap, deckName, setDeckName, ma
   const [page, setPage] = useState(1);
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [hoveredCard, setHoveredCard] = useState<Card | null>(null);
-  const [deckSort, setDeckSort] = useState<DeckSort>("energy");
+  const [deckSort, setDeckSort] = useState<DeckSort>("deck_order");
   const [showImport, setShowImport] = useState(false);
   const [showPublish, setShowPublish] = useState(false);
   const [generatingImage, setGeneratingImage] = useState(false);
@@ -64,6 +65,7 @@ export default function DeckBuilderPage({ db, cardMap, deckName, setDeckName, ma
   const actionClass = "rounded border border-[var(--msa-border-strong)] bg-[var(--msa-surface)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--msa-text-secondary)] transition hover:border-red-300 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-35";
 
   const countFor = useCallback((card: Card) => mainDeck.find((entry) => entry.card_no === card.card_no)?.count || 0, [mainDeck]);
+  const nameCountFor = useCallback((card: Card) => countDeckCardsWithExactName(mainDeck, cardMap, card.name), [mainDeck, cardMap]);
   const allGroupsByNo = useMemo(() => new Map(groupCardVariants(db.cards).map((group) => [group.cardNo, group])), [db.cards]);
   const filteredGroups = useMemo(() => {
     const keyword = filters.search.trim().toLocaleLowerCase("zh-CN");
@@ -81,13 +83,14 @@ export default function DeckBuilderPage({ db, cardMap, deckName, setDeckName, ma
       if (keyword && ![card.name, card.card_no, card.effect, card.feature_text].some((value) => value?.toLocaleLowerCase("zh-CN").includes(keyword))) return false;
       return true;
     });
-    return groupCardVariants(matched).sort((left, right) => filters.sortBy === "name" ? left.lowest.name.localeCompare(right.lowest.name, "zh-CN") : filters.sortBy === "cost" ? left.lowest.cost - right.lowest.cost || left.cardNo.localeCompare(right.cardNo) : filters.sortBy === "power" ? Number(right.lowest.power || 0) - Number(left.lowest.power || 0) : left.cardNo.localeCompare(right.cardNo));
+    return groupCardVariants(matched).sort((left, right) => filters.sortBy === "deck_order" ? compareCardsByDefaultDeckOrder(left.lowest, right.lowest) : filters.sortBy === "name" ? left.lowest.name.localeCompare(right.lowest.name, "zh-CN") : filters.sortBy === "cost" ? left.lowest.cost - right.lowest.cost || left.cardNo.localeCompare(right.cardNo) : filters.sortBy === "power" ? Number(right.lowest.power || 0) - Number(left.lowest.power || 0) : left.cardNo.localeCompare(right.cardNo));
   }, [db.cards, pickerTab, filters]);
   const pagination = useMemo(() => paginateItems(filteredGroups, page, CARD_PAGE_SIZE), [filteredGroups, page]);
 
   const deckEntries = useMemo(() => [...mainDeck].sort((left, right) => {
     const a = cardMap.get(left.card_no); const b = cardMap.get(right.card_no);
     if (!a || !b) return 0;
+    if (deckSort === "deck_order") return compareCardsByDefaultDeckOrder(a, b);
     if (deckSort === "name") return a.name.localeCompare(b.name, "zh-CN");
     if (deckSort === "power") return Number(b.power || 0) - Number(a.power || 0) || a.card_no.localeCompare(b.card_no);
     return a.cost - b.cost || a.card_no.localeCompare(b.card_no);
@@ -106,7 +109,7 @@ export default function DeckBuilderPage({ db, cardMap, deckName, setDeckName, ma
     const group = allGroupsByNo.get(requested.card_no);
     const card = group ? deckEligibleVariant(group, ORDINARY_CARD_VARIANT_ACCESS, requested) : requested;
     setSelectedCard(card);
-    if (card.card_type === 1 && countFor(card) < 3 && stats.mainCount < 50) onAdd(card);
+    if (card.card_type === 1 && nameCountFor(card) < 3 && stats.mainCount < 50) onAdd(card);
   };
   const newDeck = () => { onClear(); setDeckName("未命名卡组"); setSelectedCard(null); };
   const saveAs = () => {
@@ -152,7 +155,7 @@ export default function DeckBuilderPage({ db, cardMap, deckName, setDeckName, ma
           <header className="flex items-center justify-between border-b border-[var(--msa-border)] px-3 py-2"><div><p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--msa-text-muted)]">Card Pool</p><h2 className="text-sm font-bold text-[var(--msa-text-primary)]">卡池</h2></div><div className="flex items-center gap-2"><span className="text-[10px] text-[var(--msa-text-muted)]">{filteredGroups.length} 张结果</span><ColumnSelector columns={columns} onChange={setColumns} /></div></header>
           <nav className="grid grid-cols-3 gap-1 border-b border-[var(--msa-border)] bg-[var(--msa-bg-alt)] p-1.5" aria-label="组卡器卡池分类">{([{ key: "all", label: "全部卡牌" }, { key: "main", label: "角色卡" }, { key: "impact", label: "冲击参考" }] as { key: PickerTab; label: string }[]).map((tab) => <button key={tab.key} onClick={() => setPickerTab(tab.key)} className={`rounded px-3 py-1.5 text-xs font-medium transition ${pickerTab === tab.key ? "bg-red-600 text-white" : "bg-[var(--msa-surface)] text-[var(--msa-text-muted)] hover:text-[var(--msa-text-primary)]"}`}>{tab.label}</button>)}</nav>
           <div className="min-h-0 flex-1 overflow-y-auto p-2 scrollbar-thin">
-            <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>{pagination.items.map((group) => { const card = group.lowest; const count = countFor(card); const addDisabled = card.card_type !== 1 || count >= 3 || stats.mainCount >= 50; return <article key={group.cardNo} onMouseEnter={() => setHoveredCard(card)} onMouseLeave={() => setHoveredCard(null)} onClick={() => setSelectedCard(card)} className={`min-w-0 overflow-hidden rounded-lg border bg-white transition ${selectedCard?.card_no === card.card_no ? "border-red-400 shadow-md" : count ? "border-amber-300" : "border-[var(--msa-border)] hover:border-red-300"}`}><div role="button" tabIndex={0} onDoubleClick={(event) => { event.stopPropagation(); add(card); }} className="relative block aspect-[746/1041] w-full overflow-hidden bg-stone-100"><CardVariantImage variants={group.variants} lockedToLowest onVariantChange={(variant) => { setSelectedCard(variant); setHoveredCard(variant); }} />{count > 0 && <b className="pointer-events-none absolute right-1 top-1 rounded bg-red-600 px-1.5 py-0.5 text-[10px] text-white">×{count}</b>}<span className="pointer-events-none absolute left-1 top-1 grid h-5 min-w-5 place-items-center rounded-full bg-black/75 px-1 text-[9px] font-bold text-white">{card.cost}</span></div><div className="p-1.5"><b className="block truncate text-[10px] text-[var(--msa-text-primary)]">{card.name}</b><span className="block truncate text-[8px] text-[var(--msa-text-muted)]">{card.card_no}</span></div><div className="grid grid-cols-[1fr_28px_1fr] border-t border-[var(--msa-border)]"><button aria-label={`减少 ${card.name}`} disabled={!count} onClick={(event) => { event.stopPropagation(); onRemove(card.card_no); }} className="py-1 text-sm text-[var(--msa-text-secondary)] disabled:opacity-30">−</button><strong className="grid place-items-center border-x border-[var(--msa-border)] text-[10px]">{count}</strong><button aria-label={`增加 ${card.name}`} disabled={addDisabled} onClick={(event) => { event.stopPropagation(); add(card); }} className="py-1 text-sm text-[var(--msa-text-secondary)] disabled:opacity-30">＋</button></div></article>; })}</div>
+            <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>{pagination.items.map((group) => { const card = group.lowest; const count = countFor(card); const nameCount = nameCountFor(card); const addDisabled = card.card_type !== 1 || nameCount >= 3 || stats.mainCount >= 50; return <article key={group.cardNo} onMouseEnter={() => setHoveredCard(card)} onMouseLeave={() => setHoveredCard(null)} onClick={() => setSelectedCard(card)} className={`min-w-0 overflow-hidden rounded-lg border bg-white transition ${selectedCard?.card_no === card.card_no ? "border-red-400 shadow-md" : count ? "border-amber-300" : "border-[var(--msa-border)] hover:border-red-300"}`}><div role="button" tabIndex={0} onDoubleClick={(event) => { event.stopPropagation(); add(card); }} className="relative block aspect-[746/1041] w-full overflow-hidden bg-stone-100"><CardVariantImage variants={group.variants} lockedToLowest onVariantChange={(variant) => { setSelectedCard(variant); setHoveredCard(variant); }} />{count > 0 && <b className="pointer-events-none absolute right-1 top-1 rounded bg-red-600 px-1.5 py-0.5 text-[10px] text-white">×{count}</b>}<span className="pointer-events-none absolute left-1 top-1 grid h-5 min-w-5 place-items-center rounded-full bg-black/75 px-1 text-[9px] font-bold text-white">{card.cost}</span></div><div className="p-1.5"><b className="block truncate text-[10px] text-[var(--msa-text-primary)]">{card.name}</b><span className="block truncate text-[8px] text-[var(--msa-text-muted)]">{card.card_no}</span></div><div className="grid grid-cols-[1fr_28px_1fr] border-t border-[var(--msa-border)]"><button aria-label={`减少 ${card.name}`} disabled={!count} onClick={(event) => { event.stopPropagation(); onRemove(card.card_no); }} className="py-1 text-sm text-[var(--msa-text-secondary)] disabled:opacity-30">−</button><strong className="grid place-items-center border-x border-[var(--msa-border)] text-[10px]">{count}</strong><button aria-label={`增加 ${card.name}`} title={nameCount >= 3 ? `${card.name} 已达到同名合计 3 张上限` : undefined} disabled={addDisabled} onClick={(event) => { event.stopPropagation(); add(card); }} className="py-1 text-sm text-[var(--msa-text-secondary)] disabled:opacity-30">＋</button></div></article>; })}</div>
             <PaginationControls page={pagination.page} pageCount={pagination.pageCount} total={pagination.total} pageSize={CARD_PAGE_SIZE} onPageChange={setPage} />
           </div>
         </section>
@@ -169,7 +172,7 @@ export default function DeckBuilderPage({ db, cardMap, deckName, setDeckName, ma
               <span className="relative z-10 grid h-7 w-7 flex-shrink-0 place-items-center rounded bg-white/90 text-xs font-bold shadow-sm">{card.cost}</span>
               <div className="relative z-10 min-w-0 flex-1"><b className="block truncate text-[10px] text-[var(--msa-text-primary)]">{card.name}</b><small className="block text-[8px] text-[var(--msa-text-secondary)]">{card.card_no}</small></div>
               <strong className="relative z-10 text-xs text-red-700">×{entry.count}</strong>
-              <button disabled={entry.count >= 3 || stats.mainCount >= 50} onClick={(event) => { event.stopPropagation(); add(card); }} className="relative z-10 grid h-7 w-7 place-items-center rounded border border-[var(--msa-border)] bg-white/90 disabled:opacity-30">＋</button>
+              <button disabled={nameCountFor(card) >= 3 || stats.mainCount >= 50} title={nameCountFor(card) >= 3 ? `${card.name} 已达到同名合计 3 张上限` : undefined} onClick={(event) => { event.stopPropagation(); add(card); }} className="relative z-10 grid h-7 w-7 place-items-center rounded border border-[var(--msa-border)] bg-white/90 disabled:opacity-30">＋</button>
               <button onClick={(event) => { event.stopPropagation(); onRemove(entry.card_no); }} className="relative z-10 grid h-7 w-7 place-items-center rounded border border-[var(--msa-border)] bg-white/90">−</button>
             </article>;
           }) : <p className="py-6 text-center text-[10px] text-[var(--msa-text-muted)]">从中间卡池加入卡牌，双击卡面也可快速加入。</p>}</div>

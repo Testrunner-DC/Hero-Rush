@@ -277,15 +277,17 @@ export default function ActionPanelV2({
       );
     }
     const effectChoiceCards = locateEffectChoiceCards(view, decision.choices);
-    const choicesFullyVisible = effectChoiceCards.length === decision.choices.length;
     const pickerZones = new Set<EffectChoiceZoneV2>(["撤退区", "虚空区"]);
-    const useZoneCardPicker = choicesFullyVisible && effectChoiceCards.every((item) => pickerZones.has(item.zone));
+    const zonePickerCards = effectChoiceCards.filter((item) => pickerZones.has(item.zone));
+    const zonePickerCardIds = new Set(zonePickerCards.map((item) => item.card.instanceId));
+    const useZoneCardPicker = zonePickerCards.length > 0;
+    const needsBoardSelection = decision.choices.some((choice) => !zonePickerCardIds.has(choice));
     const ready = selected.length >= decision.min && selected.length <= decision.max;
     if (useZoneCardPicker) {
-      const zones = [...new Set(effectChoiceCards.map((item) => item.zone))];
+      const zones = [...new Set(zonePickerCards.map((item) => item.zone))];
       const zoneLabel = zones.length === 1 ? zones[0] : "指定区域";
       return (
-        <DecisionModalV2 label={`选择${zoneLabel}卡牌`} tone="border-cyan-300/35">
+        <DecisionModalV2 label={`选择${zoneLabel}卡牌`} tone="border-cyan-300/35" boardInteractive={needsBoardSelection}>
           <div data-ui-contract="hero-rush-v2-zone-effect-picker" data-choice-zone={zones.join(",")}>
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -293,11 +295,12 @@ export default function ActionPanelV2({
                 <p className="mt-1 text-xs font-bold text-cyan-100">{presentation.name}</p>
                 <p className="mt-1 whitespace-pre-wrap text-[9px] leading-4 text-white/65">{presentation.text}</p>
                 <p className="mt-1 text-[9px] leading-4 text-white/55">{decision.prompt}</p>
+                {needsBoardSelection ? <p className="mt-1 text-[9px] leading-4 text-cyan-200/80">先在此选择区域卡牌，其余目标直接点击场上高亮卡牌或位置。</p> : null}
               </div>
               <span className="shrink-0 font-mono text-xs text-cyan-200">{selected.length} / {decision.min}-{decision.max}</span>
             </div>
             <div className="mt-4 grid max-h-[390px] grid-cols-[repeat(auto-fill,minmax(92px,1fr))] gap-3 overflow-y-auto p-1 scrollbar-thin">
-              {effectChoiceCards.map(({ card, zone, covered }) => {
+              {zonePickerCards.map(({ card, zone, covered }) => {
                 const definition = cardByDefinitionId.get(card.definitionId);
                 const chosen = selectedCardIds.has(card.instanceId);
                 return (

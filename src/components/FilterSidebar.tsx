@@ -16,7 +16,7 @@
 import { useMemo } from "react";
 import type { CardDatabase } from "../types/card";
 
-export type SortBy = "card_no" | "cost" | "power" | "name";
+export type SortBy = "deck_order" | "card_no" | "cost" | "power" | "name";
 
 export interface FilterState {
   search: string;
@@ -45,7 +45,7 @@ export const DEFAULT_FILTERS: FilterState = {
   filterRarity: "all",
   filterCost: "all",
   filterPackage: "all",
-  sortBy: "card_no",
+  sortBy: "deck_order",
   powerMin: "all",
   powerMax: "all",
   distanceMin: "all",
@@ -69,6 +69,7 @@ interface Props {
 }
 
 const SORT_LABELS: Record<SortBy, string> = {
+  deck_order: "构筑顺序",
   card_no: "编号",
   cost: "等级",
   power: "战力",

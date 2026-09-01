@@ -99,6 +99,12 @@ describe("V2 M1 权威开局与调度", () => {
     expect(first.decision?.actor).toBe(first.firstPlayer);
   });
 
+  it("不同卡号但名称完全相同的角色卡在权威核心中共享 3 张投入上限", () => {
+    const input = makeInput();
+    for (const definition of input.cardDefinitions.slice(0, 4)) definition.name = "完全同名角色";
+    expect(() => createGameV2(input)).toThrow("名称完全相同的角色卡合计最多投入 3 张：完全同名角色");
+  });
+
   it("不同种子可覆盖两个座位先攻，首个决策始终属于真实先攻", () => {
     const states = Array.from({ length: 80 }, (_, index) => createGameV2(makeInput(`seed-${index}`)));
     expect(new Set(states.map((state) => state.firstPlayer))).toEqual(new Set([0, 1]));

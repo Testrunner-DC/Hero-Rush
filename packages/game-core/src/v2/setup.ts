@@ -42,6 +42,13 @@ function validateDeckV2(
     if (!card) throw new Error(`玩家 ${seat} 使用了未知卡牌定义：${definitionId}`);
     if (card.card_type !== 1) throw new Error(`玩家 ${seat} 主卡组包含非角色卡：${definitionId}`);
   }
+  const exactNameCounts = new Map<string, number>();
+  for (const definitionId of player.mainDeck) {
+    const name = definitions.get(definitionId)!.name;
+    exactNameCounts.set(name, (exactNameCounts.get(name) ?? 0) + 1);
+  }
+  const overLimitName = [...exactNameCounts.entries()].find(([, count]) => count > 3)?.[0];
+  if (overLimitName) throw new Error(`玩家 ${seat} 名称完全相同的角色卡合计最多投入 3 张：${overLimitName}`);
   for (const definitionId of player.rushDeck) {
     const card = definitions.get(definitionId);
     if (!card) throw new Error(`玩家 ${seat} 使用了未知卡牌定义：${definitionId}`);

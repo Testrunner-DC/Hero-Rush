@@ -42,6 +42,7 @@ function view(revision = 0): BattleViewV2 {
     revision,
     stateHash: "1234567890abcdef",
     status: "setup",
+    winner: null,
     viewer: 0,
     firstPlayer: 0,
     activePlayer: 0,

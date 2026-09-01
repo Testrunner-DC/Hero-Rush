@@ -442,7 +442,7 @@ export type GameEventV2 =
   | { type: "MULLIGAN_SUBMITTED"; actor: PlayerIndex; replacedCount: number }
   | { type: "TURN_CARDS_DRAWN"; actor: PlayerIndex; count: number; sourceCardId?: CardInstanceIdV2; contextValue?: number }
   | { type: "CARDS_DISCARDED"; cardIds: CardInstanceIdV2[] }
-  | { type: "CARDS_RETREATED"; cardIds: CardInstanceIdV2[]; reason: "effect" | "state" | "battle" | "summon_payment"; fromFieldCardIds?: CardInstanceIdV2[]; followedAttachmentCardIds?: CardInstanceIdV2[]; sourceCardId?: CardInstanceIdV2 }
+  | { type: "CARDS_RETREATED"; cardIds: CardInstanceIdV2[]; reason: "effect" | "state" | "battle" | "summon_payment"; fromFieldCardIds?: CardInstanceIdV2[]; fromFieldZones?: Partial<Record<CardInstanceIdV2, FieldZoneV2>>; followedAttachmentCardIds?: CardInstanceIdV2[]; sourceCardId?: CardInstanceIdV2 }
   | { type: "CARDS_BANISHED"; cardIds: CardInstanceIdV2[]; sourceCardId?: CardInstanceIdV2; fromRetreatCardIds?: CardInstanceIdV2[] }
   | { type: "CARDS_REVEALED"; cards: Array<{ instanceId: CardInstanceIdV2; definitionId: string }>; sourceCardId?: CardInstanceIdV2 }
   | { type: "CARDS_COVERED"; cardIds: CardInstanceIdV2[] }
@@ -487,6 +487,7 @@ export type GameEventV2 =
   | { type: "CARDS_DISCARDED_TO_LIMIT"; actor: PlayerIndex; cardIds: CardInstanceIdV2[] }
   | { type: "TURN_ENDED"; actor: PlayerIndex; nextActor: PlayerIndex; turnNumber: number }
   | { type: "EFFECT_QUEUED"; actor: PlayerIndex; sourceCardId: CardInstanceIdV2; effectId: string }
+  | { type: "EFFECT_PRESENTED"; actor: PlayerIndex; sourceCardId: CardInstanceIdV2; definitionId: string; effectId: string; effectLabel: string; activation: "action" | "response" | "trigger" }
   | { type: "EFFECT_TARGETS_REQUESTED"; actor: PlayerIndex; sourceCardId: CardInstanceIdV2; effectId: string; min: number; max: number }
   | { type: "EFFECT_TARGETS_SELECTED"; actor: PlayerIndex; sourceCardId: CardInstanceIdV2; effectId: string; targetCardIds: CardInstanceIdV2[] }
   | { type: "EFFECT_TARGETS_CANCELLED"; actor: PlayerIndex; sourceCardId: CardInstanceIdV2; effectId: string }

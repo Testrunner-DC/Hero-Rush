@@ -579,7 +579,8 @@ export function applyAtomicOperationsV2(
         const next = nextRandom(state.randomState);
         const cardId = covered[Math.floor(next.value * covered.length)];
         state = { ...retreatCardsV2(state, [cardId]), randomState: next.state };
-        events.push({ type: "CARDS_RETREATED", cardIds: [cardId], reason: "effect", ...(operation.sourceCardId ? { sourceCardId: operation.sourceCardId } : {}) });
+        const sourceCardId = operation.sourceCardId ?? effectSourceCardId;
+        events.push({ type: "CARDS_RETREATED", cardIds: [cardId], reason: "effect", ...(sourceCardId ? { sourceCardId } : {}) });
       }
     } else if (operation.kind === "COVER_RANDOM_HAND") {
       const hand = state.players[operation.actor].hand;
@@ -591,7 +592,11 @@ export function applyAtomicOperationsV2(
         events.push({ type: "CARDS_PLACED_IN_BASE", actor: operation.actor, cardIds: [cardId], face: "down", ...(operation.sourceCardId ? { sourceCardId: operation.sourceCardId } : {}) });
       }
     } else if (operation.kind === "RETREAT") {
-      const fromFieldCardIds = operation.cardIds.filter((id) => Boolean(fieldLocationV2(state, id)));
+      const fromFieldLocations = operation.cardIds
+        .map((id) => [id, fieldLocationV2(state, id)] as const)
+        .filter((entry): entry is readonly [string, NonNullable<ReturnType<typeof fieldLocationV2>>] => Boolean(entry[1]));
+      const fromFieldCardIds = fromFieldLocations.map(([id]) => id);
+      const fromFieldZones = Object.fromEntries(fromFieldLocations.map(([id, location]) => [id, location.zone]));
       const retreated = retreatClosureCardIdsV2(state, operation.cardIds);
       const followedAttachmentCardIds = followedAttachmentCardIdsV2(state, operation.cardIds);
       operationSucceeded = operation.cardIds.every((id) => {
@@ -600,7 +605,8 @@ export function applyAtomicOperationsV2(
       });
       if (operationSucceeded) {
         state = retreatCardsV2(state, operation.cardIds);
-        events.push({ type: "CARDS_RETREATED", cardIds: retreated, reason: "effect", fromFieldCardIds, ...(followedAttachmentCardIds.length ? { followedAttachmentCardIds } : {}), ...(operation.sourceCardId ? { sourceCardId: operation.sourceCardId } : {}) });
+        const sourceCardId = operation.sourceCardId ?? effectSourceCardId;
+        events.push({ type: "CARDS_RETREATED", cardIds: retreated, reason: "effect", fromFieldCardIds, ...(fromFieldCardIds.length ? { fromFieldZones } : {}), ...(followedAttachmentCardIds.length ? { followedAttachmentCardIds } : {}), ...(sourceCardId ? { sourceCardId } : {}) });
       }
     } else if (operation.kind === "BANISH") {
       const fromRetreatCardIds = operation.cardIds.filter((id) => {

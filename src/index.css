@@ -141,6 +141,46 @@ textarea:focus {
   animation: slideUp 0.3s ease-out;
 }
 
+@keyframes heroEffectPresentation {
+  0% { opacity: 0; transform: translateX(22px) scale(.96); }
+  12%, 84% { opacity: 1; transform: translateX(0) scale(1); }
+  100% { opacity: 0; transform: translateX(-8px) scale(.985); }
+}
+
+@keyframes heroEffectShine {
+  0%, 25% { transform: translateX(-150%) skewX(-16deg); }
+  60%, 100% { transform: translateX(180%) skewX(-16deg); }
+}
+
+@keyframes heroEffectProgress {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+@keyframes heroGameResult {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes heroGameResultBurst {
+  from { transform: rotate(0deg) scale(.86); }
+  to { transform: rotate(8deg) scale(1.08); }
+}
+
+.hero-effect-presentation { animation: heroEffectPresentation 3s ease both; }
+.hero-effect-presentation-shine { background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,.46) 50%, transparent 65%); animation: heroEffectShine 2.1s ease-out both; }
+.hero-effect-presentation-progress { transform-origin: left; animation: heroEffectProgress 3s linear both; }
+.hero-game-result { animation: heroGameResult .35s ease-out both; }
+.hero-game-result-burst { background: repeating-conic-gradient(from 0deg, transparent 0deg 13deg, rgba(251,191,36,.17) 14deg 17deg, transparent 18deg 29deg); animation: heroGameResultBurst 4s ease-in-out infinite alternate; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-effect-presentation,
+  .hero-effect-presentation-shine,
+  .hero-effect-presentation-progress,
+  .hero-game-result,
+  .hero-game-result-burst { animation: none; }
+}
+
 .msa-gradient-strip {
   background: linear-gradient(135deg, var(--msa-red) 0%, var(--msa-red-dark) 30%, var(--msa-gold) 60%, var(--msa-gold-light) 100%);
 }

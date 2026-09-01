@@ -230,7 +230,9 @@ describe("V2 battle workspace contracts", () => {
     expect(actions).toContain('data-ui-contract="hero-rush-v2-zone-effect-picker"');
     expect(actions).toContain('data-effect-choice-zone={zone}');
     expect(actions).toContain('new Set<EffectChoiceZoneV2>(["撤退区", "虚空区"])');
-    expect(actions).toContain("effectChoiceCards.every((item) => pickerZones.has(item.zone))");
+    expect(actions).toContain("effectChoiceCards.filter((item) => pickerZones.has(item.zone))");
+    expect(actions).toContain("boardInteractive={needsBoardSelection}");
+    expect(actions).toContain("其余目标直接点击场上高亮卡牌或位置");
     expect(actions).toContain("从{zoneLabel}选择效果目标");
     expect(actions).toContain("直接在{directZoneLabel}点选目标");
     expect(actions).toContain('data-ui-contract="hero-rush-v2-effect-target-controls"');
@@ -334,6 +336,24 @@ describe("V2 battle workspace contracts", () => {
     expect(mulligan).toContain("setMinimized(true)");
     expect(mulligan).toContain("恢复起始手牌调度");
     expect(mulligan).toContain('data-ui-contract="hero-rush-v2-restore-decision"');
+  });
+
+  it("presents authoritative card effects without covering actions and shows the nine-rush-card result", () => {
+    const screen = readSource("components/battle-v2/BattleScreenV2.tsx");
+    const effectPresentation = readSource("components/battle-v2/EffectPresentationV2.tsx");
+    const gameResult = readSource("components/battle-v2/GameResultOverlayV2.tsx");
+    expect(screen).toContain("<EffectPresentationV2");
+    expect(screen).toContain("<GameResultOverlayV2");
+    expect(effectPresentation).toContain('type: "EFFECT_PRESENTED"');
+    expect(effectPresentation).toContain("pointer-events-none");
+    expect(effectPresentation).toContain('data-ui-contract="hero-rush-v2-effect-presentation"');
+    expect(effectPresentation).toContain("active.effectLabel");
+    expect(gameResult).toContain('view.status !== "finished"');
+    expect(gameResult).toContain("view.winner");
+    expect(gameResult).toContain("获得 9 张冲击卡");
+    expect(gameResult).toContain('data-ui-contract="hero-rush-v2-game-result"');
+    expect(gameResult).toContain("查看最终场面");
+    expect(gameResult).toContain("返回对战大厅");
   });
 
   it("keeps the administrator surface limited to V2 operations and coverage", () => {

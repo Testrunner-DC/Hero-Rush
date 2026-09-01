@@ -135,7 +135,15 @@ describe("V2 M4 效果运行时骨架", () => {
     expect(result.state.effects.queue).toEqual([]);
     expect(result.state.effects.resolving).toBe(false);
     expect(result.state.effects.resolvedEffectIds).toHaveLength(1);
-    expect(result.events.map((event) => event.type)).toEqual(["EFFECT_QUEUED", "EFFECT_RESOLVED"]);
+    expect(result.events.map((event) => event.type)).toEqual(["EFFECT_QUEUED", "EFFECT_PRESENTED", "EFFECT_RESOLVED"]);
+    expect(result.events.find((event) => event.type === "EFFECT_PRESENTED")).toMatchObject({
+      actor,
+      sourceCardId,
+      definitionId: state.cards[sourceCardId].definitionId,
+      effectId: "self-power",
+      effectLabel: "self-power",
+      activation: "action",
+    });
     expect(JSON.parse(JSON.stringify(result.state.effects))).toEqual(result.state.effects);
   });
 
@@ -424,6 +432,11 @@ describe("V2 M4 效果运行时骨架", () => {
     const retreated = applyAtomicOperationsV2(attachedResult.state, [{ kind: "RETREAT", cardIds: [host] }]);
     expect(retreated.state.players[actor].retreat).toEqual(expect.arrayContaining([host, attached]));
     expect(retreated.state.attachments).toEqual({});
+    expect(retreated.events).toContainEqual(expect.objectContaining({
+      type: "CARDS_RETREATED",
+      fromFieldCardIds: [host],
+      fromFieldZones: { [host]: "vanguard" },
+    }));
   });
 
   it("隐藏区效果候选只向决策者投影完整卡牌，卡组重排分界不会泄露给对手", () => {

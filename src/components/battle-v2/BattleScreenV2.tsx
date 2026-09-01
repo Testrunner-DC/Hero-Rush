@@ -5,6 +5,8 @@ import type { GameCommandV2Message } from "@hero-rush/protocol";
 import CardDetailSidebar from "../CardDetailSidebar";
 import ActionPanelV2 from "./ActionPanelV2";
 import BattlePanelV2 from "./BattlePanelV2";
+import EffectPresentationV2 from "./EffectPresentationV2";
+import GameResultOverlayV2 from "./GameResultOverlayV2";
 import MulliganPanelV2 from "./MulliganPanelV2";
 import PlayerBoardV2, { type CardEmphasisV2 } from "./PlayerBoardV2";
 
@@ -108,6 +110,7 @@ function battleEventText(input: unknown, view: BattleViewV2, db: CardDatabase): 
     case "CARDS_DISCARDED_TO_LIMIT": return `${actorName(event.actor)}将手牌调整至上限，舍弃了${cardList(event.cardIds, view, db)}`;
     case "TURN_ENDED": return `${actorName(event.actor)}结束回合，轮到${actorName(event.nextActor)}`;
     case "EFFECT_QUEUED": return `${actorName(event.actor)}发动${effectName(event.sourceCardId, event.effectId, view, db)}`;
+    case "EFFECT_PRESENTED": return `${actorName(event.actor)}发动${event.effectLabel}`;
     case "EFFECT_TARGETS_REQUESTED": return `${actorName(event.actor)}正在为${effectName(event.sourceCardId, event.effectId, view, db)}选择目标`;
     case "EFFECT_TARGETS_SELECTED": return `${actorName(event.actor)}为${effectName(event.sourceCardId, event.effectId, view, db)}选定目标`;
     case "EFFECT_TARGETS_CANCELLED": return `${actorName(event.actor)}取消发动${effectName(event.sourceCardId, event.effectId, view, db)}`;
@@ -569,7 +572,7 @@ export default function BattleScreenV2({ view, db, submitting = false, omniscien
           <aside className="grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] gap-3">
             <RailPanel title="上方玩家" side="opponent"><div className="bg-blue-50/55 p-3"><strong className="block text-sm text-blue-800">{view.players[topSeat].name}</strong><span className="text-[9px] text-blue-700/65">手牌 {view.players[topSeat].handCount} · 主卡组 {view.players[topSeat].deckCount}</span></div></RailPanel>
             <RailPanel title="下方玩家" side="self"><div className="bg-red-50/55 p-3"><strong className="block text-sm text-red-800">{view.players[bottomSeat].name}</strong><span className="text-[9px] text-red-700/65">手牌 {view.players[bottomSeat].handCount} · 主卡组 {view.players[bottomSeat].deckCount}</span></div></RailPanel>
-            <RailPanel title="对局记录" className="min-h-0"><div className="h-full space-y-1 overflow-y-auto p-2 scrollbar-thin">{eventLines.length ? eventLines.map((line, index) => <p key={`${line}-${index}`} className="border-l-2 border-stone-300 bg-stone-50 px-2 py-1.5 text-[8px] leading-4 text-stone-600">{line}</p>) : <p className="p-2 text-[9px] text-stone-400">等待对局操作</p>}</div></RailPanel>
+            <RailPanel title="对局记录" className="min-h-0"><div className="relative h-full min-h-0 overflow-hidden"><EffectPresentationV2 key={view.matchId} events={events} db={db} /><div className="h-full space-y-1 overflow-y-auto p-2 scrollbar-thin">{eventLines.length ? eventLines.map((line, index) => <p key={`${line}-${index}`} className="border-l-2 border-stone-300 bg-stone-50 px-2 py-1.5 text-[8px] leading-4 text-stone-600">{line}</p>) : <p className="p-2 text-[9px] text-stone-400">等待对局操作</p>}</div></div></RailPanel>
             <RailPanel title="对局进程与操作">
               <dl className="grid grid-cols-[42px_1fr] gap-x-2 gap-y-1.5 p-3 text-[9px]"><dt className="text-stone-400">回合</dt><dd className="font-bold">{view.turnNumber}</dd><dt className="text-stone-400">流程</dt><dd className={`font-bold ${view.activePlayer === bottomSeat ? "text-red-700" : "text-blue-700"}`}>{flowLabel(view.flow.kind)}</dd><dt className="text-stone-400">行动方</dt><dd className={`truncate font-bold ${view.activePlayer === bottomSeat ? "text-red-700" : "text-blue-700"}`}>{view.players[view.activePlayer].name}</dd><dt className="text-stone-400">规则</dt><dd>{view.rulesetVersion}</dd></dl>
               <ActionPanelV2 view={view} cardByDefinitionId={cardByDefinitionId} selectedCardIds={selected} onToggleCard={toggleCard} onClear={() => { setSelected(new Set()); setSummonPlacementCardId(null); }} onSubmit={onSubmitGameCommand} />
@@ -596,6 +599,7 @@ export default function BattleScreenV2({ view, db, submitting = false, omniscien
         </div>,
         document.body,
       )}
+      <GameResultOverlayV2 key={`${view.matchId}:${view.status}`} view={view} events={events} omniscient={omniscient} />
     </div>
   );
 }

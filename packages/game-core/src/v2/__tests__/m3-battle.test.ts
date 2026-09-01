@@ -304,6 +304,7 @@ describe("V2 M3 战斗主流程", () => {
     expect(pass2.state.winner).toBe(actor);
     expect(pass2.state.players[actor].timeline).toHaveLength(9);
     expect(pass2.state.players[defender].timeline).toHaveLength(0);
+    expect(projectBattleViewV2(pass2.state, actor, hashStateV2(pass2.state)).winner).toBe(actor);
   });
 
   it("从起始调度完整推进多个回合，界面可用指令链能无卡死地打到 9 分", () => {

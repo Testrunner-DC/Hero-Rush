@@ -790,6 +790,11 @@ function resolveBattleJudgmentV2(state: GameStateV2, actor: PlayerIndex): Comman
       : attackerPower < targetPower
         ? [battle.attackerId]
         : [battle.target.cardId];
+    const fromFieldZones = Object.fromEntries(retreated.flatMap((id) => {
+      const owner = state.cards[id]?.owner;
+      const zone = owner === undefined ? null : locateFieldCardV2(state.players[owner], id);
+      return zone ? [[id, zone] as const] : [];
+    }));
     const allRetreated = retreatClosureCardIdsV2(state, retreated);
     const retreatedState = retreatCardsV2(state, retreated);
     players = retreatedState.players;
@@ -801,6 +806,8 @@ function resolveBattleJudgmentV2(state: GameStateV2, actor: PlayerIndex): Comman
       type: "CARDS_RETREATED",
       cardIds: allRetreated,
       reason: "battle",
+      fromFieldCardIds: retreated,
+      fromFieldZones,
       followedAttachmentCardIds: allRetreated.filter((id) => !retreated.includes(id)),
     });
     events.push({ type: "CHARACTERS_RETREATED_BY_BATTLE", cardIds: allRetreated });

@@ -14,6 +14,7 @@ import SettingsPage from "./pages/SettingsPage";
 import AuthPage from "./pages/AuthPage";
 import ProfilePage from "./pages/ProfilePage";
 import { loadCardAssetManifest } from "./lib/cardAssets";
+import { countDeckCardsWithExactName } from "./utils/deckBuilding";
 
 const BattlePageV2 = lazy(() => import("./pages/BattlePageV2"));
 const BattleSandboxPageV2 = lazy(() => import("./pages/BattleSandboxPageV2"));
@@ -125,6 +126,7 @@ export default function App() {
       return;
     }
 
+    if (countDeckCardsWithExactName(mainDeck, cardMap, card.name) >= 3) return;
     const existing = mainDeck.find((e) => e.card_no === card.card_no);
     const maxCount = 3;
 
@@ -174,7 +176,7 @@ export default function App() {
     setDeckName(nextName);
     setSavedDecks(getLocalDecks());
     alert(`已另存为「${nextName}」`);
-  }, [mainDeck]);
+  }, [mainDeck, cardMap]);
 
   const loadDeck = useCallback((deck: Deck) => {
     setDeckName(deck.name);

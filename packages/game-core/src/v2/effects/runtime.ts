@@ -41,6 +41,21 @@ export function resolveEffectQueueV2(
   while (state.effects.queue.length > 0 && state.status === "playing") {
     const [effect, ...remaining] = state.effects.queue;
     state = { ...state, effects: { ...state.effects, queue: remaining } };
+    const sourceCard = state.cards[effect.sourceCardId];
+    const definition = getEffectForCardInstanceV2(state, effect.sourceCardId, effect.effectId);
+    if (sourceCard) {
+      events.push({
+        type: "EFFECT_PRESENTED",
+        actor: effect.controller,
+        sourceCardId: effect.sourceCardId,
+        definitionId: sourceCard.definitionId,
+        effectId: effect.effectId,
+        effectLabel: definition?.label ?? effect.effectId,
+        activation: effect.trigger === "manual"
+          ? definition?.activation === "response" ? "response" : "action"
+          : "trigger",
+      });
+    }
     const applied = applyAtomicOperationsV2(state, effect.operations, effect.sourceCardId);
     state = applied.state;
     events.push(...applied.events, { type: "EFFECT_RESOLVED", effectInstanceId: effect.id });
