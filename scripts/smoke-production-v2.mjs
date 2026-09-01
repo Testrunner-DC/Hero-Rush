@@ -2,6 +2,7 @@ import WebSocket from "ws";
 
 const websocketUrl = process.argv[2];
 const origin = process.argv[3];
+const sockets = new Set();
 
 if (!websocketUrl || !origin) {
   console.error("用法：node scripts/smoke-production-v2.mjs <wss-url> <https-origin>");
@@ -11,6 +12,7 @@ if (!websocketUrl || !origin) {
 function connect(label) {
   return new Promise((resolve, reject) => {
     const websocket = new WebSocket(websocketUrl, { origin });
+    sockets.add(websocket);
     const timer = setTimeout(() => {
       websocket.terminate();
       reject(new Error(`${label} 等待 READY_V2 超时`));
@@ -20,6 +22,7 @@ function connect(label) {
       clearTimeout(timer);
       reject(error);
     });
+    websocket.once("close", () => sockets.delete(websocket));
     websocket.on("open", () => {
       websocket.send(JSON.stringify({ type: "HELLO_V2", protocolVersion: 2 }));
     });
@@ -32,6 +35,7 @@ function connect(label) {
   });
 }
 
+let failed = false;
 try {
   const clients = await Promise.all([connect("客户端 1"), connect("客户端 2")]);
   const connectionIds = new Set(clients.map(({ message }) => message.connectionId));
@@ -49,6 +53,10 @@ try {
   clients.forEach(({ websocket }) => websocket.close());
   await new Promise((resolve) => setTimeout(resolve, 200));
 } catch (error) {
+  failed = true;
   console.error(error instanceof Error ? error.stack : error);
-  process.exitCode = 1;
+} finally {
+  for (const websocket of sockets) websocket.terminate();
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  if (failed) process.exitCode = 1;
 }

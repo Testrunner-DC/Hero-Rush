@@ -138,8 +138,9 @@ fi
 
 log "在隔离端口启动服务预检"
 (
+  exec 9>&-
   cd "${release_dir}/server"
-  env \
+  exec env \
     PORT="$TEST_PORT" \
     HOST="127.0.0.1" \
     NODE_ENV="production" \
@@ -194,7 +195,7 @@ curl --fail --silent --show-error --retry 5 --retry-delay 2 \
 curl --fail --silent --show-error --retry 5 --retry-delay 2 \
   --output /dev/null "https://${DOMAIN}/battle"
 node "${CURRENT_LINK}/scripts/smoke-production-v2.mjs" \
-  "wss://${DOMAIN}/ws/" "https://${DOMAIN}"
+  "wss://${DOMAIN}/ws/" "https://${DOMAIN}" 9>&-
 systemctl is-active --quiet "$SERVICE_NAME"
 
 printf '%s\n' "$release_dir" > "${SHARED_DIR}/last-successful-release"
