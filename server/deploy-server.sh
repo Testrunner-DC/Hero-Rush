@@ -8,6 +8,7 @@ NGINX_SITE_NAME="${NGINX_SITE_NAME:-hero-rush}"
 NGINX_SITE="/etc/nginx/sites-available/${NGINX_SITE_NAME}"
 NGINX_LINK="/etc/nginx/sites-enabled/${NGINX_SITE_NAME}"
 REPO_DIR="${REPO_DIR:-/opt/hero-rush}"
+ENV_FILE="${ENV_FILE:-${REPO_DIR}/.env}"
 ACME_ROOT="${ACME_ROOT:-/var/www/certbot}"
 DOMAIN="${DOMAIN:-hero.grand-umi.com}"
 PORT="${PORT:-8092}"
@@ -89,6 +90,15 @@ server {
         proxy_buffering off;
     }
 
+    location /api/ {
+        proxy_pass http://127.0.0.1:${PORT};
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_connect_timeout 3s;
+        proxy_read_timeout 15s;
+    }
+
     location = /card-assets/card-assets.manifest.json {
         root ${REPO_DIR}/dist;
         try_files \$uri =404;
@@ -145,7 +155,7 @@ Type=simple
 User=${SERVICE_USER}
 Group=${SERVICE_GROUP}
 WorkingDirectory=${REPO_DIR}/server
-EnvironmentFile=-${REPO_DIR}/.env
+EnvironmentFile=${ENV_FILE}
 Environment=PORT=${PORT}
 Environment=HOST=127.0.0.1
 Environment=NODE_ENV=production
@@ -154,6 +164,10 @@ Environment=BATTLE_V2_ENFORCE_CARD_POOL=true
 ExecStart=${NODE_BIN} --preserve-symlinks-main ${REPO_DIR}/server/dist/index.js
 Restart=always
 RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
 
 [Install]
 WantedBy=multi-user.target

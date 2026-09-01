@@ -1,62 +1,67 @@
-import WebSocket from "ws";
+#!/usr/bin/env node
 
-const websocketUrl = process.argv[2];
-const origin = process.argv[3];
-const sockets = new Set();
+const [siteUrl = "https://hero-v2.grand-umi.com/battle", websocketUrl = "wss://hero-v2.grand-umi.com/ws/"] = process.argv.slice(2);
 
-if (!websocketUrl || !origin) {
-  console.error("用法：node scripts/smoke-production-v2.mjs <wss-url> <https-origin>");
-  process.exit(64);
+if (!siteUrl.startsWith("https://") || !websocketUrl.startsWith("wss://")) {
+  throw new Error("正式服冒烟地址必须分别使用 HTTPS 和 WSS");
+}
+if (typeof WebSocket !== "function") {
+  throw new Error("正式服冒烟需要 Node.js 22 或更高版本提供 WebSocket");
 }
 
-function connect(label) {
-  return new Promise((resolve, reject) => {
-    const websocket = new WebSocket(websocketUrl, { origin });
-    sockets.add(websocket);
-    const timer = setTimeout(() => {
-      websocket.terminate();
-      reject(new Error(`${label} 等待 READY_V2 超时`));
-    }, 10_000);
+const timeout = (milliseconds, message) => new Promise((_, reject) => {
+  const timer = setTimeout(() => reject(new Error(message)), milliseconds);
+  timer.unref?.();
+});
 
-    websocket.once("error", (error) => {
-      clearTimeout(timer);
-      reject(error);
+async function assertHttp() {
+  const page = await fetch(siteUrl, { redirect: "follow", signal: AbortSignal.timeout(15_000) });
+  if (!page.ok) throw new Error(`正式页面返回 HTTP ${page.status}`);
+  const html = await page.text();
+  if (!html.includes('<div id="root">')) throw new Error("正式页面不是 Hero-Rush 应用入口");
+
+  const healthUrl = new URL("/api/health", siteUrl);
+  const health = await fetch(healthUrl, { redirect: "error", signal: AbortSignal.timeout(15_000) });
+  if (!health.ok) throw new Error(`V2 健康检查返回 HTTP ${health.status}`);
+  const payload = await health.json();
+  if (payload?.service !== "hero-rush-authoritative-server" || payload?.battleV2Enabled !== true) {
+    throw new Error("V2 健康检查内容不符合生产契约");
+  }
+}
+
+function pingClient(label) {
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(websocketUrl);
+    const timer = setTimeout(() => {
+      socket.close();
+      reject(new Error(`${label} WSS 握手超时`));
+    }, 15_000);
+    socket.addEventListener("open", () => {
+      socket.send(JSON.stringify({ type: "PING_V2", protocolVersion: 2, timestamp: Date.now() }));
     });
-    websocket.once("close", () => sockets.delete(websocket));
-    websocket.on("open", () => {
-      websocket.send(JSON.stringify({ type: "HELLO_V2", protocolVersion: 2 }));
+    socket.addEventListener("message", (event) => {
+      try {
+        const message = JSON.parse(String(event.data));
+        if (message.type !== "PONG_V2" || message.protocolVersion !== 2) return;
+        clearTimeout(timer);
+        socket.close();
+        resolve();
+      } catch (error) {
+        clearTimeout(timer);
+        socket.close();
+        reject(error);
+      }
     });
-    websocket.on("message", (raw) => {
-      const message = JSON.parse(raw.toString());
-      if (message.type !== "READY_V2") return;
+    socket.addEventListener("error", () => {
       clearTimeout(timer);
-      resolve({ websocket, message });
+      reject(new Error(`${label} WSS 连接失败`));
     });
   });
 }
 
-let failed = false;
-try {
-  const clients = await Promise.all([connect("客户端 1"), connect("客户端 2")]);
-  const connectionIds = new Set(clients.map(({ message }) => message.connectionId));
-  if (connectionIds.size !== 2) {
-    throw new Error("两个客户端没有获得独立连接标识。");
-  }
+await Promise.race([
+  Promise.all([assertHttp(), pingClient("客户端 A"), pingClient("客户端 B")]),
+  timeout(30_000, "正式服综合冒烟超时"),
+]);
 
-  console.log(JSON.stringify({
-    ok: true,
-    clients: clients.length,
-    messageTypes: clients.map(({ message }) => message.type),
-    authenticated: clients.map(({ message }) => message.authenticated),
-  }));
-
-  clients.forEach(({ websocket }) => websocket.close());
-  await new Promise((resolve) => setTimeout(resolve, 200));
-} catch (error) {
-  failed = true;
-  console.error(error instanceof Error ? error.stack : error);
-} finally {
-  for (const websocket of sockets) websocket.terminate();
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  if (failed) process.exitCode = 1;
-}
+console.log(`正式服冒烟通过：${siteUrl}；双客户端 ${websocketUrl}`);

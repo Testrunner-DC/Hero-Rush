@@ -214,6 +214,146 @@ describe("V2 M3 战斗主流程", () => {
     expect(resolved.state.flow).toEqual({ kind: "BATTLE_ATTACK", actor, zone: "flankLeft", attackerId: responseSummonId });
   });
 
+  it("进攻破绽后对手应对号召到该战区时，原目标失效并返回目标步骤", () => {
+    const state = structuredClone(actionState());
+    const actor = state.activePlayer;
+    const defender: PlayerIndex = actor === 0 ? 1 : 0;
+    const attackerId = placeFromHand(state, actor, "vanguard");
+    const responseSummonId = state.players[defender].hand[0];
+    state.cards[attackerId].range = 1;
+    state.cards[responseSummonId].printedKeywords = ["counter"];
+    const timelineBefore = state.players[actor].timeline.length;
+
+    const entered = enterBattleAdjust(state);
+    if (!entered.ok) throw new Error(entered.message);
+    const layout = command(entered.state, actor, { type: "SUBMIT_BATTLE_LAYOUT", layout: currentLayout(entered.state, actor) });
+    if (!layout.ok) throw new Error(layout.message);
+    const declared = command(layout.state, actor, { type: "DECLARE_ATTACK", attackerId, target: { kind: "breach", zone: "vanguard" } });
+    if (!declared.ok) throw new Error(declared.message);
+    const summoned = command(declared.state, defender, { type: "SUMMON_CHARACTER", cardId: responseSummonId, destination: "vanguard" });
+    if (!summoned.ok) throw new Error(summoned.message);
+    const actorPassed = command(summoned.state, actor, { type: "PASS_PRIORITY" });
+    if (!actorPassed.ok) throw new Error(actorPassed.message);
+    const closed = command(actorPassed.state, defender, { type: "PASS_PRIORITY" }, false);
+
+    expect(closed.ok).toBe(true);
+    if (!closed.ok) return;
+    expect(closed.state.players[defender].field.vanguard).toEqual([responseSummonId]);
+    expect(closed.state.players[actor].timeline).toHaveLength(timelineBefore);
+    expect(closed.state.flow).toEqual({ kind: "BATTLE_TARGET", actor, attackerId });
+    expect(closed.state.battle?.cursor).toBe(0);
+    expect(closed.events).toContainEqual({ type: "ATTACK_TARGET_INVALIDATED", actor, attackerId, canReselect: true });
+    expect(closed.events.some((event) => event.type === "BREACH_HIT")).toBe(false);
+
+    const reselected = command(closed.state, actor, {
+      type: "DECLARE_ATTACK",
+      attackerId,
+      target: { kind: "character", cardId: responseSummonId },
+    }, false);
+    expect(reselected.ok).toBe(true);
+    if (!reselected.ok) return;
+    expect(reselected.state.flow).toEqual({ kind: "BATTLE_RESPONSE", actor, priority: defender });
+    expect(reselected.state.usage.attackedCardIdsByPlayer[actor].filter((cardId) => cardId === attackerId)).toHaveLength(1);
+  });
+
+  it("对手应对号召到其他战区时，不影响原本仍合法的破绽攻击", () => {
+    const state = structuredClone(actionState());
+    const actor = state.activePlayer;
+    const defender: PlayerIndex = actor === 0 ? 1 : 0;
+    const attackerId = placeFromHand(state, actor, "vanguard");
+    const responseSummonId = state.players[defender].hand[0];
+    state.cards[attackerId].range = 1;
+    state.cards[responseSummonId].printedKeywords = ["counter"];
+    const timelineBefore = state.players[actor].timeline.length;
+
+    const entered = enterBattleAdjust(state);
+    if (!entered.ok) throw new Error(entered.message);
+    const layout = command(entered.state, actor, { type: "SUBMIT_BATTLE_LAYOUT", layout: currentLayout(entered.state, actor) });
+    if (!layout.ok) throw new Error(layout.message);
+    const declared = command(layout.state, actor, { type: "DECLARE_ATTACK", attackerId, target: { kind: "breach", zone: "vanguard" } });
+    if (!declared.ok) throw new Error(declared.message);
+    const summoned = command(declared.state, defender, { type: "SUMMON_CHARACTER", cardId: responseSummonId, destination: "rear" });
+    if (!summoned.ok) throw new Error(summoned.message);
+    const actorPassed = command(summoned.state, actor, { type: "PASS_PRIORITY" });
+    if (!actorPassed.ok) throw new Error(actorPassed.message);
+    const resolved = command(actorPassed.state, defender, { type: "PASS_PRIORITY" });
+
+    expect(resolved.ok).toBe(true);
+    if (!resolved.ok) return;
+    expect(resolved.state.players[actor].timeline).toHaveLength(timelineBefore + 1);
+    expect(resolved.events.some((event) => event.type === "BREACH_HIT")).toBe(true);
+    expect(resolved.events.some((event) => event.type === "ATTACK_TARGET_INVALIDATED")).toBe(false);
+  });
+
+  it("【空袭】使被应对号召填补的破绽仍合法时，继续结算原破绽攻击", () => {
+    const state = structuredClone(actionState());
+    const actor = state.activePlayer;
+    const defender: PlayerIndex = actor === 0 ? 1 : 0;
+    const attackerId = placeFromHand(state, actor, "vanguard");
+    const responseSummonId = state.players[defender].hand[0];
+    state.cards[attackerId].range = 1;
+    state.cards[attackerId].printedKeywords = ["airRaid"];
+    state.cards[responseSummonId].printedKeywords = ["counter"];
+    const timelineBefore = state.players[actor].timeline.length;
+
+    const entered = enterBattleAdjust(state);
+    if (!entered.ok) throw new Error(entered.message);
+    const layout = command(entered.state, actor, { type: "SUBMIT_BATTLE_LAYOUT", layout: currentLayout(entered.state, actor) });
+    if (!layout.ok) throw new Error(layout.message);
+    const declared = command(layout.state, actor, { type: "DECLARE_ATTACK", attackerId, target: { kind: "breach", zone: "vanguard" } });
+    if (!declared.ok) throw new Error(declared.message);
+    const summoned = command(declared.state, defender, { type: "SUMMON_CHARACTER", cardId: responseSummonId, destination: "vanguard" });
+    if (!summoned.ok) throw new Error(summoned.message);
+    const actorPassed = command(summoned.state, actor, { type: "PASS_PRIORITY" });
+    if (!actorPassed.ok) throw new Error(actorPassed.message);
+    const resolved = command(actorPassed.state, defender, { type: "PASS_PRIORITY" });
+
+    expect(resolved.ok).toBe(true);
+    if (!resolved.ok) return;
+    expect(resolved.state.players[actor].timeline).toHaveLength(timelineBefore + 1);
+    expect(resolved.events.some((event) => event.type === "BREACH_HIT")).toBe(true);
+    expect(resolved.events.some((event) => event.type === "ATTACK_TARGET_INVALIDATED")).toBe(false);
+  });
+
+  it("返回目标步骤仍属于同一次攻击，不额外消耗连击机会", () => {
+    const state = structuredClone(actionState());
+    const actor = state.activePlayer;
+    const defender: PlayerIndex = actor === 0 ? 1 : 0;
+    const attackerId = placeFromHand(state, actor, "vanguard");
+    const responseSummonId = state.players[defender].hand[0];
+    state.cards[attackerId].range = 1;
+    state.cards[attackerId].printedKeywords = ["combo"];
+    state.cards[responseSummonId].printedKeywords = ["counter"];
+
+    const entered = enterBattleAdjust(state);
+    if (!entered.ok) throw new Error(entered.message);
+    const layout = command(entered.state, actor, { type: "SUBMIT_BATTLE_LAYOUT", layout: currentLayout(entered.state, actor) });
+    if (!layout.ok) throw new Error(layout.message);
+    const declared = command(layout.state, actor, { type: "DECLARE_ATTACK", attackerId, target: { kind: "breach", zone: "vanguard" } });
+    if (!declared.ok) throw new Error(declared.message);
+    const summoned = command(declared.state, defender, { type: "SUMMON_CHARACTER", cardId: responseSummonId, destination: "vanguard" });
+    if (!summoned.ok) throw new Error(summoned.message);
+    const actorPassed = command(summoned.state, actor, { type: "PASS_PRIORITY" });
+    if (!actorPassed.ok) throw new Error(actorPassed.message);
+    const closed = command(actorPassed.state, defender, { type: "PASS_PRIORITY" }, false);
+    expect(closed.ok).toBe(true);
+    if (!closed.ok) return;
+    expect(closed.state.flow).toEqual({ kind: "BATTLE_TARGET", actor, attackerId });
+    expect(closed.state.battle?.cursor).toBe(0);
+    expect(closed.state.usage.attackedCardIdsByPlayer[actor].filter((cardId) => cardId === attackerId)).toHaveLength(1);
+
+    const reselected = command(closed.state, actor, {
+      type: "DECLARE_ATTACK",
+      attackerId,
+      target: { kind: "character", cardId: responseSummonId },
+    }, false);
+    expect(reselected.ok).toBe(true);
+    if (reselected.ok) {
+      expect(reselected.state.flow).toEqual({ kind: "BATTLE_RESPONSE", actor, priority: defender });
+      expect(reselected.state.usage.attackedCardIdsByPlayer[actor].filter((cardId) => cardId === attackerId)).toHaveLength(1);
+    }
+  });
+
   it("声明角色攻击后由非回合玩家先应对，双方连续放弃后按战力判定", () => {
     const state = structuredClone(actionState());
     const actor = state.activePlayer;

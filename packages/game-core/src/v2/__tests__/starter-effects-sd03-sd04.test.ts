@@ -250,7 +250,7 @@ describe("SD03/SD04 规则 1.02 卡效", () => {
   it("SD03-018 先从撤退区裁剪角色，再单独选择场上角色进行战基移动", () => {
     const s = state();
     const actor = s.activePlayer;
-    place(s, actor, "vanguard", "SD03-018");
+    const witch = place(s, actor, "vanguard", "SD03-018");
     const retreatRole = place(s, actor, "retreat", "RETREAT-ROLE");
     const mover = place(s, actor, "base", "MOVER");
     const opponent: PlayerIndex = actor === 0 ? 1 : 0;
@@ -277,7 +277,9 @@ describe("SD03/SD04 规则 1.02 卡效", () => {
     expect(current.players[actor].void).toContain(retreatRole);
     expect(current.decision?.kind).toBe("EFFECT_TARGETS");
     if (current.decision?.kind !== "EFFECT_TARGETS") return;
+    expect(current.decision.choices).toContain(witch);
     expect(current.decision.choices).toContain(mover);
+    expect(current.decision.choices).toContain("zone:base");
     expect(current.decision.choices).toContain("zone:rear");
     expect(current.decision.choices).not.toContain(retreatRole);
 

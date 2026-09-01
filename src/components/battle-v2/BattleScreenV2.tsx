@@ -395,6 +395,13 @@ export default function BattleScreenV2({ view, db, submitting = false, omniscien
 
   const toggleCard = (instanceId: string) => {
     if (!selectable.has(instanceId) || submitting) return;
+    // Effect target selection always owns the card click. This keeps a legal
+    // field/base target from being intercepted by attack, response or card
+    // action handlers that may still be present in the surrounding flow.
+    if (view.pendingDecision?.kind === "EFFECT_TARGETS" && view.pendingDecision.choices.includes(instanceId)) {
+      toggleSelection(instanceId);
+      return;
+    }
     const directResponse = responsePriority === actor && view.players[actor].hand.some((card) => card.instanceId === instanceId)
       ? view.legalActions.find((action) => action.type === "ACTIVATE_EFFECT" && action.sourceCardId === instanceId)
       : undefined;

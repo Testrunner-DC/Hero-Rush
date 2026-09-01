@@ -11,6 +11,9 @@ param(
   [string]$Commit = ""
 )
 $ErrorActionPreference = "Stop"
+if ($env:HERO_RUSH_ALLOW_LEGACY_DEPLOY -ne "1") {
+  throw "旧版 hero.grand-umi.com 部署入口已停用。请改用 GitHub Actions 的‘一键发布正式服 V2’；只有明确设置 HERO_RUSH_ALLOW_LEGACY_DEPLOY=1 才能执行此脚本。"
+}
 $SRV  = "root@103.146.230.37"
 $repo = $PSScriptRoot
 Set-Location $repo

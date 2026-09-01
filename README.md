@@ -46,6 +46,8 @@
 
 联机架构详见 [`docs/AUTHORITATIVE_ONLINE_ARCHITECTURE.md`](./docs/AUTHORITATIVE_ONLINE_ARCHITECTURE.md)。
 
+正式服通过 GitHub Actions 原子发布，日常流程与一次性服务器配置见 [`docs/ONE_CLICK_DEPLOYMENT.md`](./docs/ONE_CLICK_DEPLOYMENT.md)。
+
 ## 📁 项目结构
 
 ```

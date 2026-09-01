@@ -1038,7 +1038,9 @@ describe("BP01-082～090 蓝色控制效果", () => {
     const move = collectTriggeredEffectsV2(banished.state, banished.events).find((item) => item.effectId === "void-exile-witch-move")!;
     const moved = applyAtomicOperationsV2(banished.state, PROMO_EFFECT_DEFINITIONS_BP01_V2.find((item) => item.effectId === "void-exile-witch-move")!.buildOperations(banished.state, actor, witch, [mover, "zone:base"]), witch).state;
     expect(banish.optional).toBe(true);
+    expect(move.targeting?.choices).toEqual(expect.arrayContaining([witch, mover]));
     expect(move.targeting?.choices).toContain("zone:base");
+    expect(move.targeting?.prompt).toContain("我方 1 张可移动角色");
     expect(moved.players[actor].baseCards).toEqual(expect.arrayContaining([witch, mover]));
   });
 

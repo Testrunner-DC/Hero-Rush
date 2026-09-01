@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       revision:
-        description: 要发布的分支、标签或提交；通常保持 main
+        description: main 或以前成功发布的完整 40 位提交 SHA
         required: true
         default: main
         type: string
@@ -19,103 +19,119 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  verify:
+  validate:
     name: 测试与构建
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
-      sha: ${{ steps.revision.outputs.sha }}
+      commit_sha: ${{ steps.revision.outputs.commit_sha }}
     steps:
       - name: 检出待发布版本
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ inputs.revision }}
-          fetch-depth: 1
+          fetch-depth: 0
+          filter: blob:none
 
-      - name: 确认发布提交
+      - name: 锁定实际提交
         id: revision
         shell: bash
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          set -Eeuo pipefail
+          commit_sha="$(git rev-parse HEAD^{commit})"
+          [[ "$commit_sha" =~ ^[0-9a-f]{40}$ ]]
+          git merge-base --is-ancestor "$commit_sha" origin/main
+          printf 'commit_sha=%s\n' "$commit_sha" >> "$GITHUB_OUTPUT"
 
-      - name: 安装 Node.js
-        uses: actions/setup-node@v4
+      - name: 配置 Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
 
-      - name: 安装依赖
+      - name: 安装锁定依赖
         run: npm ci --no-audit --no-fund
 
-      - name: 运行完整测试
-        run: npm test
-
-      - name: 检查 TypeScript
-        run: npx tsc --noEmit -p tsconfig.json
-
-      - name: 检查 V2 发布门禁
+      - name: 检查部署脚本语法
+        shell: bash
         run: |
-          node scripts/report_v2_rule_coverage.mjs --strict
-          node scripts/check_v2_switch_gate.mjs
-          node scripts/report_v2_card_coverage.mjs --strict
+          set -Eeuo pipefail
+          bash -n server/setup-deploy-workflow.sh
+          bash -n server/deploy-release.sh
+          bash -n server/hero-rush-v2-ssh-entry.sh
+          node --check scripts/smoke-production-v2.mjs
+          npm run deploy:contract
 
-      - name: 构建前端和服务端
+      - name: 执行 V2 正式发布门禁
+        shell: pwsh
+        run: ./scripts/check_v2_release_gate.ps1 -RequireCardPool
+
+      - name: 测试并构建权威服务
         run: |
-          npm run build
-          npm run build --prefix server
+          npm test -w hero-rush-server
+          npm run build -w hero-rush-server
 
   deploy:
     name: 原子发布
-    needs: verify
+    needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment:
       name: production
       url: https://hero-v2.grand-umi.com/battle
-    env:
-      PROD_HOST: ${{ secrets.PROD_HOST }}
-      PROD_USER: ${{ secrets.PROD_USER }}
-      PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
-      PROD_SSH_KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
-      RELEASE_SHA: ${{ needs.verify.outputs.sha }}
     steps:
-      - name: 检查部署配置
+      - name: 校验部署配置
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+          PROD_SSH_KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
         shell: bash
         run: |
-          for name in PROD_HOST PROD_USER PROD_SSH_KEY PROD_SSH_KNOWN_HOSTS RELEASE_SHA; do
-            if [[ -z "${!name:-}" ]]; then
-              echo "缺少部署配置：${name}" >&2
-              exit 1
-            fi
-          done
-          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          set -Eeuo pipefail
+          [[ -n "$PROD_HOST" ]] || { echo '缺少 PROD_HOST'; exit 2; }
+          [[ "$PROD_USER" == 'hero-deploy' ]] || { echo 'PROD_USER 必须是 hero-deploy'; exit 2; }
+          [[ -n "$PROD_SSH_KEY" ]] || { echo '缺少 PROD_SSH_KEY'; exit 2; }
+          [[ -n "$PROD_SSH_KNOWN_HOSTS" ]] || { echo '缺少 PROD_SSH_KNOWN_HOSTS'; exit 2; }
 
-      - name: 配置专用 SSH 凭据
+      - name: 配置受限 SSH 身份
+        env:
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+          PROD_SSH_KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
         shell: bash
         run: |
+          set -Eeuo pipefail
           install -d -m 0700 "$HOME/.ssh"
-          printf '%s\n' "$PROD_SSH_KEY" | tr -d '\r' > "$HOME/.ssh/hero_rush_deploy"
-          chmod 0600 "$HOME/.ssh/hero_rush_deploy"
+          printf '%s\n' "$PROD_SSH_KEY" | tr -d '\r' > "$HOME/.ssh/hero_deploy"
           printf '%s\n' "$PROD_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
-          chmod 0600 "$HOME/.ssh/known_hosts"
+          chmod 0600 "$HOME/.ssh/hero_deploy" "$HOME/.ssh/known_hosts"
 
-      - name: 发布并执行自动健康检查
+      - name: 发布确定提交
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+          COMMIT_SHA: ${{ needs.validate.outputs.commit_sha }}
         shell: bash
         run: |
-          ssh \
-            -i "$HOME/.ssh/hero_rush_deploy" \
+          set -Eeuo pipefail
+          [[ "$COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
+          ssh -i "$HOME/.ssh/hero_deploy" \
             -o BatchMode=yes \
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
-            "${PROD_USER}@${PROD_HOST}" \
-            "/usr/local/sbin/hero-rush-v2-deploy '${RELEASE_SHA}'"
+            -o ConnectTimeout=15 \
+            "$PROD_USER@$PROD_HOST" \
+            "/usr/local/sbin/hero-rush-v2-deploy $COMMIT_SHA"
 
       - name: 写入发布摘要
+        env:
+          COMMIT_SHA: ${{ needs.validate.outputs.commit_sha }}
         shell: bash
         run: |
           {
-            echo "### 正式服发布成功"
-            echo ""
-            echo "- 提交：\`${RELEASE_SHA}\`"
-            echo "- 地址：https://hero-v2.grand-umi.com/battle"
-            echo "- HTTPS、服务状态与双客户端 WSS 握手均已通过服务器端检查。"
+            echo '## Hero-Rush V2 正式服发布完成'
+            echo
+            echo "- 提交：\`$COMMIT_SHA\`"
+            echo '- 地址：https://hero-v2.grand-umi.com/battle'
+            echo '- 服务器已完成隔离启动、原子切换、HTTPS 和双客户端 WSS 冒烟。'
           } >> "$GITHUB_STEP_SUMMARY"

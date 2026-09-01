@@ -1,6 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { cpSync, createReadStream, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -53,8 +53,26 @@ function externalCardAssets() {
   };
 }
 
+function copyPublicWithoutLegacyCards() {
+  return {
+    name: "hero-rush-copy-public-without-legacy-cards",
+    closeBundle() {
+      const publicRoot = resolve(projectRoot, "public");
+      const outputRoot = resolve(projectRoot, "dist");
+      mkdirSync(outputRoot, { recursive: true });
+      for (const entry of readdirSync(publicRoot, { withFileTypes: true })) {
+        if (entry.name === "cards") continue;
+        cpSync(resolve(publicRoot, entry.name), resolve(outputRoot, entry.name), {
+          recursive: entry.isDirectory(),
+          force: true,
+        });
+      }
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), externalCardAssets()],
+  plugins: [react(), externalCardAssets(), copyPublicWithoutLegacyCards()],
   base: "./",
   server: {
     port: 3000,
@@ -62,6 +80,7 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
+    copyPublicDir: false,
     chunkSizeWarningLimit: 300,
   },
 });

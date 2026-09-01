@@ -174,6 +174,8 @@ describe("V2 battle workspace contracts", () => {
     expect(board).toContain("bg-emerald-800 text-white");
     expect(board).toContain("bg-red-800 text-white");
     expect(board).toContain('aria-label="点击基地区作为合法落点"');
+    expect(board).toContain('data-ui-contract="hero-rush-v2-base-destination-hit-layer"');
+    expect(board).toContain("z-[70]");
     expect(board).not.toContain(">放置</button>");
     expect(board).toContain("count <= 6 ? 60 : count <= 10 ? 52");
   });
@@ -226,6 +228,7 @@ describe("V2 battle workspace contracts", () => {
     const screen = readSource("components/battle-v2/BattleScreenV2.tsx");
     const actions = readSource("components/battle-v2/ActionPanelV2.tsx");
     expect(screen).toContain("onToggleCard={toggleCard}");
+    expect(screen).toContain('view.pendingDecision?.kind === "EFFECT_TARGETS" && view.pendingDecision.choices.includes(instanceId)');
     expect(actions).toContain("locateEffectChoiceCards");
     expect(actions).toContain('data-ui-contract="hero-rush-v2-zone-effect-picker"');
     expect(actions).toContain('data-effect-choice-zone={zone}');

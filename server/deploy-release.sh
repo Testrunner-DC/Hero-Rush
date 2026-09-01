@@ -1,226 +1,190 @@
 #!/usr/bin/env bash
-# Hero Rush V2 正式服原子发布器。仅接受完整 Git 提交 SHA。
 set -Eeuo pipefail
-# Nginx 需要读取 release 下的 dist；正式环境文件仍单独固定为 0640。
 umask 022
 
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
-readonly REPO_URL="https://github.com/Testrunner-DC/Hero-Rush.git"
-readonly DEPLOY_ROOT="/opt/hero-rush-v2-deploy"
-readonly RELEASES_DIR="${DEPLOY_ROOT}/releases"
-readonly SHARED_DIR="${DEPLOY_ROOT}/shared"
-readonly CURRENT_LINK="${DEPLOY_ROOT}/current"
-readonly LEGACY_REPO="/opt/hero-rush-v2"
-readonly SERVICE_NAME="hero-rush-v2-relay"
-readonly NGINX_SITE_NAME="hero-rush-v2"
-readonly DOMAIN="hero-v2.grand-umi.com"
-readonly PORT="8093"
-readonly TEST_PORT="18093"
-readonly KEEP_RELEASES="3"
-readonly DEPLOY_USER="hero-deploy"
-readonly SERVICE_GROUP="hero-rush"
+readonly repository_url="https://github.com/Testrunner-DC/Hero-Rush.git"
+readonly deploy_root="/opt/hero-rush-v2-deploy"
+readonly repository="${deploy_root}/repository"
+readonly releases_root="${deploy_root}/releases"
+readonly shared_root="${deploy_root}/shared"
+readonly current_link="${deploy_root}/current"
+readonly server_ready="/etc/hero-rush-v2/server.ready"
+readonly asset_link="/opt/hero-rush-static/card-assets/current"
+readonly lock_file="${deploy_root}/.deploy.lock"
+readonly service_name="hero-rush-v2-relay.service"
+readonly deploy_user="hero-deploy"
+readonly smoke_port="18093"
+readonly production_site="https://hero-v2.grand-umi.com/battle"
+readonly production_ws="wss://hero-v2.grand-umi.com/ws/"
+readonly smoke_script="/usr/local/lib/hero-rush-v2/smoke-production-v2.mjs"
 
-TARGET_SHA="${1:-}"
-if [[ ! "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-  echo "用法：$0 <40 位 Git 提交 SHA>" >&2
-  exit 64
+fail() { printf '[Hero V2 发布] 错误：%s\n' "$*" >&2; exit 1; }
+log() { printf '[Hero V2 发布] %s\n' "$*"; }
+
+sha="${1:-}"
+[[ "$sha" =~ ^[0-9a-f]{40}$ ]] || fail "只接受 40 位小写 Git 提交 SHA"
+[[ "$(id -un)" == "$deploy_user" ]] || fail "发布器只能由 ${deploy_user} 账号执行"
+
+for command_name in git npm node curl flock tar sudo ss; do
+  command -v "$command_name" >/dev/null || fail "服务器缺少命令：${command_name}"
+done
+[[ -x /usr/bin/systemctl ]] || fail "服务器缺少 /usr/bin/systemctl"
+[[ -f "$smoke_script" && ! -L "$smoke_script" ]] || fail "正式服冒烟脚本未正确安装"
+[[ -d "$deploy_root" && ! -L "$deploy_root" ]] || fail "发布根目录异常"
+[[ -d "$releases_root" && ! -L "$releases_root" ]] || fail "release 目录异常"
+[[ -d "$shared_root" && ! -L "$shared_root" ]] || fail "共享配置目录异常"
+[[ -f "${shared_root}/frontend.env" && ! -L "${shared_root}/frontend.env" ]] || fail "缺少 shared/frontend.env"
+[[ -f "$server_ready" && ! -L "$server_ready" ]] || fail "服务端配置尚未由管理员标记为就绪"
+[[ -e "$asset_link" ]] || fail "卡图发布链接不存在：${asset_link}"
+
+exec 9>"$lock_file"
+flock -n 9 || fail "已有正式服发布正在执行"
+
+if [[ ! -d "${repository}/.git" ]]; then
+  [[ ! -e "$repository" ]] || fail "repository 路径存在但不是 Git 仓库"
+  log "初始化部分克隆发布仓库"
+  git clone --filter=blob:none --no-checkout "$repository_url" "$repository"
 fi
-if [[ "$(id -un)" != "$DEPLOY_USER" ]]; then
-  echo "发布器必须由 ${DEPLOY_USER} 执行。" >&2
-  exit 77
-fi
+[[ "$(git -C "$repository" remote get-url origin)" == "$repository_url" ]] || fail "发布仓库 origin 不符合预期"
 
-exec 9>"${DEPLOY_ROOT}/.deploy.lock"
-if ! flock -n 9; then
-  echo "已有正式服发布正在执行，请稍后重试。" >&2
-  exit 75
-fi
+log "获取 main 并校验提交 ${sha}"
+git -C "$repository" fetch --filter=blob:none --prune origin \
+  +refs/heads/main:refs/remotes/origin/main
+git -C "$repository" cat-file -e "${sha}^{commit}" 2>/dev/null || fail "提交不存在"
+git -C "$repository" merge-base --is-ancestor "$sha" origin/main || fail "提交不在 origin/main 历史中"
 
-log() {
-  printf '[%s] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*"
-}
+release_id="$(date -u +%Y%m%dT%H%M%SZ)-${sha:0:12}"
+release_dir="${releases_root}/${release_id}"
+[[ ! -e "$release_dir" ]] || fail "release 已存在：${release_id}"
+mkdir -m 0755 "$release_dir"
+printf '%s\n' "$sha" > "${release_dir}/REVISION"
+printf 'building\n' > "${release_dir}/STATUS"
 
-atomic_link() {
-  local target="$1"
-  local link="$2"
-  local next_link="${link}.next.$$"
-  ln -s "$target" "$next_link"
-  mv -Tf "$next_link" "$link"
-}
-
+next_link="${deploy_root}/.next-${sha}-$$"
+switched=0
+completed=0
 previous_target=""
-release_dir=""
-rollout_started="false"
-test_pid=""
-
-rollback() {
-  local status=$?
-  trap - ERR
-
-  if [[ -n "$test_pid" ]] && kill -0 "$test_pid" 2>/dev/null; then
-    kill "$test_pid" 2>/dev/null || true
-    wait "$test_pid" 2>/dev/null || true
+cleanup() {
+  code=$?
+  rm -f -- "$next_link"
+  if [[ $completed -ne 1 && -d "$release_dir" ]]; then
+    printf 'failed\n' > "${release_dir}/STATUS"
+    log "失败版本保留：${release_dir}"
   fi
-
-  if [[ "$rollout_started" == "true" && -n "$previous_target" && -d "$previous_target" ]]; then
-    log "健康检查失败，回滚到 ${previous_target}"
-    atomic_link "$previous_target" "$CURRENT_LINK"
-    sudo /usr/bin/systemctl restart "${SERVICE_NAME}.service" || true
-  fi
-
-  log "发布失败，失败版本保留在 ${release_dir:-未创建} 供排查。"
-  exit "$status"
+  exit "$code"
 }
-trap rollback ERR
+trap cleanup EXIT
 
-mkdir -p "$RELEASES_DIR" "$SHARED_DIR"
-
-if [[ ! -e "$CURRENT_LINK" ]]; then
-  if [[ ! -d "$LEGACY_REPO" ]]; then
-    echo "首次迁移失败：未找到旧版本 ${LEGACY_REPO}。" >&2
-    exit 66
-  fi
-  atomic_link "$LEGACY_REPO" "$CURRENT_LINK"
-fi
-if [[ ! -L "$CURRENT_LINK" ]]; then
-  echo "${CURRENT_LINK} 必须是符号链接，拒绝覆盖。" >&2
-  exit 65
+log "导出确定提交到独立 release"
+git -C "$repository" archive --format=tar "$sha" | tar -xf - -C "$release_dir"
+if [[ -d "${release_dir}/public/cards" ]]; then
+  [[ -z "$(find "${release_dir}/public/cards" -type f -print -quit)" ]] \
+    || fail "发布归档错误地包含 legacy 卡图"
 fi
 
-previous_target="$(readlink -f "$CURRENT_LINK")"
-if [[ ! -f "${SHARED_DIR}/.env" ]]; then
-  if [[ ! -f "${previous_target}/.env" ]]; then
-    echo "缺少正式服环境配置，无法发布。" >&2
-    exit 66
-  fi
-  install -m 0600 "${previous_target}/.env" "${SHARED_DIR}/.env"
-fi
+log "安装依赖并构建前后端"
+(
+  cd "$release_dir"
+  set -a
+  source "${shared_root}/frontend.env"
+  set +a
+  [[ -n "${VITE_SUPABASE_URL:-}" && -n "${VITE_SUPABASE_ANON_KEY:-}" ]] \
+    || fail "frontend.env 缺少 Supabase 公共配置"
+  npm ci --no-audit --no-fund
+  npm run build
+  npm run build -w hero-rush-server
+  npm prune --omit=dev --no-audit --no-fund
+)
 
-release_id="$(date -u '+%Y%m%d%H%M%S')-${TARGET_SHA:0:12}"
-release_dir="${RELEASES_DIR}/${release_id}"
-if [[ -e "$release_dir" ]]; then
-  echo "发布目录意外重复：${release_dir}" >&2
-  exit 73
-fi
-
-log "拉取提交 ${TARGET_SHA}"
-reference_repo="$previous_target"
-while IFS= read -r candidate; do
-  if git -C "$candidate" rev-parse --git-dir >/dev/null 2>&1; then
-    reference_repo="$candidate"
-    break
-  fi
-done < <(find "$RELEASES_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2-)
-
-git clone --quiet --no-checkout \
-  --reference-if-able "$reference_repo" --dissociate \
-  "$REPO_URL" "$release_dir"
-git -C "$release_dir" fetch --quiet --depth 1 origin "$TARGET_SHA"
-git -C "$release_dir" checkout --quiet --detach FETCH_HEAD
-if [[ "$(git -C "$release_dir" rev-parse HEAD)" != "$TARGET_SHA" ]]; then
-  echo "服务器检出的提交与目标不一致。" >&2
-  exit 74
-fi
-install -g "$SERVICE_GROUP" -m 0640 "${SHARED_DIR}/.env" "${release_dir}/.env"
-
-log "安装依赖并构建新版本"
-npm --prefix "$release_dir" ci --no-audit --no-fund
-npm --prefix "$release_dir" run build
-npm --prefix "${release_dir}/server" run build
 test -s "${release_dir}/dist/index.html"
 test -s "${release_dir}/server/dist/index.js"
+ln -s "$asset_link" "${release_dir}/dist/card-assets"
+chmod -R a+rX "$release_dir"
 
-if ss -ltnH "sport = :${TEST_PORT}" | grep -q .; then
-  echo "预检端口 ${TEST_PORT} 已被占用。" >&2
-  exit 69
+if ss -ltnH "sport = :${smoke_port}" | grep -q .; then
+  fail "预检端口 ${smoke_port} 已被占用"
 fi
 
-log "在隔离端口启动服务预检"
+log "隔离启动 V2 服务预检"
 (
   exec 9>&-
-  cd "${release_dir}/server"
-  exec env \
-    PORT="$TEST_PORT" \
-    HOST="127.0.0.1" \
-    NODE_ENV="production" \
-    BATTLE_V2_ENABLED="true" \
-    BATTLE_V2_ENFORCE_CARD_POOL="true" \
-    node dist/index.js
-) > "${release_dir}/server-smoke.log" 2>&1 &
-test_pid=$!
-
-test_ready="false"
-for _ in $(seq 1 30); do
-  if ! kill -0 "$test_pid" 2>/dev/null; then
-    break
-  fi
-  if ss -ltnH "sport = :${TEST_PORT}" | grep -q .; then
-    test_ready="true"
-    break
-  fi
-  sleep 0.5
-done
-if [[ "$test_ready" != "true" ]]; then
-  tail -50 "${release_dir}/server-smoke.log" >&2 || true
-  false
-fi
-kill "$test_pid"
-wait "$test_pid" 2>/dev/null || true
-test_pid=""
-
-log "原子切换到新版本 ${release_id}"
-atomic_link "$release_dir" "$CURRENT_LINK"
-rollout_started="true"
-
-sudo /usr/bin/systemctl restart "${SERVICE_NAME}.service"
-
-service_ready="false"
-for _ in $(seq 1 30); do
-  if systemctl is-active --quiet "${SERVICE_NAME}.service" \
-    && ss -ltnH "sport = :${PORT}" | grep -q .; then
-    service_ready="true"
-    break
-  fi
-  sleep 0.5
-done
-if [[ "$service_ready" != "true" ]]; then
-  echo "正式服务未在预期时间内监听 127.0.0.1:${PORT}。" >&2
-  false
-fi
-
-log "验证 HTTPS 与 WSS"
-curl --fail --silent --show-error --retry 5 --retry-delay 2 \
-  --output /dev/null "https://${DOMAIN}/"
-curl --fail --silent --show-error --retry 5 --retry-delay 2 \
-  --output /dev/null "https://${DOMAIN}/battle"
-node "${CURRENT_LINK}/scripts/smoke-production-v2.mjs" \
-  "wss://${DOMAIN}/ws/" "https://${DOMAIN}" 9>&-
-systemctl is-active --quiet "$SERVICE_NAME"
-
-printf '%s\n' "$release_dir" > "${SHARED_DIR}/last-successful-release"
-rollout_started="false"
-trap - ERR
-
-log "清理旧发布，仅保留最近 ${KEEP_RELEASES} 个"
-mapfile -t all_releases < <(
-  find "$RELEASES_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' \
-    | sort -rn \
-    | cut -d' ' -f2-
+  cd "$release_dir"
+  PORT="$smoke_port" HOST="127.0.0.1" NODE_ENV="production" \
+    BATTLE_V2_ENABLED="true" BATTLE_V2_ENFORCE_CARD_POOL="true" ALLOW_GUESTS="true" \
+    node server/dist/index.js > server-smoke.log 2>&1 &
+  smoke_pid=$!
+  stop_smoke() {
+    kill "$smoke_pid" 2>/dev/null || true
+    wait "$smoke_pid" 2>/dev/null || true
+  }
+  trap stop_smoke EXIT
+  ready=0
+  for _ in $(seq 1 30); do
+    if curl --fail --silent --show-error "http://127.0.0.1:${smoke_port}/api/health" \
+      | grep -q '"battleV2Enabled":true'; then
+      ready=1
+      break
+    fi
+    sleep 1
+  done
+  [[ $ready -eq 1 ]] || fail "隔离启动预检失败，查看 ${release_dir}/server-smoke.log"
 )
-for ((index = KEEP_RELEASES; index < ${#all_releases[@]}; index++)); do
-  candidate="$(readlink -f "${all_releases[$index]}")"
-  case "$candidate" in
-    "${RELEASES_DIR}"/*)
-      if [[ "$candidate" != "$(readlink -f "$CURRENT_LINK")" ]]; then
-        rm -rf --one-file-system -- "$candidate"
-      fi
-      ;;
-    *)
-      echo "跳过不在发布目录内的清理目标：${candidate}" >&2
-      ;;
-  esac
+
+if [[ -L "$current_link" ]]; then
+  previous_target="$(readlink -f "$current_link")"
+fi
+
+log "原子切换线上 release"
+ln -s "$release_dir" "$next_link"
+mv -Tf "$next_link" "$current_link"
+switched=1
+sudo -n /usr/bin/systemctl restart "$service_name"
+
+rollback() {
+  [[ $switched -eq 1 && -n "$previous_target" && -d "$previous_target" ]] || return 1
+  rollback_link="${deploy_root}/.rollback-${sha}-$$"
+  ln -s "$previous_target" "$rollback_link"
+  mv -Tf "$rollback_link" "$current_link"
+  sudo -n /usr/bin/systemctl restart "$service_name"
+  log "已自动恢复上一个 release：${previous_target}"
+}
+
+log "执行本机健康检查"
+health_ok=0
+for _ in $(seq 1 30); do
+  if curl --fail --silent --show-error "http://127.0.0.1:8093/api/health" \
+    | grep -q '"battleV2Enabled":true'; then
+    health_ok=1
+    break
+  fi
+  sleep 1
+done
+if [[ $health_ok -ne 1 ]]; then
+  rollback || true
+  fail "切换后本机健康检查失败"
+fi
+
+log "执行 HTTPS 与双客户端 WSS 冒烟"
+if ! node "$smoke_script" "$production_site" "$production_ws"; then
+  rollback || true
+  fail "切换后公开网络冒烟失败"
+fi
+
+printf 'active\n' > "${release_dir}/STATUS"
+completed=1
+
+log "保留最近三个 release"
+current_target="$(readlink -f "$current_link")"
+mapfile -t stale_releases < <(
+  find "$releases_root" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' \
+    | sort -rn | tail -n +4 | cut -d' ' -f2-
+)
+for stale in "${stale_releases[@]}"; do
+  [[ "$stale" == "${releases_root}/"* && "$stale" != "$current_target" && ! -L "$stale" ]] || continue
+  rm -rf --one-file-system -- "$stale"
 done
 
-log "发布成功：${TARGET_SHA}"
-echo "DEPLOYED_SHA=${TARGET_SHA}"
+log "发布完成：${sha}"
+trap - EXIT

@@ -17,6 +17,8 @@
     { "ruleRef": "303.2.a.1", "testFile": "packages/game-core/src/v2/__tests__/m2-action.test.ts", "testTitle": "由服务端自动完成回合开始抽 2，并重置回合用量后进入行动阶段" },
     { "ruleRef": "303.2.a.3", "testFile": "packages/game-core/src/v2/__tests__/m2-action.test.ts", "testTitle": "基地部署每回合最多一次：手牌盖放 1 张后抽 1 张" },
     { "ruleRef": "303.2.a.4", "testFile": "packages/game-core/src/v2/__tests__/m3-battle.test.ts", "testTitle": "声明角色攻击后由非回合玩家先应对，双方连续放弃后按战力判定" },
+    { "ruleRef": "303.2.a.4", "testFile": "packages/game-core/src/v2/__tests__/m3-battle.test.ts", "testTitle": "进攻破绽后对手应对号召到该战区时，原目标失效并返回目标步骤" },
+    { "ruleRef": "303.2.a.4", "testFile": "packages/game-core/src/v2/__tests__/m3-battle.test.ts", "testTitle": "返回目标步骤仍属于同一次攻击，不额外消耗连击机会" },
     { "ruleRef": "303.2.a.5", "testFile": "packages/game-core/src/v2/__tests__/m3-battle.test.ts", "testTitle": "回合应对由非回合玩家先行动，每名玩家在该阶段最多应对号召一次" },
     { "ruleRef": "303.2.a.6", "testFile": "packages/game-core/src/v2/__tests__/m3-battle.test.ts", "testTitle": "结束阶段手牌超过 9 时挂起可恢复的固定数量弃牌决策" },
     { "ruleRef": "304.1", "testFile": "packages/game-core/src/v2/__tests__/m4-effects.test.ts", "testTitle": "同一玩家的同时触发效果进入显式排序决策，并按提交顺序结算" },

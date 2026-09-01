@@ -9,12 +9,7 @@ import {
   reduceOnlineBattleMessageV2,
 } from "../battle-v2/onlineBattleV2State";
 import { supabase } from "../lib/supabase";
-
-function websocketUrl(): string {
-  const host = window.location.hostname;
-  if (window.location.protocol === "https:") return `wss://${window.location.host}/ws/`;
-  return `ws://${host || "localhost"}:8081`;
-}
+import { battleV2WebSocketUrl } from "../lib/battleV2WebSocket";
 
 const activeMatchKey = "hero-rush:v2:active-match";
 const identityKey = "hero-rush:v2:resume-token";
@@ -59,7 +54,7 @@ export function useOnlineBattleV2(_db: CardDatabase) {
     const connect = async () => {
       if (disposedRef.current) return;
       setStatus(attempt === 0 ? "connecting" : "reconnecting");
-      const ws = new WebSocket(websocketUrl());
+      const ws = new WebSocket(battleV2WebSocketUrl());
       wsRef.current = ws;
       ws.onopen = async () => {
         attempt = 0;

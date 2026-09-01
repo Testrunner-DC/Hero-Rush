@@ -37,6 +37,7 @@ const contracts = [
   [resolver.includes("detailWebp") && resolver.includes("boardWebp") && resolver.includes("thumbWebp"), "resolver 必须支持详情、对战和缩略三档资源"],
   [resolver.includes('"same-origin"') && resolver.includes('"legacy"') && resolver.includes('"placeholder"'), "resolver 必须保留同源、旧图和占位降级"],
   [vite.includes('server.middlewares.use("/card-assets"') && vite.includes("externalAssetRoot"), "开发服务器必须从仓库外提供卡图"],
+  [vite.includes("copyPublicDir: false") && vite.includes('entry.name === "cards"'), "生产构建不得把旧 public/cards 复制进 release"],
   [publish.includes("assetVersion") && publish.includes("flock") && publish.includes("mv -Tf"), "服务器卡图发布必须校验版本、加锁并原子切换"],
   [deploy.includes("max-age=31536000, immutable") && deploy.includes("max-age=300, must-revalidate"), "Caddy 必须区分内容对象与 manifest 缓存"],
 ];

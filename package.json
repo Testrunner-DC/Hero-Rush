@@ -28,7 +28,8 @@
     "gate:v2": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/check_v2_release_gate.ps1",
     "gate:v2:release": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/check_v2_release_gate.ps1 -RequireCardPool",
     "rules:v2:coverage": "node scripts/report_v2_rule_coverage.mjs --strict",
-    "gate:v2:switch": "node scripts/check_v2_switch_gate.mjs"
+    "gate:v2:switch": "node scripts/check_v2_switch_gate.mjs",
+    "deploy:contract": "node scripts/check_deployment_contract.mjs"
   },
   "dependencies": {
     "@hero-rush/game-core": "*",
