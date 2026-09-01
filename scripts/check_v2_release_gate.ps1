@@ -13,6 +13,7 @@ function Invoke-GateStep([string]$name, [scriptblock]$command) {
   if ($LASTEXITCODE -ne 0) { throw "V2 门禁失败：$name" }
 }
 
+Invoke-GateStep "Workspace packages" { npm run build:packages }
 Invoke-GateStep "TypeScript" { npx tsc --noEmit }
 Invoke-GateStep "Automated tests" { npm test }
 Invoke-GateStep "Rule-number coverage" { node scripts/report_v2_rule_coverage.mjs --strict }
